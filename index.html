@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://bsky.social https://cdn.bsky.app https://video.bsky.app; img-src * data:; media-src *; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://bsky.social https://cdn.bsky.app https://video.bsky.app; img-src * data:; media-src * blob:; style-src 'self' 'unsafe-inline'; script-src 'self';">
   <title>Bsky Dreams</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -111,6 +111,56 @@
             <button type="button" class="filter-chip" data-filter="users">People</button>
             <button type="button" class="filter-chip" data-filter="latest">Latest</button>
           </div>
+          <!-- Adult content toggle + advanced search toggle -->
+          <div class="search-options-row">
+            <label class="adult-toggle-label" title="Filter posts labelled as adult content">
+              <input type="checkbox" id="hide-adult-toggle" checked>
+              <span>Hide adult content</span>
+            </label>
+            <button type="button" class="advanced-toggle-btn" id="advanced-toggle-btn"
+                    aria-expanded="false" aria-controls="advanced-panel">
+              Advanced <span class="adv-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
+
+          <!-- Advanced search panel (hidden by default) -->
+          <div id="advanced-panel" class="advanced-panel" hidden>
+            <div class="advanced-grid">
+              <div class="adv-field">
+                <label for="adv-author" class="adv-label">Author</label>
+                <input type="text" id="adv-author" class="adv-input"
+                       placeholder="handle.bsky.social"
+                       autocomplete="off" autocapitalize="none" spellcheck="false">
+              </div>
+              <div class="adv-field">
+                <label for="adv-mentions" class="adv-label">Mentions</label>
+                <input type="text" id="adv-mentions" class="adv-input"
+                       placeholder="handle.bsky.social"
+                       autocomplete="off" autocapitalize="none" spellcheck="false">
+              </div>
+              <div class="adv-field">
+                <label for="adv-lang" class="adv-label">Language</label>
+                <input type="text" id="adv-lang" class="adv-input"
+                       placeholder="en, fr, ja…"
+                       autocomplete="off" maxlength="10">
+              </div>
+              <div class="adv-field">
+                <label for="adv-domain" class="adv-label">Domain</label>
+                <input type="text" id="adv-domain" class="adv-input"
+                       placeholder="example.com"
+                       autocomplete="off" autocapitalize="none">
+              </div>
+              <div class="adv-field">
+                <label for="adv-since" class="adv-label">From date</label>
+                <input type="date" id="adv-since" class="adv-input">
+              </div>
+              <div class="adv-field">
+                <label for="adv-until" class="adv-label">To date</label>
+                <input type="date" id="adv-until" class="adv-input">
+              </div>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary search-submit">Search</button>
         </form>
 
