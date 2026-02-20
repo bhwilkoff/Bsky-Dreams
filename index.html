@@ -213,12 +213,24 @@
   </div>
 
   <!-- ============================================================
+       IMAGE LIGHTBOX
+  ============================================================ -->
+  <div id="image-lightbox" class="image-lightbox" hidden role="dialog" aria-modal="true" aria-label="Image viewer">
+    <button class="lightbox-close" id="lightbox-close" aria-label="Close image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <img id="lightbox-img" src="" alt="" class="lightbox-img">
+    <p id="lightbox-caption" class="lightbox-caption"></p>
+  </div>
+
+  <!-- ============================================================
        LOADING OVERLAY
   ============================================================ -->
   <div id="loading-overlay" class="loading-overlay" hidden aria-live="assertive" aria-label="Loading">
     <div class="spinner" aria-hidden="true"></div>
   </div>
 
+  <script src="js/hls.min.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>

@@ -181,6 +181,20 @@ const API = (() => {
   }
 
   /**
+   * Unrepost by deleting the repost record.
+   * @param {string} repostUri - AT URI of the repost record
+   */
+  async function unrepost(repostUri) {
+    const session = AUTH.getSession();
+    const parts = repostUri.split('/');
+    return authPost('com.atproto.repo.deleteRecord', {
+      repo:       session.did,
+      collection: 'app.bsky.feed.repost',
+      rkey:       parts[parts.length - 1],
+    });
+  }
+
+  /**
    * Repost (com.atproto.repo.createRecord → app.bsky.feed.repost)
    */
   async function repost(uri, cid) {
@@ -231,6 +245,7 @@ const API = (() => {
     likePost,
     unlikePost,
     repost,
+    unrepost,
     getOwnProfile,
     resolvePostUrl,
   };
