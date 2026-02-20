@@ -1307,3 +1307,99 @@ button {
   color: var(--color-text-light);
   margin-top: var(--space-xs);
 }
+
+/* ================================================================
+   HOME FEED
+================================================================ */
+.feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+}
+
+.feed-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.feed-item {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* Repost attribution bar above the post card */
+.feed-repost-bar,
+.feed-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md) 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.feed-repost-bar svg,
+.feed-reply-bar svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+/* Remove the card's own box-shadow when it's inside a feed-item wrapper */
+.feed-item > .post-card {
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.feed-load-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-md);
+}
+
+/* ================================================================
+   FOLLOW BUTTON (actor cards)
+================================================================ */
+.follow-btn {
+  flex-shrink: 0;
+  padding: 5px var(--space-md);
+  border-radius: var(--radius-pill);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--color-accent);
+  color: #fff;
+  border: 1.5px solid var(--color-accent);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.follow-btn.following {
+  background: transparent;
+  color: var(--color-accent);
+}
+
+.follow-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.follow-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Actor card layout: spread name+bio left, follow button right */
+.actor-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  justify-content: space-between;
+  width: 100%;
+}
