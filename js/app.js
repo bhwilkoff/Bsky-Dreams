@@ -668,37 +668,51 @@
     playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
     poster.appendChild(playBtn);
 
+    const showFallback = () => {
+      const fallback = document.createElement('p');
+      fallback.className = 'post-video-fallback';
+      const link = document.createElement('a');
+      link.href        = src;
+      link.target      = '_blank';
+      link.rel         = 'noopener noreferrer';
+      link.textContent = 'Watch video ↗';
+      fallback.appendChild(link);
+      wrap.appendChild(fallback);
+    };
+
     const activateVideo = () => {
       poster.remove();
       const video = document.createElement('video');
-      video.className  = 'post-video';
-      video.controls   = true;
+      video.className   = 'post-video';
+      video.controls    = true;
       video.playsInline = true;
-      video.autoplay   = true;
+      video.muted       = true;  // required for autoplay in Chrome/Firefox
+      video.autoplay    = true;
       if (thumb) video.poster = thumb;
 
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         const hls = new Hls({ lowLatencyMode: false, enableWorker: false });
+        // Append video to DOM before loading — some browsers require it
+        wrap.appendChild(video);
         hls.loadSource(src);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.error('HLS error:', data.type, data.details, src);
+            hls.destroy();
+            video.remove();
+            showFallback();
+          }
+        });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         // Safari: native HLS
         video.src = src;
+        wrap.appendChild(video);
         video.play().catch(() => {});
       } else {
-        const fallback = document.createElement('p');
-        fallback.className = 'post-video-fallback';
-        const link = document.createElement('a');
-        link.href = src;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Watch video ↗';
-        fallback.appendChild(link);
-        wrap.appendChild(fallback);
-        return;
+        showFallback();
       }
-      wrap.appendChild(video);
     };
 
     poster.addEventListener('click', (e) => { e.stopPropagation(); activateVideo(); });
