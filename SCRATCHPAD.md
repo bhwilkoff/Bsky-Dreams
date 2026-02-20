@@ -2,48 +2,80 @@
 
 ## Current Status
 
-Initial project scaffold has been created. The repository was empty; this
-session establishes the foundational file structure, living documents
-(CLAUDE.md, DECISIONS.md, README.md), and the full application source
-(index.html, css/styles.css, js/auth.js, js/api.js, js/app.js). The app
-implements all three MVP features — Posting, Searching, and Conversation
-View — using the BlueSky AT Protocol HTTP API directly via fetch. No build
-step is required. The app is deployable immediately to GitHub Pages from the
-main branch root.
-
-## Active Milestone
-
-**Milestone 1 + 2 combined: Interface + API Integration**
-
-Completed in this session:
-- [x] Initial project scaffold (directories, CLAUDE.md, SCRATCHPAD.md, DECISIONS.md, README.md)
-- [x] index.html with three-panel layout: Auth, Search/Feed, Compose, Conversation View
-- [x] css/styles.css — mobile-first, CSS custom properties, WCAG AA contrast
-- [x] js/auth.js — app-password login, session stored in localStorage
-- [x] js/api.js — all AT Protocol API calls (login, search, getThread, post, like, repost)
-- [x] js/app.js — UI orchestration, event handlers, view transitions
-
-Remaining for future sessions:
-- [ ] Milestone 3: Individual interaction buttons (like, repost, follow) fully wired
-- [ ] Milestone 4: Alt text display and authoring for images/video
+The app is live and functional. Multiple sessions of work have completed
+Milestones 1–3 and partially completed Milestone 4. A new Milestone 5
+(Home/Following Timeline) is now in progress.
 
 ## Completed Milestones
 
-None fully signed off yet (first session).
+### Milestone 1 + 2: Interface + API Integration ✅
+- Initial project scaffold (index.html, css/styles.css, js/auth.js, js/api.js, js/app.js)
+- Three-panel layout: Auth screen, Search/Feed, Compose, Conversation View
+- AT Protocol API integration (login, search posts/actors, get thread, create post)
+- App-password auth with session stored in localStorage
+
+### Milestone 3: Interaction Buttons ✅
+- Like / Unlike: toggle with live count update, `data-like-uri` on button
+- Repost / Unrepost: toggle with live count update, `data-repost-uri` on button
+- Reply: opens thread view and focuses reply textarea
+- Follow / Unfollow: toggle on actor (people) search result cards
+
+### Milestone 4: Media + Rich Text ✅ (display) / ⏳ (authoring)
+- **Images**: full-size grid, click-to-lightbox overlay with alt text caption
+- **Alt text**: displayed prominently below each image; shown below video too
+- **Video**: HLS.js v1.5.13 poster + play-to-activate; muted autoplay; error
+  fallback shows "Watch video ↗ (reason)" link
+- **External link cards**: thumbnail + title + description + hostname
+- **Rich text rendering**: AT Protocol facets with TextEncoder/TextDecoder for
+  correct UTF-8 byte offsets; hashtags clickable, mentions styled, URLs linked
+- **recordWithMedia**: images or video alongside a quoted post all render
+- ⏳ Alt text *authoring* (compose/reply): deferred — requires image upload,
+  which is not yet implemented
+
+## Active Milestone
+
+### Milestone 5: Home / Following Timeline
+Goal: let users see a chronological feed of posts from people they follow,
+with repost attribution and reply context shown inline.
+
+Tasks:
+- [x] `API.getTimeline(limit, cursor)` — `app.bsky.feed.getTimeline`
+- [x] `API.followActor(subjectDid)` / `API.unfollowActor(followUri)` — follow graph
+- [x] Home nav button + `view-feed` section in index.html
+- [x] `renderFeedItems()` in app.js (repost bar, reply context)
+- [x] Follow/Unfollow toggle on actor cards in People search results
+- [x] Pagination ("Load more") on home feed
 
 ## Open Questions
 
-1. **App password flow**: The MVP uses BlueSky "App Passwords" (Settings → App Passwords). This is the recommended approach for third-party apps. Is this acceptable UX, or should we surface clearer in-app instructions for generating an app password?
-2. **CORS**: bsky.social's public API endpoints are accessible from the browser without a proxy. Authenticated endpoints also work cross-origin. If a CORS error appears in future testing, a Cloudflare Worker proxy may be needed (logged in DECISIONS.md as a watch item).
-3. **Alt text milestone (M4)**: The spec calls for alt text as "primary text" for images. Should this mean alt text shown prominently above/instead of the image, or shown on hover/tap?
+1. **Image upload in Compose**: Milestone 4 authoring is blocked on this. The
+   AT Protocol requires uploading a blob first (`com.atproto.repo.uploadBlob`),
+   then embedding the resulting CID. Worth tackling as Milestone 6.
+2. **Author profile click-through**: Clicking an author name/avatar should open
+   a profile view showing their bio and post history. Planned as part of
+   Milestone 6.
+3. **Notifications**: `app.bsky.notification.listNotifications` would surface
+   replies, likes, reposts, and follows. Useful but not yet scoped.
+4. **Token refresh**: `withAuth` retries once on 401. If the refresh token is
+   also expired the user must sign in again — no graceful expiry message yet.
+5. **Adult content toggle**: Currently uses CSP labels from post/author. BlueSky
+   has a richer labelling system (`com.atproto.label.*`) that could give finer
+   control.
+6. **video.bsky.app CORS**: The CSP was widened to `connect-src *` because HLS
+   segment URLs may resolve to CDN subdomains not predictable at build time.
+   This resolved video playback. No proxy needed.
 
 ## Blockers
 
-None currently. The BlueSky public API (bsky.social/xrpc) supports CORS for browser requests. If this proves incorrect during live testing, a Cloudflare Worker CORS proxy will be needed (zero cost, free tier).
+None currently.
 
 ## Next Session Starting Point
 
-1. Test the app locally: open `index.html`, log in with a BlueSky app password, run a search, open a thread, post a reply.
-2. Wire up like/repost buttons fully (Milestone 3) — the UI elements exist but the API calls need to be connected to each post card's action row.
-3. Implement Milestone 4 alt text display: show alt text prominently beneath each image in thread and search views, and expose an alt-text input in the compose/reply form.
-4. Review DECISIONS.md and confirm technology choices before any refactoring.
+1. **Milestone 6 — Author profiles**: add `getActorProfile` + `getAuthorFeed`
+   to api.js; add a `view-profile` section; make author avatars/names clickable.
+2. **Milestone 6 — Image upload in Compose**: `uploadBlob` → embed CID + alt
+   text input; preview before posting.
+3. **Milestone 7 — Notifications**: home nav notification badge +
+   `view-notifications` using `app.bsky.notification.listNotifications`.
+4. Confirm that the `main` branch PR is merged so the live GitHub Pages site
+   reflects all completed work.

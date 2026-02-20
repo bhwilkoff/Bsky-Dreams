@@ -19,15 +19,22 @@
   const authError      = $('auth-error');
   const authSubmit     = $('auth-submit');
 
+  const navFeedBtn     = $('nav-feed-btn');
   const navSearchBtn   = $('nav-search-btn');
   const navComposeBtn  = $('nav-compose-btn');
   const navProfileBtn  = $('nav-profile-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
 
+  const viewFeed       = $('view-feed');
   const viewSearch     = $('view-search');
   const viewCompose    = $('view-compose');
   const viewThread     = $('view-thread');
+
+  const feedResults    = $('feed-results');
+  const feedRefreshBtn = $('feed-refresh-btn');
+  const feedLoadMore   = $('feed-load-more');
+  const feedLoadMoreBtn = $('feed-load-more-btn');
 
   const searchForm     = $('search-form');
   const searchInput    = $('search-input');
@@ -83,6 +90,8 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
+  let feedCursor         = null; // pagination cursor for home feed
+  let feedLoaded         = false; // true after first load
 
   /* ================================================================
      LOADING HELPERS
@@ -225,8 +234,8 @@
   function showView(name, fromHistory = false) {
     currentView = name;
 
-    const views = { search: viewSearch, compose: viewCompose, thread: viewThread };
-    const navBtns = { search: navSearchBtn, compose: navComposeBtn };
+    const views = { feed: viewFeed, search: viewSearch, compose: viewCompose, thread: viewThread };
+    const navBtns = { feed: navFeedBtn, search: navSearchBtn, compose: navComposeBtn };
 
     Object.entries(views).forEach(([n, el]) => {
       el.hidden  = n !== name;
@@ -256,6 +265,10 @@
     }
   }
 
+  navFeedBtn.addEventListener('click', () => {
+    showView('feed');
+    if (!feedLoaded) loadFeed();
+  });
   navSearchBtn.addEventListener('click', () => showView('search'));
   navComposeBtn.addEventListener('click', () => showView('compose'));
 
@@ -269,11 +282,13 @@
     if (state.view === 'thread' && state.uri) {
       await openThread(state.uri, state.cid, state.handle, { fromHistory: true });
     } else {
-      showView(state.view || 'search', true);
-      // Restore search query if available
-      if (state.view === 'search' && state.query) {
+      const view = state.view || 'search';
+      showView(view, true);
+      if (view === 'search' && state.query) {
         searchInput.value = state.query;
       }
+      // Reload feed if navigating back to it and it hasn't loaded yet
+      if (view === 'feed' && !feedLoaded) loadFeed();
     }
   });
 
@@ -385,19 +400,161 @@
     }
     searchResults.innerHTML = '';
     actors.forEach((actor) => {
-      const card = document.createElement('div');
+      const card = document.createElement('article');
       card.className = 'post-card';
-      card.innerHTML = `
-        <div class="post-header">
-          <img src="${escHtml(actor.avatar || '')}" alt="" class="post-avatar">
+
+      const followUri    = actor.viewer?.following || '';
+      const isFollowing  = !!followUri;
+      const isSelf       = ownProfile && actor.did === ownProfile.did;
+
+      const header = document.createElement('div');
+      header.className = 'actor-card-header';
+
+      header.innerHTML = `
+        <div class="post-header" style="flex:1;min-width:0;margin-bottom:0">
+          <img src="${escHtml(actor.avatar || '')}" alt="" class="post-avatar" loading="lazy">
           <div class="post-meta">
             <div class="post-display-name">${escHtml(actor.displayName || actor.handle)}</div>
             <div class="post-handle">@${escHtml(actor.handle)}</div>
           </div>
         </div>
-        ${actor.description ? `<p class="post-text">${escHtml(actor.description)}</p>` : ''}
       `;
+
+      if (!isSelf) {
+        const followBtn = document.createElement('button');
+        followBtn.className    = `action-btn follow-btn${isFollowing ? ' following' : ''}`;
+        followBtn.textContent  = isFollowing ? 'Following' : 'Follow';
+        followBtn.dataset.did  = actor.did;
+        followBtn.dataset.followUri = followUri;
+        followBtn.setAttribute('aria-label', isFollowing
+          ? `Unfollow @${actor.handle}` : `Follow @${actor.handle}`);
+
+        followBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const btn          = e.currentTarget;
+          const currentUri   = btn.dataset.followUri;
+          const nowFollowing = btn.classList.contains('following');
+          btn.disabled = true;
+          try {
+            if (nowFollowing && currentUri) {
+              await API.unfollowActor(currentUri);
+              btn.classList.remove('following');
+              btn.textContent       = 'Follow';
+              btn.dataset.followUri = '';
+              btn.setAttribute('aria-label', `Follow @${actor.handle}`);
+            } else {
+              const result = await API.followActor(actor.did);
+              btn.classList.add('following');
+              btn.textContent       = 'Following';
+              btn.dataset.followUri = result.uri || '';
+              btn.setAttribute('aria-label', `Unfollow @${actor.handle}`);
+            }
+          } catch (err) {
+            console.error('Follow error:', err.message);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
+        header.appendChild(followBtn);
+      }
+
+      card.appendChild(header);
+
+      if (actor.description) {
+        const bio = document.createElement('p');
+        bio.className   = 'post-text';
+        bio.textContent = actor.description;
+        card.appendChild(bio);
+      }
+
       searchResults.appendChild(card);
+    });
+  }
+
+  /* ================================================================
+     HOME / FOLLOWING FEED
+  ================================================================ */
+  async function loadFeed(append = false) {
+    if (!append) {
+      feedCursor  = null;
+      feedLoaded  = false;
+      feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
+      feedLoadMore.hidden   = true;
+    }
+
+    showLoading();
+    try {
+      const data   = await API.getTimeline(50, append ? feedCursor : undefined);
+      const items  = data.feed || [];
+      feedCursor   = data.cursor || null;
+      feedLoaded   = true;
+
+      if (!append) feedResults.innerHTML = '';
+
+      if (!items.length && !append) {
+        feedResults.innerHTML = '<div class="feed-empty"><p>No posts yet. Follow some people to see their posts here.</p></div>';
+      } else {
+        renderFeedItems(items, feedResults, append);
+      }
+
+      // Show "Load more" only if there's a next page
+      feedLoadMore.hidden = !feedCursor;
+    } catch (err) {
+      if (!append) {
+        feedResults.innerHTML = `<div class="feed-empty"><p>Could not load feed: ${escHtml(err.message)}</p></div>`;
+      }
+    } finally {
+      hideLoading();
+    }
+  }
+
+  feedRefreshBtn.addEventListener('click', () => loadFeed(false));
+  feedLoadMoreBtn.addEventListener('click', () => loadFeed(true));
+
+  /**
+   * Render an array of timeline feed items (post + optional reason/reply context).
+   * @param {Array}       items    - feed items from getTimeline
+   * @param {HTMLElement} container
+   * @param {boolean}     append   - if true, append instead of replacing
+   */
+  function renderFeedItems(items, container, append = false) {
+    if (!append) container.innerHTML = '';
+
+    items.forEach((item) => {
+      const post = item.post;
+      if (!post || hasAdultContent(post)) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'feed-item';
+
+      // Repost attribution
+      if (item.reason?.$type === 'app.bsky.feed.defs#reasonRepost') {
+        const by = item.reason.by || {};
+        const bar = document.createElement('div');
+        bar.className = 'feed-repost-bar';
+        bar.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Reposted by ${escHtml(by.displayName || by.handle || 'someone')}
+        `;
+        wrapper.appendChild(bar);
+      }
+
+      // Reply context
+      if (item.reply?.parent?.author) {
+        const parentAuthor = item.reply.parent.author;
+        const bar = document.createElement('div');
+        bar.className = 'feed-reply-bar';
+        bar.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Replying to @${escHtml(parentAuthor.handle || '')}
+        `;
+        wrapper.appendChild(bar);
+      }
+
+      const card = buildPostCard(post, { clickable: true });
+      wrapper.appendChild(card);
+      container.appendChild(wrapper);
     });
   }
 

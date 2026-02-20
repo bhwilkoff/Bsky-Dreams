@@ -233,6 +233,47 @@ const API = (() => {
   }
 
   /**
+   * Get the home / following timeline (app.bsky.feed.getTimeline)
+   * @param {number} limit  - results per page (default: 50)
+   * @param {string} cursor - pagination cursor
+   */
+  async function getTimeline(limit = 50, cursor) {
+    return authGet('app.bsky.feed.getTimeline', { limit, cursor });
+  }
+
+  /**
+   * Follow an actor (com.atproto.repo.createRecord → app.bsky.graph.follow)
+   * @param {string} subjectDid - DID of the actor to follow
+   * @returns {object} - { uri, cid } of the created follow record
+   */
+  async function followActor(subjectDid) {
+    const session = AUTH.getSession();
+    return authPost('com.atproto.repo.createRecord', {
+      repo:       session.did,
+      collection: 'app.bsky.graph.follow',
+      record: {
+        $type:     'app.bsky.graph.follow',
+        subject:   subjectDid,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  /**
+   * Unfollow an actor by deleting the follow record.
+   * @param {string} followUri - AT URI of the follow record
+   */
+  async function unfollowActor(followUri) {
+    const session = AUTH.getSession();
+    const parts = followUri.split('/');
+    return authPost('com.atproto.repo.deleteRecord', {
+      repo:       session.did,
+      collection: 'app.bsky.graph.follow',
+      rkey:       parts[parts.length - 1],
+    });
+  }
+
+  /**
    * Get the logged-in user's profile (app.bsky.actor.getProfile)
    */
   async function getOwnProfile() {
@@ -261,6 +302,7 @@ const API = (() => {
   return {
     searchPosts,
     searchActors,
+    getTimeline,
     getPostThread,
     getPost,
     createPost,
@@ -268,6 +310,8 @@ const API = (() => {
     unlikePost,
     repost,
     unrepost,
+    followActor,
+    unfollowActor,
     getOwnProfile,
     resolvePostUrl,
   };

@@ -55,11 +55,55 @@
 
 ---
 
-## CORS Watch Item — Potential Cloudflare Worker Proxy
+## HLS.js Served Locally (no CDN)
 
 - **Date:** 2026-02-20
-- **Decision:** No proxy at this time. Direct browser fetch to `https://bsky.social/xrpc/*`.
-- **Rationale:** BlueSky's public XRPC endpoints include CORS headers that permit cross-origin requests from browsers. Authenticated endpoints also support CORS. A proxy is not needed.
-- **Alternatives considered:** Cloudflare Worker free-tier proxy (would add a layer of infrastructure and latency).
-- **Trade-offs:** If BlueSky changes their CORS policy, the app breaks with no fallback.
-- **Revisit if:** Any fetch call returns a CORS error in the browser console. In that case, create a Cloudflare Worker that forwards requests and add it as a configurable proxy base URL.
+- **Decision:** Bundle HLS.js v1.5.13 as `/js/hls.min.js` (downloaded once via `npm pack`, 413 KB) rather than loading it from a CDN.
+- **Rationale:** The CSP `script-src 'self'` blocks scripts from any external origin. Loading HLS.js from unpkg/cdnjs would require relaxing script-src to include that CDN domain, increasing the attack surface. Serving locally keeps the strict `'self'` policy intact.
+- **Alternatives considered:** CDN load with explicit domain in script-src (weakens CSP), inline script via data: URI (not permitted by 'self'), no video support (too much regression).
+- **Trade-offs:** 413 KB added to the repo and served on every page load. No automatic HLS.js updates — must manually update when security fixes are released.
+- **Revisit if:** HLS.js releases a security patch; update `hls.min.js` manually.
+
+---
+
+## CSP connect-src Widened to * for Video CDN Compatibility
+
+- **Date:** 2026-02-20
+- **Decision:** Changed `connect-src` from an explicit allowlist (`bsky.social cdn.bsky.app video.bsky.app`) to `*`.
+- **Rationale:** HLS.js uses `fetch()` for every manifest and segment request. BlueSky's video CDN (`video.bsky.app`) may serve segments from, or redirect to, additional subdomains or Cloudflare edge nodes whose hostnames are not known at deploy time. An explicit allowlist silently blocked those fetches, causing all video to fail with a fatal HLS network error. Widening to `*` matches the already-permissive `img-src *` and `media-src *` posture; it is appropriate for a static site whose only sensitive network resource (the bsky.social auth token) is a request header, not a URL-embeddable secret.
+- **Alternatives considered:** Adding known subdomains (*.bsky.app, *.bsky.network) — fragile because CDN topology is opaque. Cloudflare Worker proxy — adds infrastructure cost.
+- **Trade-offs:** Removes network-destination restriction from CSP. XSS could exfiltrate data to arbitrary hosts. Risk is low: the app loads no third-party scripts (script-src 'self') and displays no user-controlled HTML (all output is HTML-escaped).
+- **Revisit if:** A security audit recommends tighter egress control; at that point enumerate video CDN domains or adopt a proxy.
+
+---
+
+## AT Protocol Facets for Rich Text (TextEncoder/TextDecoder)
+
+- **Date:** 2026-02-20
+- **Decision:** Render post text using AT Protocol `record.facets` with byte-accurate UTF-8 slicing via `TextEncoder` / `TextDecoder` rather than character-index string slicing.
+- **Rationale:** AT Protocol facets use byte offsets, not character offsets. A post containing emoji or non-ASCII characters will have byte offsets that do not match JavaScript string `.charAt()` indices. Using `TextEncoder.encode()` to convert to a `Uint8Array`, slicing by byte offset, then `TextDecoder.decode()` to reconstruct each segment is the only correct approach.
+- **Alternatives considered:** Character-index slicing (incorrect for non-ASCII), regex-only linkification (misses hashtags and mentions, loses AT-defined boundaries).
+- **Trade-offs:** Slightly more code than a simple regex fallback, but always correct.
+- **Revisit if:** AT Protocol changes facet index semantics (unlikely given spec stability).
+
+---
+
+## History API Integration (pushState / popstate)
+
+- **Date:** 2026-02-20
+- **Decision:** Use the browser History API (`history.pushState`, `history.replaceState`, `window.popstate`) to make the Back and Forward buttons work across view transitions.
+- **Rationale:** Without history integration, every navigation (search → thread → search) breaks the browser's Back button, and refreshing the page always resets to the auth screen. pushState lets each logical "page" (search results, open thread) live at a distinct history entry, matching user expectations.
+- **Alternatives considered:** Hash-based routing (`#thread/...`) — simpler but produces ugly URLs and doesn't support Forward. Hash change events — no structured state object. A client-side router library — overkill for three views.
+- **Trade-offs:** State is stored in `history.state` (not persisted across hard refresh). Opening a thread from a bookmark requires re-fetching the thread after re-login.
+- **Revisit if:** Deep-link support (bookmarkable thread URLs) becomes a requirement; at that point encode the AT URI in the URL hash or path.
+
+---
+
+## CORS — No Proxy Needed (video.bsky.app uses open CORS)
+
+- **Date:** 2026-02-20
+- **Decision:** No Cloudflare Worker CORS proxy. Direct browser fetch to all bsky.social and video.bsky.app endpoints.
+- **Rationale:** Testing confirmed that both `bsky.social/xrpc/*` and `video.bsky.app` serve `Access-Control-Allow-Origin: *`, permitting cross-origin requests from the GitHub Pages origin. The earlier "CORS watch item" concern proved unnecessary; the actual video failure was a CSP `connect-src` restriction (resolved separately).
+- **Alternatives considered:** Cloudflare Worker free-tier proxy (would add infrastructure and latency).
+- **Trade-offs:** If BlueSky changes their CORS policy, the app breaks with no fallback. No known plan to restrict CORS.
+- **Revisit if:** Any fetch call returns a CORS error in the browser console.
