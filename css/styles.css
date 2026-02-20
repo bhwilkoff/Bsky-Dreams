@@ -11,6 +11,9 @@
   padding: 0;
 }
 
+/* Enforce the [hidden] attribute even when CSS sets an explicit display value */
+[hidden] { display: none !important; }
+
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
