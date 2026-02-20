@@ -92,13 +92,35 @@ const API = (() => {
 
   /**
    * Search posts (app.bsky.feed.searchPosts)
-   * @param {string} query   - search term or advanced query
-   * @param {string} sort    - "top" | "latest" (default: "top")
-   * @param {number} limit   - results per page (default: 25)
-   * @param {string} cursor  - pagination cursor
+   * @param {string} query        - search term or advanced query
+   * @param {string} sort         - "top" | "latest" (default: "top")
+   * @param {number} limit        - results per page (default: 25)
+   * @param {string} cursor       - pagination cursor
+   * @param {object} opts         - additional filters
+   * @param {string} opts.author  - restrict to posts by this handle
+   * @param {string} opts.mentions - restrict to posts mentioning this handle
+   * @param {string} opts.lang    - language code (e.g. "en")
+   * @param {string} opts.domain  - posts linking to this domain
+   * @param {string} opts.url     - posts linking to this exact URL
+   * @param {string} opts.tag     - posts with this hashtag (without #)
+   * @param {string} opts.since   - ISO 8601 datetime lower bound
+   * @param {string} opts.until   - ISO 8601 datetime upper bound
    */
-  async function searchPosts(query, sort = 'top', limit = 25, cursor) {
-    return authGet('app.bsky.feed.searchPosts', { q: query, sort, limit, cursor });
+  async function searchPosts(query, sort = 'top', limit = 25, cursor, opts = {}) {
+    return authGet('app.bsky.feed.searchPosts', {
+      q:        query,
+      sort,
+      limit,
+      cursor,
+      author:   opts.author   || undefined,
+      mentions: opts.mentions || undefined,
+      lang:     opts.lang     || undefined,
+      domain:   opts.domain   || undefined,
+      url:      opts.url      || undefined,
+      tag:      opts.tag      || undefined,
+      since:    opts.since    || undefined,
+      until:    opts.until    || undefined,
+    });
   }
 
   /**

@@ -63,13 +63,26 @@
   const lightboxCaption  = $('lightbox-caption');
   const lightboxCloseBtn = $('lightbox-close');
 
+  const adultToggle      = $('hide-adult-toggle');
+  const advToggleBtn     = $('advanced-toggle-btn');
+  const advPanel         = $('advanced-panel');
+  const advAuthorEl      = $('adv-author');
+  const advMentionsEl    = $('adv-mentions');
+  const advLangEl        = $('adv-lang');
+  const advDomainEl      = $('adv-domain');
+  const advSinceEl       = $('adv-since');
+  const advUntilEl       = $('adv-until');
+
   /* ================================================================
      STATE
   ================================================================ */
-  let currentView      = 'search';
-  let activeFilter     = 'posts';
-  let currentThread    = null;  // { rootPost, replyToUri, replyToCid, replyToHandle }
-  let ownProfile       = null;
+  let currentView        = 'search';
+  let activeFilter       = 'posts';
+  let currentThread      = null;  // { rootUri, rootCid, replyToUri, replyToCid, replyToHandle }
+  let ownProfile         = null;
+  let hideAdultContent   = true;
+  let lastSearchResults  = [];   // cached for toggle re-renders
+  let lastSearchType     = null; // 'posts' | 'actors'
 
   /* ================================================================
      LOADING HELPERS
@@ -101,6 +114,7 @@
   ]);
 
   function hasAdultContent(post) {
+    if (!hideAdultContent) return false;
     const postLabels   = post.labels         || [];
     const authorLabels = post.author?.labels || [];
     return [...postLabels, ...authorLabels].some((l) => ADULT_LABELS.has(l.val));
@@ -139,6 +153,9 @@
      INIT — check stored session on page load
   ================================================================ */
   async function init() {
+    // Seed history so the first Back press can return here
+    history.replaceState({ view: 'search' }, '');
+
     if (AUTH.isLoggedIn()) {
       await enterApp();
     }
@@ -205,7 +222,7 @@
   /* ================================================================
      NAVIGATION
   ================================================================ */
-  function showView(name) {
+  function showView(name, fromHistory = false) {
     currentView = name;
 
     const views = { search: viewSearch, compose: viewCompose, thread: viewThread };
@@ -228,12 +245,37 @@
       hideError(composeError);
       composeSuccess.hidden = true;
     }
+
+    if (!fromHistory) {
+      const state = { view: name };
+      if (name === 'search') {
+        state.query  = searchInput.value;
+        state.filter = activeFilter;
+      }
+      history.pushState(state, '');
+    }
   }
 
   navSearchBtn.addEventListener('click', () => showView('search'));
   navComposeBtn.addEventListener('click', () => showView('compose'));
 
-  threadBackBtn.addEventListener('click', () => showView('search'));
+  // Use browser history for the Back button so Forward/Back both work
+  threadBackBtn.addEventListener('click', () => history.back());
+
+  // Restore state on browser Back/Forward
+  window.addEventListener('popstate', async (e) => {
+    if (!AUTH.isLoggedIn()) return;
+    const state = e.state || { view: 'search' };
+    if (state.view === 'thread' && state.uri) {
+      await openThread(state.uri, state.cid, state.handle, { fromHistory: true });
+    } else {
+      showView(state.view || 'search', true);
+      // Restore search query if available
+      if (state.view === 'search' && state.query) {
+        searchInput.value = state.query;
+      }
+    }
+  });
 
   /* ================================================================
      PROFILE DROPDOWN
@@ -268,20 +310,66 @@
     });
   });
 
+  // Adult content toggle — re-render cached results immediately
+  adultToggle.addEventListener('change', () => {
+    hideAdultContent = adultToggle.checked;
+    if (lastSearchType === 'posts' && lastSearchResults.length) {
+      renderPostFeed(lastSearchResults, searchResults);
+    }
+  });
+
+  // Advanced panel toggle
+  advToggleBtn.addEventListener('click', () => {
+    const open = advPanel.hidden;
+    advPanel.hidden = !open;
+    advToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  // Trigger a post search programmatically (used by hashtag clicks)
+  function triggerSearch(query) {
+    searchInput.value = query;
+    // Switch to Posts filter for hashtag/keyword searches
+    filterChips.forEach((c) => c.classList.remove('active'));
+    const postsChip = document.querySelector('.filter-chip[data-filter="posts"]');
+    if (postsChip) postsChip.classList.add('active');
+    activeFilter = 'posts';
+    showView('search');
+    searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
   searchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = searchInput.value.trim();
     if (!q) return;
+
     showLoading();
     searchResults.innerHTML = '<div class="feed-loading">Searching…</div>';
+
     try {
       if (activeFilter === 'users') {
         const data = await API.searchActors(q);
-        renderActorResults(data.actors || []);
+        lastSearchResults = data.actors || [];
+        lastSearchType    = 'actors';
+        renderActorResults(lastSearchResults);
       } else {
         const sort = activeFilter === 'latest' ? 'latest' : 'top';
-        const data = await API.searchPosts(q, sort);
-        renderPostFeed(data.posts || [], searchResults);
+
+        // Collect advanced filter values
+        const since = advSinceEl.value ? new Date(advSinceEl.value).toISOString() : undefined;
+        const until = advUntilEl.value ? new Date(advUntilEl.value).toISOString() : undefined;
+        const opts  = {
+          author:   advAuthorEl.value.trim()   || undefined,
+          mentions: advMentionsEl.value.trim() || undefined,
+          lang:     advLangEl.value.trim()     || undefined,
+          domain:   advDomainEl.value.trim()   || undefined,
+          since,
+          until,
+        };
+
+        const data = await API.searchPosts(q, sort, 25, undefined, opts);
+        lastSearchResults = data.posts || [];
+        lastSearchType    = 'posts';
+        renderPostFeed(lastSearchResults, searchResults);
       }
     } catch (err) {
       searchResults.innerHTML = `<div class="feed-empty"><p>Search failed: ${escHtml(err.message)}</p></div>`;
@@ -364,7 +452,7 @@
         </div>
         <time class="post-timestamp" datetime="${escHtml(record.createdAt || '')}">${ts}</time>
       </div>
-      <p class="post-text">${renderPostText(record.text || '')}</p>
+      <p class="post-text">${renderPostText(record.text || '', record.facets)}</p>
     `;
 
     // Embedded media — images, video, external links, and quoted+media
@@ -414,7 +502,16 @@
     // Wire up click to open thread
     if (opts.clickable) {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('button')) return; // don't intercept action button clicks
+        // Hashtag links → trigger search instead of following href="#"
+        const hashEl = e.target.closest('[data-hashtag]');
+        if (hashEl) {
+          e.preventDefault();
+          e.stopPropagation();
+          triggerSearch(`#${hashEl.dataset.hashtag}`);
+          return;
+        }
+        // Regular links and action buttons → let them handle their own events
+        if (e.target.closest('a') || e.target.closest('button')) return;
         openThread(post.uri, post.cid, author.handle);
       });
     }
@@ -685,20 +782,28 @@
       const data = await API.getPostThread(uri);
       renderThread(data.thread, handle);
       currentThread = {
-        rootUri:      uri,
-        rootCid:      cid,
-        replyToUri:   uri,
-        replyToCid:   cid,
+        rootUri:       uri,
+        rootCid:       cid,
+        replyToUri:    uri,
+        replyToCid:    cid,
         replyToHandle: handle,
       };
       setupReplyArea(uri, cid, handle);
-      showView('thread');
+      // Switch to thread view without adding a second history entry;
+      // push the thread state ourselves so Back/Forward knows the URI.
+      showView('thread', true);
+      if (!opts.fromHistory) {
+        history.pushState({ view: 'thread', uri, cid, handle }, '');
+      }
       if (opts.focusReply) {
         setTimeout(() => replyText.focus(), 150);
       }
     } catch (err) {
       threadContent.innerHTML = `<div class="feed-empty"><p>Could not load thread: ${escHtml(err.message)}</p></div>`;
-      showView('thread');
+      showView('thread', true);
+      if (!opts.fromHistory) {
+        history.pushState({ view: 'thread', uri, cid, handle }, '');
+      }
     } finally {
       hideLoading();
     }
@@ -884,15 +989,71 @@
   }
 
   /**
-   * Render post text with simple link detection.
-   * Does NOT insert raw HTML from the API to prevent XSS.
+   * Render post text, using AT Protocol facets for accurate link/hashtag/mention
+   * detection. Falls back to URL-only regex when no facets are present.
+   *
+   * Facets use UTF-8 byte offsets; we convert using TextEncoder/TextDecoder.
+   * All output is HTML-escaped before insertion into innerHTML.
+   *
+   * @param {string}       text   - raw post text
+   * @param {Array|null}   facets - record.facets from the AT Protocol post record
    */
-  function renderPostText(text) {
-    // Escape first, then linkify URLs
-    return escHtml(text).replace(
-      /(https?:\/\/[^\s<>"]+)/g,
-      '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-    );
+  function renderPostText(text, facets) {
+    if (!facets || facets.length === 0) {
+      // No facets: escape and linkify bare URLs only
+      return escHtml(text).replace(
+        /(https?:\/\/[^\s<>"]+)/g,
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+    }
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const bytes   = encoder.encode(text);
+
+    // Sort facets by byteStart ascending; skip invalid/backwards ones
+    const sorted = [...facets]
+      .filter((f) => f.index?.byteStart != null && f.index.byteEnd > f.index.byteStart)
+      .sort((a, b) => a.index.byteStart - b.index.byteStart);
+
+    let html    = '';
+    let bytePos = 0;
+
+    for (const facet of sorted) {
+      const { byteStart, byteEnd } = facet.index;
+      if (byteStart < bytePos) continue; // skip overlapping facets
+
+      // Plain text before this facet
+      if (byteStart > bytePos) {
+        html += escHtml(decoder.decode(bytes.slice(bytePos, byteStart)));
+      }
+
+      const segText = decoder.decode(bytes.slice(byteStart, byteEnd));
+      const feature = facet.features?.[0];
+
+      if (!feature) {
+        html += escHtml(segText);
+      } else if (feature.$type === 'app.bsky.richtext.facet#link') {
+        const href = escHtml(feature.uri || segText);
+        html += `<a href="${href}" target="_blank" rel="noopener noreferrer">${escHtml(segText)}</a>`;
+      } else if (feature.$type === 'app.bsky.richtext.facet#tag') {
+        const tag = escHtml(feature.tag || segText.replace(/^#/, ''));
+        html += `<a href="#" class="hashtag-link" data-hashtag="${tag}">${escHtml(segText)}</a>`;
+      } else if (feature.$type === 'app.bsky.richtext.facet#mention') {
+        html += `<span class="mention-text">${escHtml(segText)}</span>`;
+      } else {
+        html += escHtml(segText);
+      }
+
+      bytePos = byteEnd;
+    }
+
+    // Remaining plain text after last facet
+    if (bytePos < bytes.length) {
+      html += escHtml(decoder.decode(bytes.slice(bytePos)));
+    }
+
+    return html;
   }
 
   function formatTimestamp(isoString) {
