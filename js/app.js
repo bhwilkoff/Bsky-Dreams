@@ -58,6 +58,11 @@
 
   const loadingOverlay   = $('loading-overlay');
 
+  const imageLightbox    = $('image-lightbox');
+  const lightboxImg      = $('lightbox-img');
+  const lightboxCaption  = $('lightbox-caption');
+  const lightboxCloseBtn = $('lightbox-close');
+
   /* ================================================================
      STATE
   ================================================================ */
@@ -86,6 +91,49 @@
     el.textContent = '';
     el.hidden = true;
   }
+
+  /* ================================================================
+     ADULT CONTENT FILTER
+  ================================================================ */
+  const ADULT_LABELS = new Set([
+    'porn', 'sexual', 'nudity', 'graphic-media', 'gore',
+    'suggestive', 'adult-only', 'corpse',
+  ]);
+
+  function hasAdultContent(post) {
+    const postLabels   = post.labels         || [];
+    const authorLabels = post.author?.labels || [];
+    return [...postLabels, ...authorLabels].some((l) => ADULT_LABELS.has(l.val));
+  }
+
+  /* ================================================================
+     IMAGE LIGHTBOX
+  ================================================================ */
+  function openLightbox(src, alt) {
+    lightboxImg.src              = src;
+    lightboxImg.alt              = alt || '';
+    lightboxCaption.textContent  = alt || '';
+    lightboxCaption.hidden       = !alt;
+    imageLightbox.hidden         = false;
+    document.body.style.overflow = 'hidden';
+    lightboxCloseBtn.focus();
+  }
+
+  function closeLightbox() {
+    imageLightbox.hidden         = true;
+    lightboxImg.src              = '';
+    document.body.style.overflow = '';
+  }
+
+  lightboxCloseBtn.addEventListener('click', closeLightbox);
+
+  imageLightbox.addEventListener('click', (e) => {
+    if (e.target === imageLightbox) closeLightbox();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !imageLightbox.hidden) closeLightbox();
+  });
 
   /* ================================================================
      INIT — check stored session on page load
@@ -274,11 +322,12 @@
    */
   function renderPostFeed(posts, container) {
     container.innerHTML = '';
-    if (!posts.length) {
+    const filtered = posts.filter((p) => !hasAdultContent(p));
+    if (!filtered.length) {
       container.innerHTML = '<div class="feed-empty"><p>No results found.</p></div>';
       return;
     }
-    posts.forEach((post) => {
+    filtered.forEach((post) => {
       const card = buildPostCard(post, { clickable: true });
       container.appendChild(card);
     });
@@ -318,10 +367,25 @@
       <p class="post-text">${renderPostText(record.text || '')}</p>
     `;
 
-    // Embedded images
-    if (embed.$type === 'app.bsky.embed.images#view' && embed.images?.length) {
-      const grid = buildImageGrid(embed.images);
-      card.appendChild(grid);
+    // Embedded media — images, video, external links, and quoted+media
+    const embedType = embed.$type;
+    if (embedType === 'app.bsky.embed.images#view' && embed.images?.length) {
+      card.appendChild(buildImageGrid(embed.images));
+    } else if (embedType === 'app.bsky.embed.video#view') {
+      card.appendChild(buildVideoEmbed(embed));
+    } else if (embedType === 'app.bsky.embed.external#view' && embed.external) {
+      const extEl = buildExternalEmbed(embed.external);
+      if (extEl) card.appendChild(extEl);
+    } else if (embedType === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      if (media.$type === 'app.bsky.embed.images#view' && media.images?.length) {
+        card.appendChild(buildImageGrid(media.images));
+      } else if (media.$type === 'app.bsky.embed.video#view') {
+        card.appendChild(buildVideoEmbed(media));
+      } else if (media.$type === 'app.bsky.embed.external#view' && media.external) {
+        const extEl = buildExternalEmbed(media.external);
+        if (extEl) card.appendChild(extEl);
+      }
     }
 
     // Actions row
@@ -336,7 +400,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span class="action-count">${formatCount(replyCount)}</span>
       </button>
-      <button class="action-btn repost-action-btn" aria-label="Repost (${repostCount})" data-uri="${escHtml(post.uri)}" data-cid="${escHtml(post.cid)}">
+      <button class="action-btn repost-action-btn${post.viewer?.repost ? ' reposted' : ''}" aria-label="Repost (${repostCount})" data-uri="${escHtml(post.uri)}" data-cid="${escHtml(post.cid)}" data-repost-uri="${escHtml(post.viewer?.repost || '')}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span class="action-count">${formatCount(repostCount)}</span>
       </button>
@@ -393,19 +457,29 @@
       }
     });
 
-    // Repost button
+    // Repost button (toggle repost/unrepost)
     actions.querySelector('.repost-action-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
-      const btn     = e.currentTarget;
-      const uri     = btn.dataset.uri;
-      const cid     = btn.dataset.cid;
-      const countEl = btn.querySelector('.action-count');
+      const btn       = e.currentTarget;
+      const uri       = btn.dataset.uri;
+      const cid       = btn.dataset.cid;
+      const repostUri = btn.dataset.repostUri;
+      const countEl   = btn.querySelector('.action-count');
+      const isReposted = btn.classList.contains('reposted');
 
       btn.disabled = true;
       try {
-        await API.repost(uri, cid);
-        btn.classList.add('reposted');
-        countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
+        if (isReposted && repostUri) {
+          await API.unrepost(repostUri);
+          btn.classList.remove('reposted');
+          btn.dataset.repostUri = '';
+          countEl.textContent = formatCount(Math.max(0, parseFmtCount(countEl.textContent) - 1));
+        } else {
+          const result = await API.repost(uri, cid);
+          btn.classList.add('reposted');
+          btn.dataset.repostUri = result.uri || '';
+          countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
+        }
       } catch (err) {
         console.error('Repost error:', err.message);
       } finally {
@@ -426,6 +500,9 @@
     images.slice(0, 4).forEach((img) => {
       const wrap = document.createElement('div');
       wrap.className = 'post-image-wrap';
+      wrap.setAttribute('role', 'button');
+      wrap.setAttribute('tabindex', '0');
+      wrap.setAttribute('aria-label', img.alt ? `View image: ${img.alt}` : 'View full-size image');
 
       const el = document.createElement('img');
       el.src     = img.thumb || img.fullsize || '';
@@ -441,10 +518,162 @@
         wrap.appendChild(altEl);
       }
 
+      // Click/keyboard to open full-size in lightbox
+      const fullsrc = img.fullsize || img.thumb || '';
+      wrap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLightbox(fullsrc, img.alt || '');
+      });
+      wrap.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          openLightbox(fullsrc, img.alt || '');
+        }
+      });
+
       grid.appendChild(wrap);
     });
 
     return grid;
+  }
+
+  /* ================================================================
+     VIDEO EMBED
+  ================================================================ */
+  function buildVideoEmbed(videoEmbed) {
+    const wrap = document.createElement('div');
+    wrap.className = 'post-video-wrap';
+
+    const src   = videoEmbed.playlist;
+    const thumb = videoEmbed.thumbnail;
+    if (!src) return wrap;
+
+    // Show thumbnail + play button; activate real player on click
+    const poster = document.createElement('div');
+    poster.className = 'post-video-poster';
+    poster.setAttribute('role', 'button');
+    poster.setAttribute('tabindex', '0');
+    poster.setAttribute('aria-label', 'Play video');
+
+    if (thumb) {
+      const thumbImg = document.createElement('img');
+      thumbImg.src     = thumb;
+      thumbImg.alt     = videoEmbed.alt || 'Video thumbnail';
+      thumbImg.className = 'post-video-thumb';
+      thumbImg.loading = 'lazy';
+      poster.appendChild(thumbImg);
+    }
+
+    const playBtn = document.createElement('div');
+    playBtn.className = 'post-video-play-btn';
+    playBtn.setAttribute('aria-hidden', 'true');
+    playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    poster.appendChild(playBtn);
+
+    const activateVideo = () => {
+      poster.remove();
+      const video = document.createElement('video');
+      video.className  = 'post-video';
+      video.controls   = true;
+      video.playsInline = true;
+      video.autoplay   = true;
+      if (thumb) video.poster = thumb;
+
+      if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        const hls = new Hls({ lowLatencyMode: false, enableWorker: false });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari: native HLS
+        video.src = src;
+        video.play().catch(() => {});
+      } else {
+        const fallback = document.createElement('p');
+        fallback.className = 'post-video-fallback';
+        const link = document.createElement('a');
+        link.href = src;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Watch video ↗';
+        fallback.appendChild(link);
+        wrap.appendChild(fallback);
+        return;
+      }
+      wrap.appendChild(video);
+    };
+
+    poster.addEventListener('click', (e) => { e.stopPropagation(); activateVideo(); });
+    poster.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        activateVideo();
+      }
+    });
+
+    wrap.appendChild(poster);
+
+    if (videoEmbed.alt) {
+      const altEl = document.createElement('span');
+      altEl.className   = 'post-image-alt';
+      altEl.textContent = videoEmbed.alt;
+      wrap.appendChild(altEl);
+    }
+
+    return wrap;
+  }
+
+  /* ================================================================
+     EXTERNAL LINK EMBED
+  ================================================================ */
+  function buildExternalEmbed(external) {
+    if (!external?.uri) return null;
+
+    const card = document.createElement('a');
+    card.className = 'post-external-card';
+    card.href      = external.uri;
+    card.target    = '_blank';
+    card.rel       = 'noopener noreferrer';
+
+    if (external.thumb) {
+      const img = document.createElement('img');
+      img.src       = external.thumb;
+      img.alt       = '';
+      img.className = 'post-external-thumb';
+      img.loading   = 'lazy';
+      card.appendChild(img);
+    }
+
+    const info = document.createElement('div');
+    info.className = 'post-external-info';
+
+    if (external.title) {
+      const title = document.createElement('div');
+      title.className   = 'post-external-title';
+      title.textContent = external.title;
+      info.appendChild(title);
+    }
+
+    if (external.description) {
+      const desc = document.createElement('div');
+      desc.className   = 'post-external-desc';
+      desc.textContent = external.description;
+      info.appendChild(desc);
+    }
+
+    let hostname = '';
+    try { hostname = new URL(external.uri).hostname; } catch { /* invalid URL */ }
+    if (hostname) {
+      const host = document.createElement('div');
+      host.className   = 'post-external-hostname';
+      host.textContent = hostname;
+      info.appendChild(host);
+    }
+
+    card.appendChild(info);
+    return card;
   }
 
   /* ================================================================
