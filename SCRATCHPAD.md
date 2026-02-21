@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app is live and functional. Milestones 1–7 are complete.
+The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes.
 
 ## Completed Milestones
 
@@ -59,29 +59,45 @@ The app is live and functional. Milestones 1–7 are complete.
 - Click notification → opens profile (follow) or thread (like/repost/reply/mention/quote)
 - Badge clears + `updateSeen` fires on first view
 
+### Repost/Quote-Post Rendering Fixes ✅
+- `app.bsky.embed.record#view` (pure quote) now renders as a compact embedded
+  card (`buildQuotedPost`) showing quoted author avatar, name, handle, and
+  truncated text; clicking opens *that* post's thread, not the outer post
+- `app.bsky.embed.recordWithMedia#view` now renders both the attached media
+  *and* the quoted post card below it (previously the quoted record was dropped)
+- Repost attribution bar now includes the reposter's small avatar alongside
+  the "Reposted by …" label
+
+### Milestone 8: Thread UX — Inline Context + Reddit-Style Nesting ✅
+- **Feed reply context**: Replaced bare "Replying to @handle" bar with a
+  compact clickable parent-post preview card (`buildParentPreview`) showing the
+  parent's avatar, author name, and truncated text
+- **Root-first navigation**: Feed items that are replies now open the thread
+  from the root post URI (`item.reply.root.uri`) when clicked, keeping the full
+  conversation in view; the reply button on those cards does the same
+- **Depth-limited nesting**: `renderThread` tracks nesting depth (default 0,
+  incremented on each recursive call). At depth ≥ 8 a "Continue this thread →"
+  button appears instead of recursing further, linking to that reply node
+- Blocked/missing reply nodes are filtered out before rendering
+
+### Milestone 10: Adaptive Image Sizing + Multi-Image Lightbox Carousel ✅
+- **Adaptive sizing**: Single images render at their natural aspect ratio
+  (`object-fit: contain`, `max-height: 480px`) instead of a forced 180px
+  landscape crop. Portrait screenshots and tall images now display properly.
+  2–4 image grids retain uniform crop (180px / 220px on desktop).
+- **Lightbox carousel**: `openLightbox()` now accepts an array of `{src, alt}`
+  objects and a `startIndex`. All images in a post are browsable from any
+  starting thumbnail.
+- **Navigation**: Previous/Next arrow buttons; dot indicator row (clickable);
+  "2 / 4" counter; keyboard ← → arrows; touch swipe (40px threshold).
+- `buildImageGrid` passes the full image array as a shared carousel payload.
+
 ---
 
 ## Upcoming Milestones
 
 Milestones are ordered roughly by interdependency and implementation complexity.
 Items marked **[RESEARCH]** need API/cost investigation before work begins.
-
----
-
-### Milestone 8: Thread UX — Inline Context + Reddit-Style Nesting
-
-**Goal:** Make conversations readable like a Reddit thread rather than a flat list.
-
-- **Home feed reply context**: When a feed item is a reply, show a compact inline
-  preview card of the parent post it is replying to (fetch via `getPostThread`).
-  Clicking the preview opens the thread from the *root* post, not from the clicked reply.
-- **Conversation view — nested replies**: Replies render as indented sub-threads with
-  a vertical connector line. Each reply node can be collapsed/expanded independently.
-  "Show N more replies" toggle for long branches (currently capped at 5; make dynamic).
-- **Max depth**: Render up to 8 levels of nesting; deeper replies summarized as
-  "Continue this thread →" link that re-opens at that node.
-- **Root-first navigation**: Clicking any post in the feed always fetches the root
-  of the thread (`getPostThread` on the root URI extracted from `record.reply.root`).
 
 ---
 
@@ -99,22 +115,6 @@ Items marked **[RESEARCH]** need API/cost investigation before work begins.
   (`scrollIntoView({ behavior: 'smooth', block: 'nearest' })`).
 - **Bottom reply area**: The global reply-at-bottom area (currently the only option)
   is removed; all replies go through the inline flow.
-
----
-
-### Milestone 10: Adaptive Image Sizing + Multi-Image Lightbox Carousel
-
-**Goal:** Show images at their natural aspect ratios; enable browsing multiple images.
-
-- **Adaptive aspect ratio**: Replace uniform 180px/220px image height with
-  `aspect-ratio` CSS. Single images render up to their natural ratio (capped at
-  3:1 wide or 1:2 tall). Grid layouts for 2–4 images use matching aspect ratios.
-- **Tall images**: Portrait images (phones, screenshots) are no longer cropped to
-  a landscape strip; they display at natural ratio with a reasonable max-height.
-- **Lightbox carousel**: When a post has multiple images, the lightbox shows
-  Previous/Next arrow buttons and a dot-indicator. Keyboard left/right arrows also
-  navigate. Swipe gestures supported on touch devices.
-- **Lightbox counts**: "2 / 4" indicator so users know how many images exist.
 
 ---
 
@@ -481,12 +481,8 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 16 — Repost/Quoted post fixes** (quick wins, already identified bugs):
-   - Show quoted post as embedded card within the quoting post
-   - Clarify repost attribution bar (show avatar + "reposted by" name clearly)
-   - Clicking a quoted post's card opens *that* post's thread, not the quoting post's
-2. **Milestone 8 — Thread UX** (inline parent context in feed + Reddit-style nesting)
-3. **Milestone 9 — Inline Reply Compose** (context-preserving reply flow)
-4. **Milestone 10 — Adaptive Image Sizing + Lightbox Carousel**
-5. **Milestone 19 — Deep-Link URL Routing** (enables shareable links; unblocks other features)
-6. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
+1. **Milestone 9 — Inline Reply Compose** (context-preserving reply flow)
+2. **Milestone 19 — Deep-Link URL Routing** (enables shareable links; unblocks other features)
+3. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
+4. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
+5. **Milestone 21 — Reporting Bad Actors** (moderation integration)
