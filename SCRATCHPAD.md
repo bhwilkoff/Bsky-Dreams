@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes, thread nesting visual polish, Milestone 9 (Inline Reply Compose), and Milestone 19 (Deep-Link URL Routing). Video player interaction bug is also fixed.
+The app is live and functional. Milestones 1–11 are complete, plus M19 (Deep-Link URL Routing), the repost/quote-post rendering fixes, thread nesting visual polish, Milestone 9 (Inline Reply Compose). Video player interaction bug is also fixed.
 
 ## Completed Milestones
 
@@ -165,31 +165,31 @@ The app is live and functional. Milestones 1–10 are complete, plus the repost/
 - **Back/Forward**: The `popstate` handler prefers `history.state` data but
   falls back to URL params so deep-linked pages work correctly.
 
+### Milestone 11: Saved Searches as Channels (Sidebar) ✅
+- **Left sidebar**: Pinned open at ≥768px; on mobile it slides in as a drawer from
+  the hamburger/channels button in the nav bar. Overlay dims the rest of the page.
+- **Saving a search**: "Save as channel" bookmark button appears above search results
+  after any successful search. Uses `prompt()` to let user name the channel (default:
+  the query). Duplicate queries are blocked.
+- **Channel persistence**: `bsky_channels` in localStorage. Each channel stores:
+  `id`, `name`, `query`, `lastSeenAt`, `unreadCount`.
+- **Unread count**: Background check runs once per session after login —
+  fetches the latest 5 posts per channel and counts posts newer than `lastSeenAt`.
+  Checks are spaced 700ms apart. Badge shown on channel item.
+- **Channel click**: Runs `searchPosts(query, 'latest', 25)`, clears the unread
+  badge, marks `lastSeenAt = now`. Closes mobile drawer automatically.
+- **Rename / delete**: ⋯ menu button revealed on hover; inline dropdown with
+  Rename (uses `prompt()`) and Delete channel options.
+- **Desktop layout**: `padding-left: var(--sidebar-width)` on `.view` and
+  `top-bar-inner` shifts all content right to coexist with the fixed sidebar.
+- **Mobile layout**: `closeSidebar()` restores drawer state on sign-out and view switch.
+
 ---
 
 ## Upcoming Milestones
 
 Milestones are ordered roughly by interdependency and implementation complexity.
 Items marked **[RESEARCH]** need API/cost investigation before work begins.
-
----
-
-### Milestone 11: Saved Searches as Channels (Sidebar)
-
-**Goal:** Slack/Discord-style saved searches with unread-count badges.
-
-- **Left sidebar**: A collapsible sidebar panel holds all saved searches ("channels").
-  On desktop (≥768px) it is pinned open alongside the main content area. On mobile
-  it slides in as a full-height drawer via a hamburger/channel-list button in the nav.
-- **Saving a search**: A "Save as channel" button appears after any search. User
-  can optionally rename the channel (default: the search query).
-- **Unread count badge**: Each channel shows how many new posts have appeared since
-  the user last viewed it. The last-seen cursor (or ISO timestamp) is stored per channel.
-- **Channel view**: Clicking a channel runs the search, shows results, and clears
-  its badge. Results are sorted "latest" for channels.
-- **Persistence**: Channels are stored in localStorage first (Milestone 17 will add
-  AT Protocol repo sync for cross-device persistence).
-- **Reorder / delete**: Long-press or ⋮ menu per channel to rename, reorder, or delete.
 
 ---
 
@@ -537,7 +537,7 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
-2. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
-3. **Milestone 21 — Reporting Bad Actors** (moderation integration)
-4. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)
+1. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
+2. **Milestone 21 — Reporting Bad Actors** (moderation integration)
+3. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)
+4. **Milestone 13 — Horizontal Event Timeline Scrubber** (chronological topic view)

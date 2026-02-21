@@ -66,6 +66,12 @@
   const notifLoadMoreBtn = $('notif-load-more-btn');
   const notifRefreshBtn  = $('notif-refresh-btn');
 
+  const channelsSidebar   = $('channels-sidebar');
+  const channelsList      = $('channels-list');
+  const sidebarCloseBtn   = $('sidebar-close-btn');
+  const sidebarOverlay    = $('sidebar-overlay');
+  const navChannelsBtn    = $('nav-channels-btn');
+
   const threadContent    = $('thread-content');
   const threadBackBtn    = $('thread-back-btn');
   const threadReplyArea  = $('thread-reply-area');
@@ -119,6 +125,271 @@
   let notifCursor        = null; // pagination cursor for notifications
   let notifLoaded        = false;
   let composeImages      = [];   // array of { file, previewUrl, altInput } for pending uploads
+
+  /* ================================================================
+     CHANNELS (M11) — Saved Searches / Channel Sidebar
+  ================================================================ */
+  const CHANNELS_KEY = 'bsky_channels';
+
+  function channelsLoad() {
+    try { return JSON.parse(localStorage.getItem(CHANNELS_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function channelsSave(list) {
+    localStorage.setItem(CHANNELS_KEY, JSON.stringify(list));
+  }
+
+  function channelsAdd(name, query) {
+    const list = channelsLoad();
+    // Avoid duplicates (same query, case-insensitive)
+    if (list.some((c) => c.query.toLowerCase() === query.toLowerCase())) return null;
+    const id = String(Date.now());
+    list.push({
+      id,
+      name: name || query,
+      query,
+      lastSeenAt: new Date().toISOString(),
+      unreadCount: 0,
+    });
+    channelsSave(list);
+    return id;
+  }
+
+  function channelsRemove(id) {
+    channelsSave(channelsLoad().filter((c) => c.id !== id));
+  }
+
+  function channelsRename(id, newName) {
+    const list = channelsLoad();
+    const ch = list.find((c) => c.id === id);
+    if (ch) { ch.name = newName; channelsSave(list); }
+  }
+
+  function channelsMarkSeen(id) {
+    const list = channelsLoad();
+    const ch = list.find((c) => c.id === id);
+    if (ch) {
+      ch.lastSeenAt  = new Date().toISOString();
+      ch.unreadCount = 0;
+      channelsSave(list);
+    }
+  }
+
+  function channelsSetUnread(id, count) {
+    const list = channelsLoad();
+    const ch = list.find((c) => c.id === id);
+    if (ch && ch.unreadCount !== count) {
+      ch.unreadCount = count;
+      channelsSave(list);
+      renderChannelsSidebar();
+    }
+  }
+
+  /** Render the full channel list into the sidebar. */
+  function renderChannelsSidebar() {
+    if (!channelsList) return;
+    const list = channelsLoad();
+    channelsList.innerHTML = '';
+
+    if (!list.length) {
+      const empty = document.createElement('p');
+      empty.className   = 'channels-empty';
+      empty.textContent = 'No channels yet. Search for something and save it as a channel!';
+      channelsList.appendChild(empty);
+      return;
+    }
+
+    list.forEach((ch) => {
+      const item = document.createElement('div');
+      item.className = 'channel-item';
+
+      // Main button: name + unread badge
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'channel-btn';
+      btn.setAttribute('aria-label', `Open channel: ${ch.name}${ch.unreadCount ? ` (${ch.unreadCount} new)` : ''}`);
+
+      const nameEl = document.createElement('span');
+      nameEl.className   = 'channel-name';
+      nameEl.textContent = ch.name;
+      btn.appendChild(nameEl);
+
+      if (ch.unreadCount > 0) {
+        const badge = document.createElement('span');
+        badge.className   = 'channel-badge';
+        badge.textContent = ch.unreadCount > 99 ? '99+' : String(ch.unreadCount);
+        btn.appendChild(badge);
+      }
+
+      btn.addEventListener('click', () => openChannel(ch));
+      item.appendChild(btn);
+
+      // ⋮ options button
+      const menuBtn = document.createElement('button');
+      menuBtn.type      = 'button';
+      menuBtn.className = 'channel-menu-btn';
+      menuBtn.setAttribute('aria-label', `Options for ${ch.name}`);
+      menuBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>`;
+      menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showChannelMenu(ch, item);
+      });
+      item.appendChild(menuBtn);
+
+      channelsList.appendChild(item);
+    });
+  }
+
+  /** Show the inline options dropdown for a channel item. */
+  function showChannelMenu(ch, itemEl) {
+    // Remove any existing dropdown
+    document.querySelector('.channel-dropdown')?.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'channel-dropdown';
+    menu.setAttribute('role', 'menu');
+
+    const renameBtn = document.createElement('button');
+    renameBtn.type      = 'button';
+    renameBtn.className = 'channel-dropdown-item';
+    renameBtn.setAttribute('role', 'menuitem');
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', () => {
+      menu.remove();
+      const newName = prompt(`Rename "${ch.name}":`, ch.name);
+      if (newName?.trim()) {
+        channelsRename(ch.id, newName.trim());
+        renderChannelsSidebar();
+      }
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type      = 'button';
+    deleteBtn.className = 'channel-dropdown-item channel-dropdown-delete';
+    deleteBtn.setAttribute('role', 'menuitem');
+    deleteBtn.textContent = 'Delete channel';
+    deleteBtn.addEventListener('click', () => {
+      menu.remove();
+      channelsRemove(ch.id);
+      renderChannelsSidebar();
+    });
+
+    menu.appendChild(renameBtn);
+    menu.appendChild(deleteBtn);
+    itemEl.appendChild(menu);
+
+    // Dismiss on outside click
+    setTimeout(() => {
+      document.addEventListener('click', () => menu.remove(), { once: true });
+    }, 0);
+  }
+
+  /** Open a saved channel: run its search and mark it as seen. */
+  function openChannel(ch) {
+    // Close mobile drawer
+    closeSidebar();
+
+    // Populate search input and set filter to "latest"
+    searchInput.value = ch.query;
+    filterChips.forEach((c) => c.classList.remove('active'));
+    activeFilter = 'latest';
+    const latestChip = document.querySelector('.filter-chip[data-filter="latest"]');
+    if (latestChip) latestChip.classList.add('active');
+
+    // Switch to search view and run the search
+    showView('search');
+    searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    // Mark channel as seen (clear badge)
+    channelsMarkSeen(ch.id);
+    renderChannelsSidebar();
+  }
+
+  /**
+   * Background check for unread posts in all channels.
+   * Runs once per session after login, spacing API calls 700ms apart.
+   * Updates unread counts and re-renders the sidebar.
+   */
+  async function checkChannelUnreads() {
+    const list = channelsLoad();
+    if (!list.length) return;
+
+    for (const ch of list) {
+      try {
+        const data  = await API.searchPosts(ch.query, 'latest', 5);
+        const posts = data.posts || [];
+        if (!posts.length) continue;
+
+        const lastSeen = ch.lastSeenAt;
+        const unread   = lastSeen
+          ? posts.filter((p) => (p.record?.createdAt || p.indexedAt || '') > lastSeen).length
+          : 0;
+
+        channelsSetUnread(ch.id, unread);
+      } catch { /* silent — network failures don't break the app */ }
+
+      // Throttle: 700ms between checks to avoid rate-limit
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  }
+
+  /** Inject a "Save as channel" button above search results (after search). */
+  function showSaveChannelBtn(query) {
+    // Remove any stale save button
+    document.querySelector('.save-channel-area')?.remove();
+
+    const area = document.createElement('div');
+    area.className = 'save-channel-area';
+
+    const existing = channelsLoad().some(
+      (c) => c.query.toLowerCase() === query.toLowerCase()
+    );
+
+    const btn = document.createElement('button');
+    btn.type      = 'button';
+    btn.className = 'btn btn-ghost save-channel-btn';
+
+    if (existing) {
+      btn.innerHTML  = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Saved`;
+      btn.disabled = true;
+    } else {
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Save as channel`;
+      btn.addEventListener('click', () => {
+        const defaultName = query.length > 40 ? query.slice(0, 40) + '…' : query;
+        const name = prompt('Channel name:', defaultName);
+        if (name === null) return; // cancelled
+        channelsAdd(name.trim() || defaultName, query);
+        renderChannelsSidebar();
+        // Update button to saved state
+        btn.innerHTML  = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Saved!`;
+        btn.disabled = true;
+      });
+    }
+
+    area.appendChild(btn);
+    // Insert above search-results div
+    searchResults.parentNode.insertBefore(area, searchResults);
+  }
+
+  /* ---- Sidebar toggle (mobile) ---- */
+  function openSidebar() {
+    channelsSidebar.classList.add('open');
+    sidebarOverlay.hidden = false;
+    navChannelsBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeSidebar() {
+    channelsSidebar.classList.remove('open');
+    sidebarOverlay.hidden = true;
+    navChannelsBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  navChannelsBtn.addEventListener('click', () => {
+    channelsSidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  sidebarCloseBtn.addEventListener('click', closeSidebar);
+  sidebarOverlay.addEventListener('click',  closeSidebar);
 
   /* ================================================================
      LOADING HELPERS
@@ -298,6 +569,10 @@
       hideLoading();
     }
 
+    // Render channels sidebar and kick off background unread check
+    renderChannelsSidebar();
+    checkChannelUnreads(); // async, runs in background
+
     // Route to the view specified by the URL (deep-link / bookmark support)
     const p = urlParams instanceof URLSearchParams ? urlParams : new URLSearchParams();
     const urlView = p.get('view');
@@ -375,6 +650,11 @@
       btn.classList.toggle('active', n === name);
       btn.setAttribute('aria-current', n === name ? 'page' : 'false');
     });
+
+    // Remove any stale "Save as channel" button when leaving search view
+    if (name !== 'search') {
+      document.querySelector('.save-channel-area')?.remove();
+    }
 
     // Reset compose state when switching to compose view
     if (name === 'compose') {
@@ -470,6 +750,9 @@
     clearComposeImages();
     searchResults.innerHTML = '<div class="feed-empty"><p>Search for posts, people, or topics on BlueSky.</p></div>';
     threadContent.innerHTML = '';
+    closeSidebar();
+    // Clear save-channel button if any
+    document.querySelector('.save-channel-area')?.remove();
   });
 
   /* ================================================================
@@ -563,6 +846,9 @@
         lastSearchType    = 'posts';
         renderPostFeed(lastSearchResults, searchResults);
       }
+
+      // Show "Save as channel" button above results
+      showSaveChannelBtn(q);
 
       // Update URL so this search is bookmarkable / shareable
       const searchUrl = `?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(activeFilter)}`;
