@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes, thread nesting visual polish, and Milestone 9 (Inline Reply Compose).
+The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes, thread nesting visual polish, Milestone 9 (Inline Reply Compose), and Milestone 19 (Deep-Link URL Routing). Video player interaction bug is also fixed.
 
 ## Completed Milestones
 
@@ -131,6 +131,39 @@ The app is live and functional. Milestones 1–10 are complete, plus the repost/
 - **`currentThread` simplified**: Now stores only `{ rootUri, rootCid,
   authorHandle }` — the old `replyToUri/Cid/Handle` fields that fed the bottom
   form are no longer needed.
+
+### Video Player Bug Fix ✅
+- **Root cause**: Native `<video controls>` click events bubbled through
+  `.post-video-wrap` to the post card's click handler, opening the thread view
+  whenever the user interacted with play/pause, volume, or the scrubber.
+- **Fix**: Added `wrap.addEventListener('click', (e) => e.stopPropagation())`
+  at the top of `buildVideoEmbed`. The poster element already had
+  `stopPropagation`; this extends that protection to the activated video
+  element with its native controls.
+
+### Milestone 19: Deep-Link URL Routing ✅
+- **URL scheme** (query-param based; GitHub Pages safe):
+  - Thread: `?view=post&uri=at%3A%2F%2F...&handle=...`
+  - Profile: `?view=profile&actor=handle.bsky.social`
+  - Search: `?q=query&filter=posts`
+  - Feed: `?view=feed`
+  - Notifications: `?view=notifications`
+- **On load**: `init()` reads `window.location.search` and passes
+  `URLSearchParams` to `enterApp()`, which routes to the right view after
+  the session profile loads. Supports direct deep-link navigation and page
+  refresh recovery for all views.
+- **On navigation**: `openThread` and `openProfile` now include the full URL
+  in their `pushState` calls. `showView` also adds URL params to pushState.
+  Successful searches update the URL with `replaceState`.
+- **Bsky.app URL import**: Pasting a `bsky.app/profile/.../post/...` URL into
+  the search bar uses the existing `API.resolvePostUrl()` helper to resolve
+  the AT URI and open the thread directly. Pasting a profile URL opens the
+  profile view.
+- **Copy link**: Every post card has a chain-link icon button (far right of the
+  actions row) that copies the Bsky Dreams deep-link URL to the clipboard with
+  a 1.5-second "Copied!" confirmation. Uses `navigator.clipboard`.
+- **Back/Forward**: The `popstate` handler prefers `history.state` data but
+  falls back to URL params so deep-linked pages work correctly.
 
 ---
 
@@ -504,8 +537,7 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 19 — Deep-Link URL Routing** (enables shareable links; unblocks other features)
-2. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
-3. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
-4. **Milestone 21 — Reporting Bad Actors** (moderation integration)
-5. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)
+1. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
+2. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
+3. **Milestone 21 — Reporting Bad Actors** (moderation integration)
+4. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)

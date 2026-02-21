@@ -452,6 +452,44 @@
 
 ---
 
+## URL Routing — Query-Parameter Based (Not Hash, Not Clean Paths)
+
+- **Date:** 2026-02-21
+- **Decision:** Use query-parameter routing (`?view=post&uri=...`) for all deep-linkable
+  views. Hash routing and clean-path routing were both considered.
+- **Rationale:** GitHub Pages always serves `index.html` from the root for the root
+  path, but a request to `/post/at://...` would return a 404 because GitHub Pages has
+  no server-side rewrite rules. Hash-based routing (`/#/post/...`) would work but
+  produces visually noisier URLs and is harder to parse for sharing. Query parameters
+  are served safely (the root `index.html` is always returned), are human-readable,
+  and parse cleanly via `URLSearchParams`. The 404-redirect trick (adding a `404.html`
+  that re-encodes the path as a query param) was also considered but adds a redirect
+  hop and complexity that isn't justified at current scale.
+- **Scheme:**
+  - Thread: `?view=post&uri=at%3A%2F%2F...&handle=...`
+  - Profile: `?view=profile&actor=handle.bsky.social`
+  - Search: `?q=query&filter=posts`
+  - Feed: `?view=feed` / Notifications: `?view=notifications`
+- **On navigation:** `openThread` and `openProfile` include the full URL in their
+  `pushState` calls. `showView` adds view-specific URL params. Successful searches
+  use `replaceState` to update the URL without adding a history entry.
+- **On load:** `init()` parses `window.location.search` and passes `URLSearchParams`
+  to `enterApp()`, which routes to the correct view after the session profile loads.
+- **Bsky.app URL import:** Search input detects `bsky.app/profile/.../post/...`
+  patterns and uses `API.resolvePostUrl()` to convert them to AT URIs. Profile URLs
+  are detected and redirected to `openProfile`.
+- **Copy link:** Each post card has a chain-link icon button that copies the full
+  Bsky Dreams URL (`window.location.origin + pathname + ?view=post&uri=...`) to the
+  clipboard. Shows a 1.5-second "Copied!" color feedback.
+- **Alternatives considered:** Hash routing (safe but ugly); clean paths with 404.html
+  redirect trick (cleaner URLs but adds complexity and a redirect hop).
+- **Trade-offs:** Query-param URLs are slightly longer than hash or clean-path URLs.
+  Acceptable for a tool focused on clarity over aesthetics.
+- **Revisit if:** A GitHub Actions deploy pipeline is added, at which point a proper
+  SPA with a clean-path 404 rewrite to `index.html` becomes trivial.
+
+---
+
 ## Deferred Milestones — Paid API Dependencies
 
 - **Date:** 2026-02-21

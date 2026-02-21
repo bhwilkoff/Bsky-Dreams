@@ -248,11 +248,14 @@
      INIT — check stored session on page load
   ================================================================ */
   async function init() {
-    // Seed history so the first Back press can return here
-    history.replaceState({ view: 'search' }, '');
+    const urlParams = new URLSearchParams(window.location.search);
+    // Seed history preserving any existing URL params
+    if (!window.location.search) {
+      history.replaceState({ view: 'search' }, '', '?');
+    }
 
     if (AUTH.isLoggedIn()) {
-      await enterApp();
+      await enterApp(urlParams);
     }
     // Auth screen visible by default
   }
@@ -272,7 +275,7 @@
 
     try {
       await AUTH.login(handle, password);
-      await enterApp();
+      await enterApp(new URLSearchParams(window.location.search));
     } catch (err) {
       showError(authError, err.message || 'Sign in failed. Check your handle and app password.');
     } finally {
@@ -281,7 +284,7 @@
     }
   });
 
-  async function enterApp() {
+  async function enterApp(urlParams) {
     authScreen.hidden = true;
     appScreen.hidden  = false;
     showLoading();
@@ -294,7 +297,35 @@
     } finally {
       hideLoading();
     }
-    showView('search');
+
+    // Route to the view specified by the URL (deep-link / bookmark support)
+    const p = urlParams instanceof URLSearchParams ? urlParams : new URLSearchParams();
+    const urlView = p.get('view');
+    const urlQ    = p.get('q');
+
+    if (urlView === 'post' && p.get('uri')) {
+      await openThread(p.get('uri'), '', p.get('handle') || '', { fromHistory: true });
+    } else if (urlView === 'profile' && p.get('actor')) {
+      await openProfile(p.get('actor'), { fromHistory: true });
+    } else if (urlView === 'notifications') {
+      showView('notifications', true);
+      loadNotifications();
+    } else if (urlView === 'feed') {
+      showView('feed', true);
+      loadFeed();
+    } else if (urlQ) {
+      // Restore a saved search from URL
+      searchInput.value = urlQ;
+      const filter = p.get('filter') || 'posts';
+      activeFilter = filter;
+      filterChips.forEach((c) => c.classList.remove('active'));
+      const chip = document.querySelector(`.filter-chip[data-filter="${filter}"]`);
+      if (chip) chip.classList.add('active');
+      showView('search', true);
+      searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    } else {
+      showView('search', true);
+    }
   }
 
   function renderNav(profile) {
@@ -356,11 +387,21 @@
 
     if (!fromHistory) {
       const state = { view: name };
+      let url = '?';
       if (name === 'search') {
         state.query  = searchInput.value;
         state.filter = activeFilter;
+        if (searchInput.value) {
+          url = `?q=${encodeURIComponent(searchInput.value)}&filter=${encodeURIComponent(activeFilter)}`;
+        }
+      } else if (name === 'feed') {
+        url = '?view=feed';
+      } else if (name === 'notifications') {
+        url = '?view=notifications';
+      } else if (name === 'compose') {
+        url = '?view=compose';
       }
-      history.pushState(state, '');
+      history.pushState(state, '', url);
     }
   }
 
@@ -383,15 +424,23 @@
   // Restore state on browser Back/Forward
   window.addEventListener('popstate', async (e) => {
     if (!AUTH.isLoggedIn()) return;
-    const state = e.state || { view: 'search' };
-    if (state.view === 'thread' && state.uri) {
+    const state  = e.state;
+    const params = new URLSearchParams(window.location.search);
+
+    // Prefer richer history.state; fall back to URL params for direct shares
+    if (state?.view === 'thread' && state.uri) {
       await openThread(state.uri, state.cid, state.handle, { fromHistory: true });
-    } else if (state.view === 'profile' && state.actor) {
+    } else if (params.get('view') === 'post' && params.get('uri')) {
+      await openThread(params.get('uri'), '', params.get('handle') || '', { fromHistory: true });
+    } else if (state?.view === 'profile' && state.actor) {
       await openProfile(state.actor, { fromHistory: true });
+    } else if (params.get('view') === 'profile' && params.get('actor')) {
+      await openProfile(params.get('actor'), { fromHistory: true });
     } else {
-      const view = state.view || 'search';
+      const view = state?.view || params.get('view') || 'search';
       showView(view, true);
-      if (view === 'search' && state.query) searchInput.value = state.query;
+      const q = state?.query || params.get('q');
+      if (view === 'search' && q) searchInput.value = q;
       if (view === 'feed' && !feedLoaded) loadFeed();
       if (view === 'notifications' && !notifLoaded) loadNotifications();
     }
@@ -470,6 +519,25 @@
     searchResults.innerHTML = '<div class="feed-loading">Searching…</div>';
 
     try {
+      // Detect bsky.app URLs and redirect to the appropriate view instead of searching
+      if (q.includes('bsky.app/profile/')) {
+        const postPattern    = /bsky\.app\/profile\/[^/\s]+\/post\/[^?&#\s]+/;
+        const profilePattern = /bsky\.app\/profile\/([^/\s?&#]+)(?:[/?#]|$)/;
+        if (postPattern.test(q)) {
+          // Paste of a bsky.app post URL → resolve AT URI and open thread
+          const atUri = await API.resolvePostUrl(q);
+          const hMatch = q.match(/bsky\.app\/profile\/([^/\s]+)\//);
+          await openThread(atUri, '', hMatch?.[1] || '');
+          return;
+        }
+        const pm = q.match(profilePattern);
+        if (pm) {
+          // Paste of a bsky.app profile URL → open profile view
+          await openProfile(pm[1]);
+          return;
+        }
+      }
+
       if (activeFilter === 'users') {
         const data = await API.searchActors(q);
         lastSearchResults = data.actors || [];
@@ -495,6 +563,10 @@
         lastSearchType    = 'posts';
         renderPostFeed(lastSearchResults, searchResults);
       }
+
+      // Update URL so this search is bookmarkable / shareable
+      const searchUrl = `?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(activeFilter)}`;
+      history.replaceState({ view: 'search', query: q, filter: activeFilter }, '', searchUrl);
     } catch (err) {
       searchResults.innerHTML = `<div class="feed-empty"><p>Search failed: ${escHtml(err.message)}</p></div>`;
     } finally {
@@ -706,7 +778,7 @@
     showView('profile', true);
 
     if (!opts.fromHistory) {
-      history.pushState({ view: 'profile', actor }, '');
+      history.pushState({ view: 'profile', actor }, '', `?view=profile&actor=${encodeURIComponent(actor)}`);
     }
 
     showLoading();
@@ -1101,6 +1173,26 @@
         <span class="action-count">${formatCount(likeCount)}</span>
       </button>
     `;
+    // Share / copy-link button
+    const shareBtn = document.createElement('button');
+    shareBtn.type      = 'button';
+    shareBtn.className = 'action-btn share-action-btn';
+    shareBtn.setAttribute('aria-label', 'Copy link to post');
+    shareBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+    shareBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pageUrl = new URL(window.location.href);
+      pageUrl.search = `?view=post&uri=${encodeURIComponent(post.uri)}`;
+      navigator.clipboard.writeText(pageUrl.toString()).then(() => {
+        shareBtn.setAttribute('aria-label', 'Copied!');
+        shareBtn.style.color = 'var(--color-success-text)';
+        setTimeout(() => {
+          shareBtn.setAttribute('aria-label', 'Copy link to post');
+          shareBtn.style.color = '';
+        }, 1500);
+      }).catch(() => {/* clipboard unavailable — silent */});
+    });
+    actions.appendChild(shareBtn);
     card.appendChild(actions);
 
     // Wire up click to open thread
@@ -1255,6 +1347,8 @@
   function buildVideoEmbed(videoEmbed) {
     const wrap = document.createElement('div');
     wrap.className = 'post-video-wrap';
+    // Prevent native video control clicks from bubbling to the post card click handler
+    wrap.addEventListener('click', (e) => e.stopPropagation());
 
     const src   = videoEmbed.playlist;
     const thumb = videoEmbed.thumbnail;
@@ -1565,13 +1659,15 @@
       // push the thread state ourselves so Back/Forward knows the URI.
       showView('thread', true);
       if (!opts.fromHistory) {
-        history.pushState({ view: 'thread', uri, cid, handle }, '');
+        const threadUrl = `?view=post&uri=${encodeURIComponent(uri)}&handle=${encodeURIComponent(handle || '')}`;
+        history.pushState({ view: 'thread', uri, cid, handle }, '', threadUrl);
       }
     } catch (err) {
       threadContent.innerHTML = `<div class="feed-empty"><p>Could not load thread: ${escHtml(err.message)}</p></div>`;
       showView('thread', true);
       if (!opts.fromHistory) {
-        history.pushState({ view: 'thread', uri, cid, handle }, '');
+        const threadUrl = `?view=post&uri=${encodeURIComponent(uri)}&handle=${encodeURIComponent(handle || '')}`;
+        history.pushState({ view: 'thread', uri, cid, handle }, '', threadUrl);
       }
     } finally {
       hideLoading();
