@@ -86,6 +86,10 @@
   const imageLightbox    = $('image-lightbox');
   const lightboxImg      = $('lightbox-img');
   const lightboxCaption  = $('lightbox-caption');
+  const lightboxCounter  = $('lightbox-counter');
+  const lightboxDots     = $('lightbox-dots');
+  const lightboxPrevBtn  = $('lightbox-prev');
+  const lightboxNextBtn  = $('lightbox-next');
   const lightboxCloseBtn = $('lightbox-close');
 
   const adultToggle      = $('hide-adult-toggle');
@@ -153,33 +157,92 @@
   }
 
   /* ================================================================
-     IMAGE LIGHTBOX
+     IMAGE LIGHTBOX — carousel-capable
   ================================================================ */
-  function openLightbox(src, alt) {
-    lightboxImg.src              = src;
-    lightboxImg.alt              = alt || '';
-    lightboxCaption.textContent  = alt || '';
-    lightboxCaption.hidden       = !alt;
+  let lightboxImages  = [];   // [{ src, alt }, ...]
+  let lightboxIndex   = 0;
+  let lightboxTouchX  = null; // for swipe detection
+
+  function openLightbox(images, startIndex = 0) {
+    // Accept either an array of {src,alt} objects or a single {src,alt}
+    lightboxImages = Array.isArray(images) ? images : [images];
+    lightboxIndex  = Math.max(0, Math.min(startIndex, lightboxImages.length - 1));
+
+    renderLightboxSlide();
     imageLightbox.hidden         = false;
     document.body.style.overflow = 'hidden';
     lightboxCloseBtn.focus();
   }
 
+  function renderLightboxSlide() {
+    const { src, alt } = lightboxImages[lightboxIndex];
+    const total = lightboxImages.length;
+
+    lightboxImg.src             = src;
+    lightboxImg.alt             = alt || '';
+    lightboxCaption.textContent = alt || '';
+    lightboxCaption.hidden      = !alt;
+
+    // Counter: "2 / 4"
+    lightboxCounter.textContent = total > 1 ? `${lightboxIndex + 1} / ${total}` : '';
+    lightboxCounter.hidden      = total <= 1;
+
+    // Arrow buttons
+    lightboxPrevBtn.hidden = total <= 1;
+    lightboxNextBtn.hidden = total <= 1;
+
+    // Dot indicators
+    lightboxDots.innerHTML = '';
+    if (total > 1) {
+      lightboxImages.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'lightbox-dot' + (i === lightboxIndex ? ' active' : '');
+        dot.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(i); });
+        lightboxDots.appendChild(dot);
+      });
+    }
+  }
+
+  function goLightbox(index) {
+    lightboxIndex = (index + lightboxImages.length) % lightboxImages.length;
+    renderLightboxSlide();
+  }
+
   function closeLightbox() {
     imageLightbox.hidden         = true;
     lightboxImg.src              = '';
+    lightboxImages               = [];
     document.body.style.overflow = '';
   }
 
   lightboxCloseBtn.addEventListener('click', closeLightbox);
+  lightboxPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex - 1); });
+  lightboxNextBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex + 1); });
 
   imageLightbox.addEventListener('click', (e) => {
     if (e.target === imageLightbox) closeLightbox();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !imageLightbox.hidden) closeLightbox();
+    if (imageLightbox.hidden) return;
+    if (e.key === 'Escape')      closeLightbox();
+    if (e.key === 'ArrowLeft')   goLightbox(lightboxIndex - 1);
+    if (e.key === 'ArrowRight')  goLightbox(lightboxIndex + 1);
   });
+
+  // Touch swipe support
+  imageLightbox.addEventListener('touchstart', (e) => {
+    lightboxTouchX = e.touches[0].clientX;
+  }, { passive: true });
+
+  imageLightbox.addEventListener('touchend', (e) => {
+    if (lightboxTouchX === null) return;
+    const dx = e.changedTouches[0].clientX - lightboxTouchX;
+    lightboxTouchX = null;
+    if (Math.abs(dx) < 40) return; // ignore small swipes
+    if (dx < 0) goLightbox(lightboxIndex + 1);  // swipe left → next
+    else         goLightbox(lightboxIndex - 1);  // swipe right → prev
+  }, { passive: true });
 
   /* ================================================================
      INIT — check stored session on page load
@@ -1136,10 +1199,17 @@
      IMAGE GRID
   ================================================================ */
   function buildImageGrid(images) {
-    const grid = document.createElement('div');
-    grid.className = `post-images count-${Math.min(images.length, 4)}`;
+    const capped = images.slice(0, 4);
+    const grid   = document.createElement('div');
+    grid.className = `post-images count-${capped.length}`;
 
-    images.slice(0, 4).forEach((img) => {
+    // Build a shared lightbox payload for carousel navigation
+    const lightboxPayload = capped.map((img) => ({
+      src: img.fullsize || img.thumb || '',
+      alt: img.alt || '',
+    }));
+
+    capped.forEach((img, idx) => {
       const wrap = document.createElement('div');
       wrap.className = 'post-image-wrap';
       wrap.setAttribute('role', 'button');
@@ -1160,17 +1230,16 @@
         wrap.appendChild(altEl);
       }
 
-      // Click/keyboard to open full-size in lightbox
-      const fullsrc = img.fullsize || img.thumb || '';
+      // Click/keyboard → open lightbox carousel starting at this image
       wrap.addEventListener('click', (e) => {
         e.stopPropagation();
-        openLightbox(fullsrc, img.alt || '');
+        openLightbox(lightboxPayload, idx);
       });
       wrap.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           e.stopPropagation();
-          openLightbox(fullsrc, img.alt || '');
+          openLightbox(lightboxPayload, idx);
         }
       });
 
