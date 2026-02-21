@@ -275,6 +275,118 @@
 
 ---
 
+## Quoted Post Rendering — Separate `buildQuotedPost` Card
+
+- **Date:** 2026-02-21
+- **Decision:** Quoted posts (`app.bsky.embed.record#view` and the record portion
+  of `app.bsky.embed.recordWithMedia#view`) are rendered as a distinct compact card
+  element (`buildQuotedPost`) rather than being folded into the existing post-card
+  layout or ignored.
+- **Rationale:** The AT Protocol distinguishes a quote-post (referencing another
+  post's URI/CID) from a reply (parent/root refs). Visually collapsing them would
+  confuse the two relationships. A separate compact card — author avatar, name,
+  handle, truncated text — matches the pattern used by bsky.app and other clients.
+  Clicking the quoted card opens *that* post's own thread, keeping navigation
+  semantically correct.
+- **Alternatives considered:** Rendering the quoted post as a nested full `buildPostCard`
+  (too heavy — recursive action buttons, unnecessary complexity); ignoring the record
+  embed entirely (was the previous behaviour — caused silent data loss for quote-posts).
+- **Trade-offs:** The quoted card does not render facets on the inner text (plain
+  `textContent`). This is acceptable for a truncated preview; the full text is one
+  click away via the thread view.
+- **Revisit if:** Quote chains (quoting a quote) need visual differentiation, or if
+  non-post record types (lists, feeds, starter packs) need their own quoted-card styles.
+
+---
+
+## Feed Reply Context — Compact Parent Preview, Root-First Navigation
+
+- **Date:** 2026-02-21
+- **Decision:** When a feed item is a reply, display a compact clickable preview of
+  the parent post above the reply card (`buildParentPreview`). Clicking either the
+  preview card or the reply card itself navigates to the **root** of the thread
+  (using `item.reply.root.uri`), not to the reply's own URI.
+- **Rationale:** BlueSky's home timeline delivers replies mid-thread, often with no
+  visible context. Without a parent preview, the reply appears orphaned. Root-first
+  navigation ensures the user always sees the full conversation from the top, matching
+  how Reddit and Mastodon handle reply surfacing in feeds. The parent `PostView` is
+  already present in the timeline response (`item.reply.parent`) so no extra API
+  call is needed.
+- **Alternatives considered:** Fetching the full parent thread on render for richer
+  context (extra API calls per feed item — too expensive); showing only a text label
+  "Replying to @handle" (the previous behaviour — not enough context); opening the
+  reply's own thread URI (disorienting — user lands mid-thread with no parent visible).
+- **Trade-offs:** The parent preview shows only the first line of the parent text
+  (single-line truncated). If the parent is a `notFoundPost` or `blockedPost` the
+  preview is simply omitted (the `item.reply.parent.author` guard handles this).
+- **Revisit if:** Users find the parent preview too visually heavy and want to hide it.
+
+---
+
+## Thread Depth Limit — 8 Levels, "Continue This Thread →"
+
+- **Date:** 2026-02-21
+- **Decision:** `renderThread` tracks nesting depth (0 = root, incremented on each
+  recursive call). At depth ≥ 8 (i.e., the 8th level of replies), further recursion
+  is replaced by a "Continue this thread →" button that re-opens the thread from
+  that reply node.
+- **Rationale:** Deep BlueSky threads can have 20+ levels of nesting. Rendering all
+  of them causes DOM bloat and layout jank with the indented connector lines. Eight
+  levels covers the vast majority of real conversations; deeper chains are rare and
+  best read by navigating into them directly.
+- **Alternatives considered:** No depth limit (DOM performance degrades on long
+  chains); fixed 3-level cap (too shallow for normal discourse); collapsing the whole
+  sub-tree (hides context rather than offering a path forward).
+- **Trade-offs:** A very long chain requires multiple "Continue" navigations. This is
+  acceptable — each navigation resets the view from a well-defined point.
+- **Revisit if:** Users report that 8 levels is too shallow for their typical threads.
+
+---
+
+## Lightbox Carousel — Shared Image Array, startIndex
+
+- **Date:** 2026-02-21
+- **Decision:** `openLightbox(images, startIndex)` accepts an array of `{src, alt}`
+  objects and an index. `buildImageGrid` builds a shared `lightboxPayload` array
+  from all images in a post and passes it with the clicked image's index, so all
+  images in the post are browsable from any starting thumbnail.
+- **Rationale:** Single-image lightboxes are a baseline; posts with 2–4 images
+  previously required closing and reopening for each image. Carousel navigation
+  (arrows, dots, keyboard, swipe) is standard UX for multi-image posts.
+- **Alternatives considered:** A separate lightbox gallery page (navigation cost);
+  showing all images as a scrollable strip inside the lightbox (vertical vs. carousel
+  — less common for this use case, harder to implement with captions per image).
+- **Trade-offs:** The lightbox holds an in-memory copy of the image URL array;
+  negligible for 2–4 URLs. Dot indicators are regenerated on every slide change
+  (simpler than patching active state on existing dots).
+- **Revisit if:** Video embeds need to be part of a mixed-media carousel.
+
+---
+
+## Adaptive Image Sizing — Natural Ratio for Singles, Fixed Crop for Grids
+
+- **Date:** 2026-02-21
+- **Decision:** Single-image posts use `object-fit: contain` with `max-height: 480px`
+  and `min-height: 120px`, displaying the image at its natural aspect ratio against a
+  black background. Multi-image grids (2–4 images) retain the uniform fixed-height
+  crop (180px / 220px on desktop) for visual alignment.
+- **Rationale:** Portrait screenshots and tall images (common on mobile) were
+  previously sliced to a 180px landscape strip, hiding most of the content. Natural
+  aspect ratio for single images fixes this without requiring the server to supply
+  dimensions. Grids need uniform height to form a clean tiled layout; `contain` on
+  a grid would leave irregular whitespace gaps.
+- **Alternatives considered:** `aspect-ratio` CSS property set from image metadata
+  (AT Protocol does not expose width/height in the image view object, so this is not
+  available client-side without loading the image first); uniform height for all
+  counts (reverts the portrait-image regression).
+- **Trade-offs:** Very wide landscape images (panoramas) may leave black pillarboxing
+  strips on the sides within the 480px box. This is visually acceptable and better
+  than cropping.
+- **Revisit if:** AT Protocol begins exposing image dimensions in the embed view, at
+  which point CSS `aspect-ratio` can be set precisely before the image loads.
+
+---
+
 ## Deferred Milestones — Paid API Dependencies
 
 - **Date:** 2026-02-21
