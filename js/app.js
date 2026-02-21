@@ -1528,20 +1528,113 @@
     });
   }
 
+  /**
+   * Resize/recompress an image File to fit within maxBytes using the Canvas API.
+   * - Files already under the limit are returned unchanged.
+   * - Large images are scaled to a max of 2048px on the longest side, then
+   *   JPEG quality is iteratively reduced until the target size is met.
+   * - Transparent PNGs get a white background before conversion to JPEG.
+   *
+   * @param {File}   file
+   * @param {number} maxBytes  target ceiling (default: 950 000 — just under AT Protocol's 1 MB)
+   * @returns {Promise<File>}
+   */
+  function resizeImageFile(file, maxBytes = 950_000) {
+    if (file.size <= maxBytes) return Promise.resolve(file);
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+
+        const MAX_DIM = 2048;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+
+        // Scale so the longest side fits within MAX_DIM
+        if (w > MAX_DIM || h > MAX_DIM) {
+          const scale = Math.min(MAX_DIM / w, MAX_DIM / h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+
+        const canvas = document.createElement('canvas');
+        const ctx    = canvas.getContext('2d');
+
+        // Encode at the given dimensions+quality; reduce until size target is met
+        const tryEncode = (width, height, quality) => {
+          canvas.width  = width;
+          canvas.height = height;
+          ctx.fillStyle = '#ffffff'; // white bg for transparent PNGs
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob((blob) => {
+            if (!blob) { reject(new Error('Image encoding failed.')); return; }
+
+            if (blob.size <= maxBytes) {
+              // Success — wrap in a File so api.js sees a proper type
+              resolve(new File(
+                [blob],
+                file.name.replace(/\.[^.]+$/, '.jpg'),
+                { type: 'image/jpeg' }
+              ));
+            } else if (quality > 0.45) {
+              // Drop quality in steps of 0.1
+              tryEncode(width, height, quality - 0.1);
+            } else {
+              // Quality floor reached — shrink dimensions proportionally
+              const scale = Math.sqrt(maxBytes / blob.size) * 0.9;
+              tryEncode(
+                Math.max(64, Math.round(width  * scale)),
+                Math.max(64, Math.round(height * scale)),
+                0.82
+              );
+            }
+          }, 'image/jpeg', quality);
+        };
+
+        tryEncode(w, h, 0.85);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Could not read image.'));
+      };
+
+      img.src = objectUrl;
+    });
+  }
+
   // Clicking the attach button triggers the hidden file input
   composeImgBtn.addEventListener('click', () => {
     if (composeImages.length >= 4) return;
     composeImgInput.click();
   });
 
-  composeImgInput.addEventListener('change', () => {
+  composeImgInput.addEventListener('change', async () => {
     const files = Array.from(composeImgInput.files || []);
     const available = 4 - composeImages.length;
-    files.slice(0, available).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-      composeImages.push({ file, previewUrl: URL.createObjectURL(file), alt: '' });
-    });
     composeImgInput.value = ''; // reset so same file can be re-selected
+
+    // Disable button and show brief processing state
+    composeImgBtn.disabled = true;
+    composeImagesPreview.hidden = false;
+
+    for (const file of files.slice(0, available)) {
+      if (!file.type.startsWith('image/')) continue;
+      try {
+        const resized    = await resizeImageFile(file);
+        const previewUrl = URL.createObjectURL(resized);
+        composeImages.push({ file: resized, previewUrl, alt: '' });
+        refreshComposePreview();
+      } catch (err) {
+        showError(composeError, `Could not process image "${file.name}": ${err.message}`);
+      }
+    }
+
     refreshComposePreview();
   });
 
