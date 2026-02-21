@@ -229,6 +229,24 @@
       </div>
     </section>
 
+    <!-- ---- PROFILE VIEW ---- -->
+    <section id="view-profile" class="view" hidden aria-labelledby="profile-heading">
+      <div class="view-inner">
+        <div class="thread-header">
+          <button class="btn btn-ghost back-btn" id="profile-back-btn" aria-label="Go back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            Back
+          </button>
+          <h2 id="profile-heading" class="thread-heading">Profile</h2>
+        </div>
+        <div id="profile-header" class="profile-header" aria-live="polite"></div>
+        <div id="profile-feed" class="feed" aria-live="polite" aria-label="Posts by this person"></div>
+        <div id="profile-load-more" class="feed-load-more" hidden>
+          <button class="btn btn-ghost" id="profile-load-more-btn">Load more posts</button>
+        </div>
+      </div>
+    </section>
+
     <!-- ---- THREAD / CONVERSATION VIEW ---- -->
     <section id="view-thread" class="view" hidden aria-labelledby="thread-heading">
       <div class="view-inner">

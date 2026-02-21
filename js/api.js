@@ -282,6 +282,27 @@ const API = (() => {
   }
 
   /**
+   * Get any actor's full profile (app.bsky.actor.getProfile).
+   * @param {string} actor - handle or DID
+   */
+  async function getActorProfile(actor) {
+    return authGet('app.bsky.actor.getProfile', { actor });
+  }
+
+  /**
+   * Get an actor's post feed (app.bsky.feed.getAuthorFeed).
+   * Excludes replies to keep the profile feed focused on their own content.
+   * @param {string} actor  - handle or DID
+   * @param {number} limit
+   * @param {string} cursor - pagination cursor
+   */
+  async function getAuthorFeed(actor, limit = 25, cursor) {
+    return authGet('app.bsky.feed.getAuthorFeed', {
+      actor, limit, cursor, filter: 'posts_no_replies',
+    });
+  }
+
+  /**
    * Convert a bsky.app post URL to an AT URI.
    * e.g. https://bsky.app/profile/alice.bsky.social/post/3abc123
    * → at://alice.bsky.social/app.bsky.feed.post/3abc123
@@ -313,6 +334,8 @@ const API = (() => {
     followActor,
     unfollowActor,
     getOwnProfile,
+    getActorProfile,
+    getAuthorFeed,
     resolvePostUrl,
   };
 })();

@@ -34,17 +34,27 @@ Milestones 1–3 and partially completed Milestone 4. A new Milestone 5
 
 ## Active Milestone
 
-### Milestone 5: Home / Following Timeline
-Goal: let users see a chronological feed of posts from people they follow,
-with repost attribution and reply context shown inline.
+### Milestone 5: Home / Following Timeline ✅
+- `API.getTimeline(limit, cursor)` — `app.bsky.feed.getTimeline`
+- `API.followActor(subjectDid)` / `API.unfollowActor(followUri)` — follow graph
+- Home nav button + `view-feed` section in index.html
+- `renderFeedItems()` in app.js (repost bar, reply context)
+- Follow/Unfollow toggle on actor cards in People search results
+- Pagination ("Load more") on home feed
+
+### Milestone 6: Author Profiles ⏳ (in progress)
+Goal: clicking any author avatar or name opens a profile view showing
+their bio, follower stats, follow/unfollow button, and recent posts.
 
 Tasks:
-- [x] `API.getTimeline(limit, cursor)` — `app.bsky.feed.getTimeline`
-- [x] `API.followActor(subjectDid)` / `API.unfollowActor(followUri)` — follow graph
-- [x] Home nav button + `view-feed` section in index.html
-- [x] `renderFeedItems()` in app.js (repost bar, reply context)
-- [x] Follow/Unfollow toggle on actor cards in People search results
-- [x] Pagination ("Load more") on home feed
+- [x] `API.getActorProfile(actor)` — `app.bsky.actor.getProfile`
+- [x] `API.getAuthorFeed(actor, limit, cursor)` — `app.bsky.feed.getAuthorFeed`
+- [x] `view-profile` section in index.html (back button, header area, feed, load more)
+- [x] `openProfile(handle, opts)` + `renderProfileHeader(profile)` in app.js
+- [x] `loadProfileFeed(actor, append)` with pagination
+- [x] `.author-link` click handlers on avatar + name in every post card
+- [x] Profile follow/unfollow button wired in renderProfileHeader
+- [x] Follow button pill redesign (removed conflicting `action-btn` class)
 
 ## Open Questions
 
@@ -71,11 +81,9 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **Milestone 6 — Author profiles**: add `getActorProfile` + `getAuthorFeed`
-   to api.js; add a `view-profile` section; make author avatars/names clickable.
-2. **Milestone 6 — Image upload in Compose**: `uploadBlob` → embed CID + alt
-   text input; preview before posting.
-3. **Milestone 7 — Notifications**: home nav notification badge +
+1. **Milestone 6 — Image upload in Compose**: `uploadBlob` → embed CID + alt
+   text input; image preview before posting. This completes M4 alt-text authoring.
+2. **Milestone 7 — Notifications**: nav notification badge +
    `view-notifications` using `app.bsky.notification.listNotifications`.
-4. Confirm that the `main` branch PR is merged so the live GitHub Pages site
+3. Confirm that the `main` branch PRs are merged so the live GitHub Pages site
    reflects all completed work.
