@@ -25,6 +25,7 @@ body {
   color: var(--color-text);
   min-height: 100dvh;
   line-height: 1.5;
+  overflow-x: clip; /* prevent fixed/transformed elements from creating horizontal scroll */
 }
 
 /* ---- Design Tokens ---- */
@@ -2167,33 +2168,44 @@ button {
   }
 }
 
+/*
+ * Hide the "Bsky Dreams" logo text on small screens to make room for the
+ * channels nav button. The cloud icon (☁) alone keeps the logo identifiable.
+ * This prevents the nav bar from overflowing, which would cause horizontal
+ * scroll and rubber-banding across the entire page on mobile.
+ */
+@media (max-width: 479px) {
+  .nav-logo-text {
+    display: none;
+  }
+}
+
 /* ---- Sidebar panel ---- */
 .channels-sidebar {
   position: fixed;
-  left: 0;
+  left: calc(-1 * var(--sidebar-width)); /* hidden off-screen left — avoids transform compositing issues */
   top: var(--top-bar-height);
   bottom: 0;
   width: var(--sidebar-width);
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   overflow-y: auto;
+  overflow-x: hidden;
   z-index: 150;
   display: flex;
   flex-direction: column;
-  /* Mobile: hidden, slides in from left */
-  transform: translateX(-100%);
-  transition: transform 0.25s ease;
+  transition: left 0.25s ease;
   overscroll-behavior: contain;
 }
 
 .channels-sidebar.open {
-  transform: translateX(0);
+  left: 0;
 }
 
 @media (min-width: 768px) {
-  /* Desktop: always visible, no transform */
+  /* Desktop: always visible */
   .channels-sidebar {
-    transform: none;
+    left: 0;
   }
 
   /* Push view content right to make room for the sidebar */
