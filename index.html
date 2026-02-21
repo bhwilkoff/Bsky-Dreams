@@ -70,6 +70,14 @@
     <!-- Top Navigation Bar -->
     <header class="top-bar" role="banner">
       <div class="top-bar-inner">
+        <!-- Channels sidebar toggle (mobile only; hidden on desktop) -->
+        <button class="nav-btn channels-nav-btn" id="nav-channels-btn"
+                aria-label="Open channels sidebar" aria-expanded="false" aria-controls="channels-sidebar">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          <span class="nav-label">Channels</span>
+        </button>
         <button class="nav-logo-btn" id="nav-home-btn" aria-label="Bsky Dreams home">
           <span class="nav-logo-mark" aria-hidden="true">☁</span>
           <span class="nav-logo-text">Bsky Dreams</span>
@@ -101,6 +109,24 @@
         </button>
       </div>
     </header>
+
+    <!-- ============================================================
+         CHANNELS SIDEBAR (M11)
+    ============================================================ -->
+    <aside id="channels-sidebar" class="channels-sidebar" aria-label="Saved channels">
+      <div class="sidebar-header">
+        <h2 class="sidebar-heading">Channels</h2>
+        <button class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close channels sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <nav id="channels-list" class="channels-list" aria-label="Saved channel list">
+        <!-- Rendered by app.js -->
+      </nav>
+    </aside>
+
+    <!-- Mobile sidebar backdrop -->
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden aria-hidden="true"></div>
 
     <!-- ---- HOME FEED VIEW ---- -->
     <section id="view-feed" class="view" hidden aria-labelledby="feed-heading">

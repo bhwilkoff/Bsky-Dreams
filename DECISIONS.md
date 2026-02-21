@@ -490,6 +490,51 @@
 
 ---
 
+## Channels Sidebar — Fixed Position + CSS Offset Content
+
+- **Date:** 2026-02-21
+- **Decision:** The channels sidebar uses `position: fixed` (not in-flow) and the
+  main content area is offset with `padding-left: var(--sidebar-width)` on `.view`
+  and `top-bar-inner` on desktop (≥768px). On mobile the sidebar is a full-height
+  slide-in drawer with a 220px width.
+- **Rationale:** The fixed approach keeps the sidebar out of the scroll flow so it
+  never scrolls away. The CSS offset approach avoids restructuring the existing
+  HTML (which would require wrapping all view sections in a new flex container).
+  `--sidebar-width: 220px` as a CSS custom property makes the offset consistent
+  across `.view` padding and `.top-bar-inner` padding in a single source of truth.
+- **Alternatives considered:** Flex row layout wrapping sidebar + views (cleaner
+  structurally but requires HTML reorganization); no sidebar (feature-reducing).
+- **Trade-offs:** `padding-left` on `.view` means on very narrow desktop screens
+  (768–860px) the content area is narrower than the 640px `max-width` target. At
+  768px: 768px − 220px sidebar = 548px available — which is still readable. The
+  `max-width: 640px` on `.view-inner` will simply expand to fill 548px at that
+  breakpoint, since `max-width` only caps, not forces.
+- **Revisit if:** A bottom navigation bar is introduced for mobile, at which point
+  channels could be a full-page view instead.
+
+---
+
+## Channels Unread Checking — Load-on-Login, Throttled, Session-Once
+
+- **Date:** 2026-02-21
+- **Decision:** Unread counts for channels are checked once per login session via
+  `checkChannelUnreads()`, which runs as a background async task after `enterApp()`
+  resolves. It fetches the latest 5 posts per channel and counts posts with
+  `createdAt` > `channel.lastSeenAt`. API calls are spaced 700ms apart. No polling.
+- **Rationale:** Polling (e.g., every 60s) would consume battery and bandwidth even
+  when not interacting with channels. Checking once per login is predictable, low
+  cost, and matches user expectations (badge is fresh on load, not necessarily live).
+- **Alternatives considered:** Per-channel polling on a 60-second interval (too
+  expensive for many channels); WebSocket Firehose subscription (requires server
+  infrastructure); not checking at all (no unread counts).
+- **Trade-offs:** Badges may be stale by the time the user looks at them later in
+  the session. Acceptable for the current use case. If the user opens a channel and
+  then comes back, they won't see a fresh unread count until next page load.
+- **Revisit if:** Users find stale badges confusing; at that point add a manual
+  "Refresh channels" button or a lightweight polling interval.
+
+---
+
 ## Deferred Milestones — Paid API Dependencies
 
 - **Date:** 2026-02-21
