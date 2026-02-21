@@ -140,3 +140,152 @@
 - **Alternatives considered:** `setInterval` polling every 60 s (keeps badge fresh but burns resources); Firehose WebSocket (requires a relay server); Service Worker with background sync (complex, requires HTTPS and manifest).
 - **Trade-offs:** Badge count and list are stale until the user taps Refresh or re-opens the view. Acceptable for an MVP.
 - **Revisit if:** Users find the stale badge confusing; at that point add a 60-second polling interval with exponential back-off on error.
+
+---
+
+## URL Routing — Query-Parameter Based (Not Hash, Not Clean Paths)
+
+- **Date:** 2026-02-21
+- **Decision:** Use query-parameter routing (`?view=post&uri=...`) for all deep-linkable
+  views. Hash routing and clean-path routing were both considered.
+- **Rationale:** GitHub Pages always serves `index.html` from the root for the root
+  path, but a request to `/post/at://...` would return a 404 because GitHub Pages has
+  no server-side rewrite rules. Hash-based routing (`/#/post/...`) would work but
+  produces visually noisier URLs and is harder to parse for sharing. Query parameters
+  are served safely (the root `index.html` is always returned), are human-readable,
+  and parse cleanly via `URLSearchParams`. The 404-redirect trick (adding a `404.html`
+  that re-encodes the path as a query param) was also considered but adds a redirect
+  hop and complexity that isn't justified at current scale.
+- **Alternatives considered:** Hash routing (safe but ugly); clean paths with 404.html
+  redirect trick (cleaner URLs but adds complexity and a redirect hop).
+- **Trade-offs:** Query-param URLs are slightly longer than hash or clean-path URLs.
+  Acceptable for a tool focused on clarity over aesthetics.
+- **Revisit if:** A GitHub Actions deploy pipeline is added, at which point a proper
+  SPA with a clean-path 404 rewrite to `index.html` becomes trivial.
+
+---
+
+## Cross-Device Persistence — AT Protocol Repo as Sync Backend
+
+- **Date:** 2026-02-21
+- **Decision:** User preferences, saved channels, and collections are stored as a
+  JSON record in the user's own AT Protocol repository under the collection
+  `app.bsky-dreams.prefs` with rkey `self`. Written via `com.atproto.repo.putRecord`,
+  read via `com.atproto.repo.getRecord`. Falls back to localStorage if the record
+  doesn't exist yet.
+- **Rationale:** The zero-cost constraint rules out any traditional backend. The AT
+  Protocol repo is effectively a user-owned, hosted key-value store. Since the user
+  authenticates via app password to their own PDS (bsky.social), we already have
+  write access to their repo. This gives free, cross-device sync with no additional
+  infrastructure.
+- **Alternatives considered:** localStorage only (no cross-device sync); export/import
+  JSON file (manual and friction-heavy); Cloudflare Workers KV (free tier but adds
+  infrastructure and an account dependency).
+- **Trade-offs:** AT Protocol repo records are publicly readable by anyone who knows
+  the DID + collection + rkey. Preferences (saved searches, UI settings) are
+  non-sensitive, so this is acceptable. Users must be informed that their saved
+  channels/collections are technically public. Secrets (passwords, tokens) must
+  never be stored in this record.
+- **Revisit if:** BlueSky adds private/encrypted record support to the AT Protocol spec.
+
+---
+
+## Saved Searches Sidebar — Mobile Drawer Pattern
+
+- **Date:** 2026-02-21
+- **Decision:** The saved searches ("channels") sidebar uses a responsive drawer
+  pattern: pinned open on desktop (≥768px) alongside the main content area; on mobile
+  it is hidden and revealed via a hamburger/channel-list button in the nav bar,
+  sliding in as a full-height overlay drawer.
+- **Rationale:** A persistent sidebar on mobile would leave too little horizontal
+  space for content on typical phone widths (360–430px). The drawer pattern is the
+  standard mobile solution (used by Gmail, Slack, Discord). It preserves the
+  mobile-first single-column layout while making channels easily accessible.
+- **Alternatives considered:** Channels as a dedicated nav tab (simpler, but loses
+  the persistent-visibility benefit that makes Slack-style channels feel like live
+  workspaces); bottom sheet (less discoverable).
+- **Trade-offs:** Two layout modes (pinned vs. drawer) add CSS and JS complexity.
+  The breakpoint at 768px matches the existing responsive breakpoints.
+- **Revisit if:** A bottom navigation bar is introduced (e.g., for mobile tab bar),
+  at which point channels could become a tab instead.
+
+---
+
+## Bsky Dreams TV — Splash Screen for Audio Autoplay
+
+- **Date:** 2026-02-21
+- **Decision:** The TV view requires a deliberate "▶ Start TV" user interaction
+  before any video begins playing. This ensures the first video plays with audio
+  enabled. Subsequent videos in the queue play with audio automatically.
+- **Rationale:** Browsers (Chrome, Firefox, Safari) block audio autoplay until the
+  page has received a user gesture. If the TV view started playing immediately on
+  navigation, the first video would be muted and the user would have to hunt for an
+  unmute button — poor UX. A dedicated Start button makes the audio-enabled experience
+  reliable and intentional across all browsers.
+- **Alternatives considered:** Auto-play muted with a prominent unmute button
+  (standard for feed videos; less appropriate for a "TV" metaphor where sound is
+  the primary experience).
+- **Trade-offs:** One extra tap before content plays. Accepted as a worthwhile
+  trade-off for reliable audio.
+- **Revisit if:** The Web Audio API unlocking strategy (creating and resuming an
+  AudioContext on first nav-btn click) proves reliable enough across browsers.
+
+---
+
+## Network Constellation — Search-Seeded, D3.js, Served Locally
+
+- **Date:** 2026-02-21
+- **Decision:** The constellation visualization seeds from a user-entered search
+  term or hashtag (not the logged-in user's personal follow graph). D3.js v7 is
+  served locally as `/js/d3.min.js` (no CDN) to maintain the `script-src 'self'` CSP.
+- **Rationale:** A search-seeded graph is more broadly useful (any topic, any event)
+  and avoids the privacy implication of automatically mapping the user's own social
+  graph. D3.js is the standard library for force-directed graphs in the browser;
+  serving it locally is consistent with the existing pattern for HLS.js.
+- **Alternatives considered:** Seeding from the user's own network (more personal
+  but narrower use case); Vis.js or Cytoscape.js (heavier, less battle-tested for
+  force layouts); WebGL-based renderer (faster but much more complex).
+- **Trade-offs:** D3.js adds ~270 KB to the repo. Graph construction from 100 posts
+  is O(n) and fast; rendering >150 nodes may cause jank on low-end devices — cap
+  enforced at 150 nodes.
+- **Revisit if:** Performance testing shows the D3 force simulation is too slow on
+  mobile; at that point consider a canvas-based renderer or WebWorker offloading.
+
+---
+
+## Direct Messages — Native BlueSky Chat API, Separate Base URL
+
+- **Date:** 2026-02-21
+- **Decision:** DMs are implemented via BlueSky's native `chat.bsky.convo.*`
+  lexicon. This API uses a different base URL (`https://api.bsky.chat/xrpc/`) from
+  the main AT Protocol endpoints (`https://bsky.social/xrpc/`). The same `accessJwt`
+  is used for authentication. A dedicated `chatGet` / `chatPost` pair of helpers
+  will be added to `api.js` using the chat base URL. Only 1:1 conversations are
+  supported in the initial implementation.
+- **Rationale:** BlueSky's native chat is the only zero-cost, standards-compliant
+  way to implement real messaging. Building a custom messaging layer would require
+  a backend. The separate base URL is a minor inconvenience handled cleanly by a
+  second set of fetch helpers.
+- **Alternatives considered:** Custom messaging via AT Protocol repo records (not
+  real-time, not encrypted, not intended for chat); third-party messaging APIs
+  (cost, privacy, not tied to BlueSky identity).
+- **Trade-offs:** The `chat.bsky.convo.*` API is relatively new and documentation
+  is sparse. Breaking changes are possible. Monitor AT Protocol changelog.
+- **Revisit if:** Group chat becomes a priority or the chat API base URL changes.
+
+---
+
+## Deferred Milestones — Paid API Dependencies
+
+- **Date:** 2026-02-21
+- **Decision:** Three proposed milestones are deferred pending research into
+  zero-cost implementation paths: fact-checking (M27a), political bias analysis
+  (M27b), and AI-generated content detection (M27c).
+- **Rationale:** Each of these features, done well, requires a paid third-party API
+  (ClaimBuster, Ground News, Hive, etc.). The project's zero-cost constraint rules
+  these out at present. Partial implementations are possible (static datasets for
+  domain-level bias; C2PA metadata check for AI detection) and are noted in the
+  scratchpad, but full feature delivery is blocked on cost.
+- **Revisit if:** The user decides to fund specific API keys, or an open/free
+  alternative emerges (e.g., if BlueSky labelers provide standardized bias/AI labels).
+
