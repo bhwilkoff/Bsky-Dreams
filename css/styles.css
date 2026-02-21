@@ -73,6 +73,12 @@ body {
   /* Layout */
   --top-bar-height: 56px;
   --max-content-width: 640px;
+
+  /* Thread depth line colors (cycle through these per nesting level) */
+  --td-1: #0085ff;
+  --td-2: #9061f9;
+  --td-3: #06b6d4;
+  --td-4: #10b981;
 }
 
 /* ---- Utility ---- */
@@ -1056,32 +1062,27 @@ button {
   border-width: 2px;
 }
 
-/* Replies are nested with a left connector */
+/* Replies are nested with a depth-colored left border — no overlapping connectors */
 .reply-group {
-  position: relative;
-  padding-left: var(--space-lg);
+  margin-left: 12px;
+  margin-top: var(--space-xs);
+  padding-left: 12px;
+  border-left: 2px solid var(--thread-line-color, var(--color-border));
+  border-bottom-left-radius: 3px;
 }
 
-.reply-group::before {
-  content: '';
-  position: absolute;
-  left: 18px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--color-border);
-}
+/* Cycle through 4 depth colors */
+.reply-group[data-depth="1"],
+.reply-group[data-depth="5"] { --thread-line-color: var(--td-1); }
 
-.reply-thread-connector {
-  position: absolute;
-  left: 18px;
-  top: -8px;
-  width: 24px;
-  height: 24px;
-  border-left: 2px solid var(--color-border);
-  border-bottom: 2px solid var(--color-border);
-  border-bottom-left-radius: 8px;
-}
+.reply-group[data-depth="2"],
+.reply-group[data-depth="6"] { --thread-line-color: var(--td-2); }
+
+.reply-group[data-depth="3"],
+.reply-group[data-depth="7"] { --thread-line-color: var(--td-3); }
+
+.reply-group[data-depth="4"],
+.reply-group[data-depth="8"] { --thread-line-color: var(--td-4); }
 
 /* Collapse toggle for long reply threads */
 .collapse-toggle {
@@ -1120,6 +1121,92 @@ button {
   margin-top: var(--space-xl);
   padding-top: var(--space-lg);
   border-top: 1px solid var(--color-border);
+}
+
+/* ----------------------------------------------------------------
+   INLINE REPLY COMPOSE BOX (M9)
+---------------------------------------------------------------- */
+.inline-reply-box {
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  box-shadow: 0 0 0 3px var(--color-accent-light);
+}
+
+/* Mini read-only quote of the post being replied to */
+.inline-reply-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.inline-reply-quote-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.inline-reply-quote-content {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+
+.inline-reply-quote-author {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-right: 2px;
+}
+
+/* Compose row: user avatar + textarea */
+.inline-reply-compose {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.inline-reply-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.inline-reply-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-reply-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-sm);
+  gap: var(--space-sm);
+}
+
+.inline-reply-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.inline-reply-error {
+  font-size: 0.8125rem;
+  color: var(--color-error-text);
 }
 
 /* ================================================================

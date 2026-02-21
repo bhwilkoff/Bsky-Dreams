@@ -107,7 +107,7 @@
   ================================================================ */
   let currentView        = 'search';
   let activeFilter       = 'posts';
-  let currentThread      = null;  // { rootUri, rootCid, replyToUri, replyToCid, replyToHandle }
+  let currentThread      = null;  // { rootUri, rootCid, authorHandle }
   let ownProfile         = null;
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
@@ -1124,10 +1124,10 @@
       });
     }
 
-    // Reply button → open thread and focus reply area
+    // Reply button → open thread (inline reply available once inside)
     actions.querySelector('.reply-action-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      openThread(targetUri, targetCid, author.handle, { focusReply: true });
+      openThread(targetUri, targetCid, author.handle);
     });
 
     // Like button
@@ -1557,21 +1557,15 @@
       const data = await API.getPostThread(uri);
       renderThread(data.thread, handle);
       currentThread = {
-        rootUri:       uri,
-        rootCid:       cid,
-        replyToUri:    uri,
-        replyToCid:    cid,
-        replyToHandle: handle,
+        rootUri:      uri,
+        rootCid:      cid,
+        authorHandle: handle,
       };
-      setupReplyArea(uri, cid, handle);
       // Switch to thread view without adding a second history entry;
       // push the thread state ourselves so Back/Forward knows the URI.
       showView('thread', true);
       if (!opts.fromHistory) {
         history.pushState({ view: 'thread', uri, cid, handle }, '');
-      }
-      if (opts.focusReply) {
-        setTimeout(() => replyText.focus(), 150);
       }
     } catch (err) {
       threadContent.innerHTML = `<div class="feed-empty"><p>Could not load thread: ${escHtml(err.message)}</p></div>`;
@@ -1602,13 +1596,11 @@
 
     const card = buildPostCard(node.post, { isRoot });
 
-    // Make reply button set this post as the reply target
+    // Make reply button open the inline reply compose box under this card
     const replyBtn = card.querySelector('.reply-action-btn');
     replyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      setupReplyArea(node.post.uri, node.post.cid, node.post.author.handle);
-      threadReplyArea.hidden = false;
-      replyText.focus();
+      expandInlineReply(card, node.post);
     }, { capture: true }); // override the existing listener
 
     container.appendChild(card);
@@ -1635,10 +1627,7 @@
 
       const group = document.createElement('div');
       group.className = 'reply-group';
-
-      const connector = document.createElement('div');
-      connector.className = 'reply-thread-connector';
-      group.appendChild(connector);
+      group.dataset.depth = depth + 1;
 
       // Show up to 5 replies; collapse the rest behind a toggle
       const MAX_VISIBLE = 5;
@@ -1715,6 +1704,160 @@
       hideLoading();
     }
   });
+
+  /* ================================================================
+     INLINE REPLY COMPOSE (M9)
+  ================================================================ */
+  /**
+   * Expand an inline reply compose box directly after `postCard`.
+   * Calling again on the same card toggles it closed.
+   *
+   * @param {HTMLElement} postCard  - the post card element to reply to
+   * @param {object}      post      - the AT Protocol PostView being replied to
+   */
+  function expandInlineReply(postCard, post) {
+    // Close any existing inline reply box
+    const existing = document.querySelector('.inline-reply-box');
+    if (existing) {
+      const samePost = existing.dataset.replyTo === post.uri;
+      existing.remove();
+      if (samePost) return; // toggle closed if same card clicked again
+    }
+
+    const author = post.author  || {};
+    const record = post.record  || {};
+    const text   = record.text  || '';
+
+    const box = document.createElement('div');
+    box.className     = 'inline-reply-box';
+    box.dataset.replyTo = post.uri;
+
+    // ---- Mini quote of the parent post ----
+    const quoteEl = document.createElement('div');
+    quoteEl.className = 'inline-reply-quote';
+
+    const quoteAv = document.createElement('img');
+    quoteAv.src       = author.avatar || '';
+    quoteAv.alt       = '';
+    quoteAv.className = 'inline-reply-quote-avatar';
+    quoteEl.appendChild(quoteAv);
+
+    const quoteContent = document.createElement('div');
+    quoteContent.className = 'inline-reply-quote-content';
+
+    const quoteAuthor = document.createElement('span');
+    quoteAuthor.className   = 'inline-reply-quote-author';
+    quoteAuthor.textContent = `@${author.handle || ''}`;
+
+    const quoteSnippet  = text.length > 120 ? text.slice(0, 120) + '…' : text;
+    const quoteText     = document.createTextNode(' · ' + quoteSnippet);
+    quoteContent.appendChild(quoteAuthor);
+    quoteContent.appendChild(quoteText);
+    quoteEl.appendChild(quoteContent);
+    box.appendChild(quoteEl);
+
+    // ---- Compose row ----
+    const composeEl = document.createElement('div');
+    composeEl.className = 'inline-reply-compose';
+
+    const myAv = document.createElement('img');
+    myAv.src       = ownProfile?.avatar || '';
+    myAv.alt       = '';
+    myAv.className = 'inline-reply-user-avatar';
+    composeEl.appendChild(myAv);
+
+    const body = document.createElement('div');
+    body.className = 'inline-reply-body';
+
+    const textarea = document.createElement('textarea');
+    textarea.className   = 'compose-textarea inline-reply-textarea';
+    textarea.placeholder = `Reply to @${author.handle || ''}…`;
+    textarea.maxLength   = 300;
+    textarea.rows        = 3;
+    textarea.setAttribute('aria-label', 'Reply text');
+    body.appendChild(textarea);
+
+    const footer = document.createElement('div');
+    footer.className = 'inline-reply-footer';
+
+    const countSpan = document.createElement('span');
+    countSpan.className   = 'char-count';
+    countSpan.textContent = '300';
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'inline-reply-actions';
+
+    const errorEl = document.createElement('div');
+    errorEl.className = 'inline-reply-error';
+    errorEl.hidden    = true;
+    errorEl.setAttribute('role', 'alert');
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type      = 'button';
+    cancelBtn.className = 'btn btn-ghost';
+    cancelBtn.textContent = 'Cancel';
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type      = 'button';
+    submitBtn.className = 'btn btn-primary';
+    submitBtn.textContent = 'Reply';
+
+    actionsEl.appendChild(errorEl);
+    actionsEl.appendChild(cancelBtn);
+    actionsEl.appendChild(submitBtn);
+    footer.appendChild(countSpan);
+    footer.appendChild(actionsEl);
+    body.appendChild(footer);
+    composeEl.appendChild(body);
+    box.appendChild(composeEl);
+
+    // Insert inline after the post card
+    postCard.insertAdjacentElement('afterend', box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    textarea.focus();
+
+    // ---- Event handlers ----
+    textarea.addEventListener('input', () => {
+      const remaining = 300 - textarea.value.length;
+      countSpan.textContent = remaining;
+      countSpan.style.color = remaining < 20 ? 'var(--color-error-text)' : '';
+    });
+
+    cancelBtn.addEventListener('click', () => box.remove());
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') box.remove();
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      const replyText = textarea.value.trim();
+      if (!replyText) return;
+
+      errorEl.hidden   = true;
+      submitBtn.disabled    = true;
+      submitBtn.textContent = 'Posting…';
+
+      const replyRef = {
+        root:   { uri: currentThread.rootUri, cid: currentThread.rootCid },
+        parent: { uri: post.uri,              cid: post.cid },
+      };
+
+      try {
+        await API.createPost(replyText, replyRef);
+        box.remove();
+        showLoading();
+        const data = await API.getPostThread(currentThread.rootUri);
+        renderThread(data.thread, currentThread.authorHandle);
+      } catch (err) {
+        errorEl.textContent = err.message || 'Failed to post reply.';
+        errorEl.hidden      = false;
+        submitBtn.disabled    = false;
+        submitBtn.textContent = 'Reply';
+      } finally {
+        hideLoading();
+      }
+    });
+  }
 
   /* ================================================================
      COMPOSE — IMAGE ATTACHMENT
