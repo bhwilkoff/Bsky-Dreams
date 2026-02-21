@@ -387,6 +387,62 @@
 
 ---
 
+## Thread Nesting — Depth-Colored Left Border, No Connector Element
+
+- **Date:** 2026-02-21
+- **Decision:** Replace the old absolute-positioned `.reply-thread-connector` L-shaped
+  element (which used `top: -8px` to overlap into the parent post card) with a clean
+  `border-left` on the `.reply-group` element itself. The border color is driven by a
+  CSS custom property `--thread-line-color` set via `[data-depth]` attribute selectors.
+  Five cycling colors (blue → violet → cyan → emerald) distinguish nesting levels.
+  `renderThread` now sets `group.dataset.depth = depth + 1` on each reply group div.
+- **Rationale:** The old connector element's `top: -8px` caused it to visually intrude
+  into the post card above, making the thread tree look sloppy — post card outlines
+  and the connector lines conflicted with no clear visual separation. Using `border-left`
+  on the reply-group container ties the visual connector directly to the grouped content
+  rather than requiring an absolutely-positioned child. No overflow, no z-index issues,
+  no overlap with post card borders.
+- **Alternatives considered:** Keeping the pseudo-element (`::before`) approach but
+  adjusting geometry (tried; the overlap at the top remains hard to eliminate without
+  either leaving a visual gap or covering the parent card's bottom border);
+  avatar-column threading like Twitter/X (would require restructuring the post card
+  layout to expose a consistent avatar column position across all card variants).
+- **Trade-offs:** The left border of `.reply-group` starts at the very top of the group
+  (top of the first reply card), with no visual "flow line" emerging from the parent
+  card's avatar. This is visually clean but slightly less explicit than the L-connector
+  metaphor. Depth colors compensate by making hierarchy immediately readable.
+- **Revisit if:** A more elaborate visual tree (avatar-threaded like X) becomes a
+  design priority; at that point refactor post card layout to expose an avatar column.
+
+---
+
+## Inline Reply Compose — Context-Preserving, Toggle, Dismiss
+
+- **Date:** 2026-02-21
+- **Decision:** The global bottom-of-page reply form (`#thread-reply-area`) is
+  replaced by an inline compose box inserted directly after the target post card in
+  the DOM via `expandInlineReply(postCard, post)`. The old form remains in the HTML
+  but is never shown. Only one inline box can exist at a time; opening a second closes
+  the first; clicking Reply on the same card again toggles it closed.
+- **Rationale:** The previous flow (reply button → scroll to bottom of thread → type
+  reply) forced users to lose visual context of the post they were replying to. The
+  inline approach keeps the parent post visible immediately above the textarea. This
+  is the standard pattern on modern social platforms (Mastodon, GitHub issues) and is
+  especially important in deep threads where the reply target may be far from the root.
+- **Alternatives considered:** A fixed/sticky overlay panel at the bottom of the
+  viewport showing the parent post preview (preserves context but covers thread
+  content); a modal dialog (focus trap, harder to dismiss accidentally);
+  keeping the bottom reply area but adding a "jump back to reply" anchor (user still
+  loses visual context of the reply target mid-scroll).
+- **Trade-offs:** The inline box is inserted into the thread content DOM, which means
+  reloading the thread (after a successful post) destroys and rebuilds the DOM, closing
+  the box. This is acceptable — the post was just submitted, so there is no unsaved
+  draft to lose.
+- **Revisit if:** Users want to attach images to replies from the thread view — at that
+  point the inline box needs an image attachment flow similar to the Compose screen.
+
+---
+
 ## Deferred Milestones — Paid API Dependencies
 
 - **Date:** 2026-02-21

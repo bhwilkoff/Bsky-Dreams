@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes.
+The app is live and functional. Milestones 1–10 are complete, plus the repost/quote-post rendering fixes, thread nesting visual polish, and Milestone 9 (Inline Reply Compose).
 
 ## Completed Milestones
 
@@ -92,29 +92,44 @@ The app is live and functional. Milestones 1–10 are complete, plus the repost/
   "2 / 4" counter; keyboard ← → arrows; touch swipe (40px threshold).
 - `buildImageGrid` passes the full image array as a shared carousel payload.
 
+### Thread Nesting Visual Polish ✅
+- **Depth-colored connector lines**: Replaced the old single-color absolute-
+  positioned vertical line (which overlapped post card borders) with a CSS
+  `border-left` on each `.reply-group` element. Five cycling colors keyed to
+  `data-depth` attributes (blue → violet → cyan → emerald → repeat).
+- **No more awkward overlap**: Removed the `.reply-thread-connector` absolutely-
+  positioned L-shaped element that had `top: -8px` overflow into parent cards.
+  The colored left border of `.reply-group` is the visual connector — no
+  separate element needed.
+- **`data-depth` on reply groups**: `renderThread` now sets `group.dataset.depth`
+  to `depth + 1` on each `reply-group` div, enabling depth-specific CSS rules.
+
+### Milestone 9: Inline Reply Compose ✅
+- **Inline compose box**: Clicking "Reply" on any post in the thread view now
+  expands a compact compose box directly beneath that post card via
+  `expandInlineReply(postCard, post)`. The previous bottom-of-page reply area
+  is no longer shown.
+- **Mini parent quote**: The reply box shows a small read-only preview (avatar +
+  @handle + text snippet) of the post being replied to, so context is always
+  visible while composing.
+- **Toggle behaviour**: Clicking Reply on the same post a second time closes the
+  inline box. Opening a new one closes the previous one.
+- **Dismiss**: Cancel button or Escape key closes the box without posting.
+- **Mobile**: The box scrolls into view automatically on open via
+  `scrollIntoView({ behavior: 'smooth', block: 'nearest' })`.
+- **Char count**: Live remaining-character counter turns red below 20 chars.
+- **Submit**: Posts via `API.createPost()`, then reloads the thread in-place.
+  Error message displayed inline if posting fails.
+- **`currentThread` simplified**: Now stores only `{ rootUri, rootCid,
+  authorHandle }` — the old `replyToUri/Cid/Handle` fields that fed the bottom
+  form are no longer needed.
+
 ---
 
 ## Upcoming Milestones
 
 Milestones are ordered roughly by interdependency and implementation complexity.
 Items marked **[RESEARCH]** need API/cost investigation before work begins.
-
----
-
-### Milestone 9: Inline Reply Compose (Context-Preserving)
-
-**Goal:** Let users reply without losing sight of the post they're replying to.
-
-- **Inline compose box**: Clicking "Reply" on any post in the thread view expands
-  an inline compose textarea *directly beneath that post card* rather than scrolling
-  to the bottom. The post being replied to stays visible above the input.
-- **Sticky post preview**: The post being replied to is shown as a small read-only
-  quote above the textarea so it's always in view while writing.
-- **Dismiss**: Clicking elsewhere or pressing Escape collapses the inline reply box.
-- **Mobile**: The inline box is full-width and scrolls into view automatically
-  (`scrollIntoView({ behavior: 'smooth', block: 'nearest' })`).
-- **Bottom reply area**: The global reply-at-bottom area (currently the only option)
-  is removed; all replies go through the inline flow.
 
 ---
 
@@ -481,8 +496,8 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 9 — Inline Reply Compose** (context-preserving reply flow)
-2. **Milestone 19 — Deep-Link URL Routing** (enables shareable links; unblocks other features)
-3. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
-4. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
-5. **Milestone 21 — Reporting Bad Actors** (moderation integration)
+1. **Milestone 19 — Deep-Link URL Routing** (enables shareable links; unblocks other features)
+2. **Milestone 11 — Saved Searches / Channels** (sidebar + unread counts)
+3. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
+4. **Milestone 21 — Reporting Bad Actors** (moderation integration)
+5. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)
