@@ -847,6 +847,17 @@ button {
   color: #17bf63;
 }
 
+/* Share / copy-link button — pushed to the far right of the actions row */
+.share-action-btn {
+  margin-left: auto;
+  color: var(--color-text-light);
+}
+
+.share-action-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
 .action-count {
   font-variant-numeric: tabular-nums;
 }
