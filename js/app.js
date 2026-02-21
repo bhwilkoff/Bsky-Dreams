@@ -591,10 +591,17 @@
         const by = item.reason.by || {};
         const bar = document.createElement('div');
         bar.className = 'feed-repost-bar';
-        bar.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          Reposted by ${escHtml(by.displayName || by.handle || 'someone')}
-        `;
+        bar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+        if (by.avatar) {
+          const avatar = document.createElement('img');
+          avatar.src       = by.avatar;
+          avatar.alt       = '';
+          avatar.className = 'feed-repost-avatar';
+          bar.appendChild(avatar);
+        }
+        const label = document.createElement('span');
+        label.textContent = `Reposted by ${by.displayName || by.handle || 'someone'}`;
+        bar.appendChild(label);
         wrapper.appendChild(bar);
       }
 
@@ -980,7 +987,7 @@
       });
     }
 
-    // Embedded media — images, video, external links, and quoted+media
+    // Embedded media — images, video, external links, and quoted posts
     const embedType = embed.$type;
     if (embedType === 'app.bsky.embed.images#view' && embed.images?.length) {
       card.appendChild(buildImageGrid(embed.images));
@@ -989,7 +996,11 @@
     } else if (embedType === 'app.bsky.embed.external#view' && embed.external) {
       const extEl = buildExternalEmbed(embed.external);
       if (extEl) card.appendChild(extEl);
+    } else if (embedType === 'app.bsky.embed.record#view') {
+      // Pure quote-post (no attached media)
+      card.appendChild(buildQuotedPost(embed.record));
     } else if (embedType === 'app.bsky.embed.recordWithMedia#view') {
+      // Quoted post with attached media — render media first, then the quoted post
       const media = embed.media || {};
       if (media.$type === 'app.bsky.embed.images#view' && media.images?.length) {
         card.appendChild(buildImageGrid(media.images));
@@ -998,6 +1009,10 @@
       } else if (media.$type === 'app.bsky.embed.external#view' && media.external) {
         const extEl = buildExternalEmbed(media.external);
         if (extEl) card.appendChild(extEl);
+      }
+      // embed.record is app.bsky.embed.record#view; its .record is the viewRecord
+      if (embed.record?.record) {
+        card.appendChild(buildQuotedPost(embed.record.record));
       }
     }
 
@@ -1317,6 +1332,74 @@
 
     card.appendChild(info);
     return card;
+  }
+
+  /* ================================================================
+     QUOTED POST CARD
+  ================================================================ */
+  /**
+   * Build a compact embedded card for a quoted post.
+   * @param {object} record - app.bsky.embed.record#viewRecord
+   */
+  function buildQuotedPost(record) {
+    const wrap = document.createElement('div');
+    wrap.className = 'quoted-post-card';
+    wrap.setAttribute('role', 'button');
+    wrap.setAttribute('tabindex', '0');
+
+    if (!record || !record.uri) {
+      wrap.textContent = '[Quoted post unavailable]';
+      wrap.classList.add('quoted-post-unavailable');
+      return wrap;
+    }
+
+    const author = record.author || {};
+    const value  = record.value  || {};
+
+    // Author row: avatar + display name + handle
+    const header = document.createElement('div');
+    header.className = 'quoted-post-header';
+
+    const avatar = document.createElement('img');
+    avatar.src       = author.avatar || '';
+    avatar.alt       = '';
+    avatar.className = 'quoted-post-avatar';
+    avatar.loading   = 'lazy';
+    header.appendChild(avatar);
+
+    const name = document.createElement('span');
+    name.className   = 'quoted-post-author';
+    name.textContent = author.displayName || author.handle || '';
+    header.appendChild(name);
+
+    const handle = document.createElement('span');
+    handle.className   = 'quoted-post-handle';
+    handle.textContent = `@${author.handle || ''}`;
+    header.appendChild(handle);
+
+    wrap.appendChild(header);
+
+    if (value.text) {
+      const text = document.createElement('p');
+      text.className = 'quoted-post-text';
+      text.textContent = value.text;
+      wrap.appendChild(text);
+    }
+
+    // Click/keyboard → open THAT post's thread (not the outer post)
+    const openQuoted = (e) => {
+      e.stopPropagation();
+      openThread(record.uri, record.cid, author.handle);
+    };
+    wrap.addEventListener('click', openQuoted);
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openQuoted(e);
+      }
+    });
+
+    return wrap;
   }
 
   /* ================================================================
