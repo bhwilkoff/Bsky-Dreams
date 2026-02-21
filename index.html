@@ -343,14 +343,27 @@
   </div>
 
   <!-- ============================================================
-       IMAGE LIGHTBOX
+       IMAGE LIGHTBOX (carousel-capable)
   ============================================================ -->
   <div id="image-lightbox" class="image-lightbox" hidden role="dialog" aria-modal="true" aria-label="Image viewer">
     <button class="lightbox-close" id="lightbox-close" aria-label="Close image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
+    <!-- Prev / Next arrows (hidden when only 1 image) -->
+    <button class="lightbox-arrow lightbox-arrow-prev" id="lightbox-prev" aria-label="Previous image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="24" height="24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="lightbox-arrow lightbox-arrow-next" id="lightbox-next" aria-label="Next image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="24" height="24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
     <img id="lightbox-img" src="" alt="" class="lightbox-img">
-    <p id="lightbox-caption" class="lightbox-caption"></p>
+    <!-- Position indicator and caption -->
+    <div class="lightbox-footer">
+      <span id="lightbox-counter" class="lightbox-counter"></span>
+      <p id="lightbox-caption" class="lightbox-caption"></p>
+      <!-- Dot indicators -->
+      <div id="lightbox-dots" class="lightbox-dots"></div>
+    </div>
   </div>
 
   <!-- ============================================================

@@ -86,6 +86,10 @@
   const imageLightbox    = $('image-lightbox');
   const lightboxImg      = $('lightbox-img');
   const lightboxCaption  = $('lightbox-caption');
+  const lightboxCounter  = $('lightbox-counter');
+  const lightboxDots     = $('lightbox-dots');
+  const lightboxPrevBtn  = $('lightbox-prev');
+  const lightboxNextBtn  = $('lightbox-next');
   const lightboxCloseBtn = $('lightbox-close');
 
   const adultToggle      = $('hide-adult-toggle');
@@ -153,33 +157,92 @@
   }
 
   /* ================================================================
-     IMAGE LIGHTBOX
+     IMAGE LIGHTBOX — carousel-capable
   ================================================================ */
-  function openLightbox(src, alt) {
-    lightboxImg.src              = src;
-    lightboxImg.alt              = alt || '';
-    lightboxCaption.textContent  = alt || '';
-    lightboxCaption.hidden       = !alt;
+  let lightboxImages  = [];   // [{ src, alt }, ...]
+  let lightboxIndex   = 0;
+  let lightboxTouchX  = null; // for swipe detection
+
+  function openLightbox(images, startIndex = 0) {
+    // Accept either an array of {src,alt} objects or a single {src,alt}
+    lightboxImages = Array.isArray(images) ? images : [images];
+    lightboxIndex  = Math.max(0, Math.min(startIndex, lightboxImages.length - 1));
+
+    renderLightboxSlide();
     imageLightbox.hidden         = false;
     document.body.style.overflow = 'hidden';
     lightboxCloseBtn.focus();
   }
 
+  function renderLightboxSlide() {
+    const { src, alt } = lightboxImages[lightboxIndex];
+    const total = lightboxImages.length;
+
+    lightboxImg.src             = src;
+    lightboxImg.alt             = alt || '';
+    lightboxCaption.textContent = alt || '';
+    lightboxCaption.hidden      = !alt;
+
+    // Counter: "2 / 4"
+    lightboxCounter.textContent = total > 1 ? `${lightboxIndex + 1} / ${total}` : '';
+    lightboxCounter.hidden      = total <= 1;
+
+    // Arrow buttons
+    lightboxPrevBtn.hidden = total <= 1;
+    lightboxNextBtn.hidden = total <= 1;
+
+    // Dot indicators
+    lightboxDots.innerHTML = '';
+    if (total > 1) {
+      lightboxImages.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'lightbox-dot' + (i === lightboxIndex ? ' active' : '');
+        dot.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(i); });
+        lightboxDots.appendChild(dot);
+      });
+    }
+  }
+
+  function goLightbox(index) {
+    lightboxIndex = (index + lightboxImages.length) % lightboxImages.length;
+    renderLightboxSlide();
+  }
+
   function closeLightbox() {
     imageLightbox.hidden         = true;
     lightboxImg.src              = '';
+    lightboxImages               = [];
     document.body.style.overflow = '';
   }
 
   lightboxCloseBtn.addEventListener('click', closeLightbox);
+  lightboxPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex - 1); });
+  lightboxNextBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex + 1); });
 
   imageLightbox.addEventListener('click', (e) => {
     if (e.target === imageLightbox) closeLightbox();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !imageLightbox.hidden) closeLightbox();
+    if (imageLightbox.hidden) return;
+    if (e.key === 'Escape')      closeLightbox();
+    if (e.key === 'ArrowLeft')   goLightbox(lightboxIndex - 1);
+    if (e.key === 'ArrowRight')  goLightbox(lightboxIndex + 1);
   });
+
+  // Touch swipe support
+  imageLightbox.addEventListener('touchstart', (e) => {
+    lightboxTouchX = e.touches[0].clientX;
+  }, { passive: true });
+
+  imageLightbox.addEventListener('touchend', (e) => {
+    if (lightboxTouchX === null) return;
+    const dx = e.changedTouches[0].clientX - lightboxTouchX;
+    lightboxTouchX = null;
+    if (Math.abs(dx) < 40) return; // ignore small swipes
+    if (dx < 0) goLightbox(lightboxIndex + 1);  // swipe left → next
+    else         goLightbox(lightboxIndex - 1);  // swipe right → prev
+  }, { passive: true });
 
   /* ================================================================
      INIT — check stored session on page load
@@ -591,26 +654,34 @@
         const by = item.reason.by || {};
         const bar = document.createElement('div');
         bar.className = 'feed-repost-bar';
-        bar.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          Reposted by ${escHtml(by.displayName || by.handle || 'someone')}
-        `;
+        bar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+        if (by.avatar) {
+          const avatar = document.createElement('img');
+          avatar.src       = by.avatar;
+          avatar.alt       = '';
+          avatar.className = 'feed-repost-avatar';
+          bar.appendChild(avatar);
+        }
+        const label = document.createElement('span');
+        label.textContent = `Reposted by ${by.displayName || by.handle || 'someone'}`;
+        bar.appendChild(label);
         wrapper.appendChild(bar);
       }
 
-      // Reply context
+      // Reply context — compact parent preview card
+      const rootUri = item.reply?.root?.uri || null;
+      const rootCid = item.reply?.root?.cid || null;
       if (item.reply?.parent?.author) {
-        const parentAuthor = item.reply.parent.author;
-        const bar = document.createElement('div');
-        bar.className = 'feed-reply-bar';
-        bar.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Replying to @${escHtml(parentAuthor.handle || '')}
-        `;
-        wrapper.appendChild(bar);
+        const preview = buildParentPreview(item.reply.parent, rootUri, rootCid);
+        wrapper.appendChild(preview);
       }
 
-      const card = buildPostCard(post, { clickable: true });
+      // Root-first navigation: when this post is a reply, clicking opens from the root
+      const card = buildPostCard(post, {
+        clickable: true,
+        openUri: rootUri || post.uri,
+        openCid: rootCid || post.cid,
+      });
       wrapper.appendChild(card);
       container.appendChild(wrapper);
     });
@@ -980,7 +1051,7 @@
       });
     }
 
-    // Embedded media — images, video, external links, and quoted+media
+    // Embedded media — images, video, external links, and quoted posts
     const embedType = embed.$type;
     if (embedType === 'app.bsky.embed.images#view' && embed.images?.length) {
       card.appendChild(buildImageGrid(embed.images));
@@ -989,7 +1060,11 @@
     } else if (embedType === 'app.bsky.embed.external#view' && embed.external) {
       const extEl = buildExternalEmbed(embed.external);
       if (extEl) card.appendChild(extEl);
+    } else if (embedType === 'app.bsky.embed.record#view') {
+      // Pure quote-post (no attached media)
+      card.appendChild(buildQuotedPost(embed.record));
     } else if (embedType === 'app.bsky.embed.recordWithMedia#view') {
+      // Quoted post with attached media — render media first, then the quoted post
       const media = embed.media || {};
       if (media.$type === 'app.bsky.embed.images#view' && media.images?.length) {
         card.appendChild(buildImageGrid(media.images));
@@ -998,6 +1073,10 @@
       } else if (media.$type === 'app.bsky.embed.external#view' && media.external) {
         const extEl = buildExternalEmbed(media.external);
         if (extEl) card.appendChild(extEl);
+      }
+      // embed.record is app.bsky.embed.record#view; its .record is the viewRecord
+      if (embed.record?.record) {
+        card.appendChild(buildQuotedPost(embed.record.record));
       }
     }
 
@@ -1025,6 +1104,10 @@
     card.appendChild(actions);
 
     // Wire up click to open thread
+    // opts.openUri/openCid allow feed items that are replies to navigate to the root
+    const targetUri = opts.openUri || post.uri;
+    const targetCid = opts.openCid || post.cid;
+
     if (opts.clickable) {
       card.addEventListener('click', (e) => {
         // Hashtag links → trigger search instead of following href="#"
@@ -1035,16 +1118,16 @@
           triggerSearch(`#${hashEl.dataset.hashtag}`);
           return;
         }
-        // Regular links and action buttons → let them handle their own events
-        if (e.target.closest('a') || e.target.closest('button')) return;
-        openThread(post.uri, post.cid, author.handle);
+        // Regular links, action buttons, and quoted post cards → let them handle their own events
+        if (e.target.closest('a') || e.target.closest('button') || e.target.closest('.quoted-post-card')) return;
+        openThread(targetUri, targetCid, author.handle);
       });
     }
 
     // Reply button → open thread and focus reply area
     actions.querySelector('.reply-action-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      openThread(post.uri, post.cid, author.handle, { focusReply: true });
+      openThread(targetUri, targetCid, author.handle, { focusReply: true });
     });
 
     // Like button
@@ -1116,10 +1199,17 @@
      IMAGE GRID
   ================================================================ */
   function buildImageGrid(images) {
-    const grid = document.createElement('div');
-    grid.className = `post-images count-${Math.min(images.length, 4)}`;
+    const capped = images.slice(0, 4);
+    const grid   = document.createElement('div');
+    grid.className = `post-images count-${capped.length}`;
 
-    images.slice(0, 4).forEach((img) => {
+    // Build a shared lightbox payload for carousel navigation
+    const lightboxPayload = capped.map((img) => ({
+      src: img.fullsize || img.thumb || '',
+      alt: img.alt || '',
+    }));
+
+    capped.forEach((img, idx) => {
       const wrap = document.createElement('div');
       wrap.className = 'post-image-wrap';
       wrap.setAttribute('role', 'button');
@@ -1140,17 +1230,16 @@
         wrap.appendChild(altEl);
       }
 
-      // Click/keyboard to open full-size in lightbox
-      const fullsrc = img.fullsize || img.thumb || '';
+      // Click/keyboard → open lightbox carousel starting at this image
       wrap.addEventListener('click', (e) => {
         e.stopPropagation();
-        openLightbox(fullsrc, img.alt || '');
+        openLightbox(lightboxPayload, idx);
       });
       wrap.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           e.stopPropagation();
-          openLightbox(fullsrc, img.alt || '');
+          openLightbox(lightboxPayload, idx);
         }
       });
 
@@ -1320,6 +1409,146 @@
   }
 
   /* ================================================================
+     PARENT POST PREVIEW (feed reply context)
+  ================================================================ */
+  /**
+   * Build a compact preview of the parent post for a reply in the feed.
+   * Clicking opens the thread from the root post.
+   * @param {object} parentPost - PostView of the immediate parent
+   * @param {string|null} rootUri - AT URI of the thread root (for navigation)
+   * @param {string|null} rootCid
+   */
+  function buildParentPreview(parentPost, rootUri, rootCid) {
+    const wrap = document.createElement('div');
+    wrap.className = 'feed-parent-preview';
+
+    // "Replying to" label
+    const label = document.createElement('div');
+    label.className = 'feed-reply-label';
+    label.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    const labelText = document.createElement('span');
+    labelText.textContent = 'Replying to';
+    label.appendChild(labelText);
+    wrap.appendChild(label);
+
+    // Parent post compact card
+    const card = document.createElement('div');
+    card.className = 'feed-parent-card';
+
+    const pAuthor = parentPost.author || {};
+    const pText   = parentPost.record?.text || '';
+
+    const header = document.createElement('div');
+    header.className = 'feed-parent-header';
+
+    if (pAuthor.avatar) {
+      const av = document.createElement('img');
+      av.src       = pAuthor.avatar;
+      av.alt       = '';
+      av.className = 'feed-parent-avatar';
+      header.appendChild(av);
+    }
+
+    const authorName = document.createElement('span');
+    authorName.className   = 'feed-parent-author';
+    authorName.textContent = pAuthor.displayName || pAuthor.handle || '';
+    header.appendChild(authorName);
+
+    const authorHandle = document.createElement('span');
+    authorHandle.className   = 'feed-parent-handle';
+    authorHandle.textContent = `@${pAuthor.handle || ''}`;
+    header.appendChild(authorHandle);
+
+    card.appendChild(header);
+
+    if (pText) {
+      const textEl = document.createElement('p');
+      textEl.className   = 'feed-parent-text';
+      textEl.textContent = pText;
+      card.appendChild(textEl);
+    }
+
+    // Click opens thread from root (or parent if no root)
+    const navUri = rootUri || parentPost.uri;
+    const navCid = rootCid || parentPost.cid;
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openThread(navUri, navCid, pAuthor.handle);
+    });
+
+    wrap.appendChild(card);
+    return wrap;
+  }
+
+  /* ================================================================
+     QUOTED POST CARD
+  ================================================================ */
+  /**
+   * Build a compact embedded card for a quoted post.
+   * @param {object} record - app.bsky.embed.record#viewRecord
+   */
+  function buildQuotedPost(record) {
+    const wrap = document.createElement('div');
+    wrap.className = 'quoted-post-card';
+    wrap.setAttribute('role', 'button');
+    wrap.setAttribute('tabindex', '0');
+
+    if (!record || !record.uri) {
+      wrap.textContent = '[Quoted post unavailable]';
+      wrap.classList.add('quoted-post-unavailable');
+      return wrap;
+    }
+
+    const author = record.author || {};
+    const value  = record.value  || {};
+
+    // Author row: avatar + display name + handle
+    const header = document.createElement('div');
+    header.className = 'quoted-post-header';
+
+    const avatar = document.createElement('img');
+    avatar.src       = author.avatar || '';
+    avatar.alt       = '';
+    avatar.className = 'quoted-post-avatar';
+    avatar.loading   = 'lazy';
+    header.appendChild(avatar);
+
+    const name = document.createElement('span');
+    name.className   = 'quoted-post-author';
+    name.textContent = author.displayName || author.handle || '';
+    header.appendChild(name);
+
+    const handle = document.createElement('span');
+    handle.className   = 'quoted-post-handle';
+    handle.textContent = `@${author.handle || ''}`;
+    header.appendChild(handle);
+
+    wrap.appendChild(header);
+
+    if (value.text) {
+      const text = document.createElement('p');
+      text.className = 'quoted-post-text';
+      text.textContent = value.text;
+      wrap.appendChild(text);
+    }
+
+    // Click/keyboard → open THAT post's thread (not the outer post)
+    const openQuoted = (e) => {
+      e.stopPropagation();
+      openThread(record.uri, record.cid, author.handle);
+    };
+    wrap.addEventListener('click', openQuoted);
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openQuoted(e);
+      }
+    });
+
+    return wrap;
+  }
+
+  /* ================================================================
      THREAD VIEW
   ================================================================ */
   async function openThread(uri, cid, handle, opts = {}) {
@@ -1357,11 +1586,13 @@
 
   /**
    * Recursively render a thread node returned by getPostThread.
-   * @param {object} node  - thread node ({ post, replies, ... })
-   * @param {HTMLElement} container - target container
-   * @param {boolean} isRoot
+   * @param {object}      node        - thread node ({ post, replies, ... })
+   * @param {string}      authorHandle
+   * @param {HTMLElement} container   - target container
+   * @param {boolean}     isRoot
+   * @param {number}      depth       - current nesting level (0 = root)
    */
-  function renderThread(node, authorHandle, container, isRoot = true) {
+  function renderThread(node, authorHandle, container, isRoot = true, depth = 0) {
     if (!container) {
       container = threadContent;
       container.innerHTML = '';
@@ -1369,13 +1600,7 @@
 
     if (!node || !node.post) return;
 
-    const card = buildPostCard(node.post, {
-      isRoot,
-      onReply: () => {
-        setupReplyArea(node.post.uri, node.post.cid, node.post.author.handle);
-        replyText.focus();
-      },
-    });
+    const card = buildPostCard(node.post, { isRoot });
 
     // Make reply button set this post as the reply target
     const replyBtn = card.querySelector('.reply-action-btn');
@@ -1390,6 +1615,24 @@
 
     // Render replies recursively
     if (node.replies && node.replies.length) {
+      const replies = node.replies.filter(
+        (r) => r.$type !== 'app.bsky.feed.defs#blockedPost' && r.post
+      );
+      if (!replies.length) return;
+
+      // Max depth: beyond 8 levels show a "Continue this thread →" link
+      if (depth >= 7) {
+        const best = replies[0];
+        const continueBtn = document.createElement('button');
+        continueBtn.className   = 'collapse-toggle';
+        continueBtn.textContent = 'Continue this thread →';
+        continueBtn.addEventListener('click', () => {
+          openThread(best.post.uri, best.post.cid, best.post.author.handle);
+        });
+        container.appendChild(continueBtn);
+        return;
+      }
+
       const group = document.createElement('div');
       group.className = 'reply-group';
 
@@ -1397,22 +1640,20 @@
       connector.className = 'reply-thread-connector';
       group.appendChild(connector);
 
-      // Collapse long reply lists
+      // Show up to 5 replies; collapse the rest behind a toggle
       const MAX_VISIBLE = 5;
-      const replies = node.replies.filter((r) => r.$type !== 'app.bsky.feed.defs#blockedPost');
-
       replies.slice(0, MAX_VISIBLE).forEach((reply) => {
-        renderThread(reply, authorHandle, group, false);
+        renderThread(reply, authorHandle, group, false, depth + 1);
       });
 
       if (replies.length > MAX_VISIBLE) {
         const remaining = replies.length - MAX_VISIBLE;
         const toggle = document.createElement('button');
-        toggle.className = 'collapse-toggle';
+        toggle.className   = 'collapse-toggle';
         toggle.textContent = `Show ${remaining} more repl${remaining === 1 ? 'y' : 'ies'}`;
         toggle.addEventListener('click', () => {
           replies.slice(MAX_VISIBLE).forEach((reply) => {
-            renderThread(reply, authorHandle, group, false);
+            renderThread(reply, authorHandle, group, false, depth + 1);
           });
           toggle.remove();
         });
