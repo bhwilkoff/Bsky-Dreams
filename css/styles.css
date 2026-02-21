@@ -74,11 +74,15 @@ body {
   --top-bar-height: 56px;
   --max-content-width: 640px;
 
-  /* Thread depth line colors (cycle through these per nesting level) */
-  --td-1: #0085ff;
-  --td-2: #9061f9;
-  --td-3: #06b6d4;
-  --td-4: #10b981;
+  /* Thread depth line colors (8 distinct colors, cycling per nesting level) */
+  --td-1: #0085ff;  /* blue    */
+  --td-2: #9061f9;  /* violet  */
+  --td-3: #06b6d4;  /* cyan    */
+  --td-4: #10b981;  /* emerald */
+  --td-5: #f59e0b;  /* amber   */
+  --td-6: #ef4444;  /* red     */
+  --td-7: #f97316;  /* orange  */
+  --td-8: #ec4899;  /* pink    */
 }
 
 /* ---- Utility ---- */
@@ -1064,25 +1068,104 @@ button {
 
 /* Replies are nested with a depth-colored left border — no overlapping connectors */
 .reply-group {
+  position: relative;       /* for .reply-collapse-btn absolute positioning */
   margin-left: 12px;
   margin-top: var(--space-xs);
-  padding-left: 12px;
+  padding-left: 16px;       /* extra room for the collapse button */
   border-left: 2px solid var(--thread-line-color, var(--color-border));
   border-bottom-left-radius: 3px;
 }
 
-/* Cycle through 4 depth colors */
+/* Post cards inside a reply group inherit the depth color as their left border */
+.reply-group-body > .post-card {
+  border-left-color: var(--thread-line-color, var(--color-border));
+  border-left-width: 2px;
+}
+
+/* Cycle through 8 depth colors */
 .reply-group[data-depth="1"],
-.reply-group[data-depth="5"] { --thread-line-color: var(--td-1); }
+.reply-group[data-depth="9"]  { --thread-line-color: var(--td-1); }
 
 .reply-group[data-depth="2"],
-.reply-group[data-depth="6"] { --thread-line-color: var(--td-2); }
+.reply-group[data-depth="10"] { --thread-line-color: var(--td-2); }
 
 .reply-group[data-depth="3"],
-.reply-group[data-depth="7"] { --thread-line-color: var(--td-3); }
+.reply-group[data-depth="11"] { --thread-line-color: var(--td-3); }
 
 .reply-group[data-depth="4"],
-.reply-group[data-depth="8"] { --thread-line-color: var(--td-4); }
+.reply-group[data-depth="12"] { --thread-line-color: var(--td-4); }
+
+.reply-group[data-depth="5"],
+.reply-group[data-depth="13"] { --thread-line-color: var(--td-5); }
+
+.reply-group[data-depth="6"],
+.reply-group[data-depth="14"] { --thread-line-color: var(--td-6); }
+
+.reply-group[data-depth="7"],
+.reply-group[data-depth="15"] { --thread-line-color: var(--td-7); }
+
+.reply-group[data-depth="8"],
+.reply-group[data-depth="16"] { --thread-line-color: var(--td-8); }
+
+/* ---- Collapse/expand controls ---- */
+
+/* Small circle button sitting on the connector line at the top of the group */
+.reply-collapse-btn {
+  position: absolute;
+  top: 6px;
+  left: -9px;               /* centers the 16px button on the 2px border-left */
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1.5px solid var(--thread-line-color, var(--color-border));
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--thread-line-color, var(--color-text-muted));
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+  z-index: 2;
+}
+
+.reply-collapse-btn:hover {
+  background: var(--thread-line-color, var(--color-border));
+  color: #fff;
+}
+
+.reply-collapse-btn:focus-visible {
+  outline: 2px solid var(--thread-line-color, var(--color-accent));
+  outline-offset: 2px;
+}
+
+/* "↓ Show N replies" button shown when a group is collapsed */
+.reply-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  background: none;
+  border: none;
+  color: var(--thread-line-color, var(--color-accent));
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: var(--space-xs) 0;
+  margin-top: var(--space-xs);
+  cursor: pointer;
+}
+
+.reply-expand-btn:hover {
+  text-decoration: underline;
+}
+
+.reply-expand-btn:focus-visible {
+  outline: 2px solid var(--thread-line-color, var(--color-accent));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
 
 /* Collapse toggle for long reply threads */
 .collapse-toggle {

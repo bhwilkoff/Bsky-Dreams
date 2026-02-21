@@ -394,14 +394,21 @@
   element (which used `top: -8px` to overlap into the parent post card) with a clean
   `border-left` on the `.reply-group` element itself. The border color is driven by a
   CSS custom property `--thread-line-color` set via `[data-depth]` attribute selectors.
-  Five cycling colors (blue → violet → cyan → emerald) distinguish nesting levels.
+  Eight cycling colors (blue → violet → cyan → emerald → amber → red → orange →
+  pink) distinguish nesting levels. Post cards inside each reply group also receive the
+  same depth color as their `border-left`, making the relationship between connector
+  lines and cards visually explicit. Each reply group has a small collapse button on
+  the connector line that hides/shows the branch (Reddit-style).
   `renderThread` now sets `group.dataset.depth = depth + 1` on each reply group div.
 - **Rationale:** The old connector element's `top: -8px` caused it to visually intrude
   into the post card above, making the thread tree look sloppy — post card outlines
   and the connector lines conflicted with no clear visual separation. Using `border-left`
   on the reply-group container ties the visual connector directly to the grouped content
   rather than requiring an absolutely-positioned child. No overflow, no z-index issues,
-  no overlap with post card borders.
+  no overlap with post card borders. Depth-colored card borders make the thread
+  hierarchy immediately scannable. Eight colors (vs. the initial four) reduce color
+  repetition in deeply nested discussions; collapsibility matches user expectations set
+  by Reddit and Hacker News.
 - **Alternatives considered:** Keeping the pseudo-element (`::before`) approach but
   adjusting geometry (tried; the overlap at the top remains hard to eliminate without
   either leaving a visual gap or covering the parent card's bottom border);
@@ -411,6 +418,8 @@
   (top of the first reply card), with no visual "flow line" emerging from the parent
   card's avatar. This is visually clean but slightly less explicit than the L-connector
   metaphor. Depth colors compensate by making hierarchy immediately readable.
+  The collapse button is 16px and sits on the 2px border-left; it requires
+  `position: relative` on `.reply-group` but adds no meaningful layout cost.
 - **Revisit if:** A more elaborate visual tree (avatar-threaded like X) becomes a
   design priority; at that point refactor post card layout to expose an avatar column.
 
