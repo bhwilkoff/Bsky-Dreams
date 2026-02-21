@@ -107,3 +107,36 @@
 - **Alternatives considered:** Cloudflare Worker free-tier proxy (would add infrastructure and latency).
 - **Trade-offs:** If BlueSky changes their CORS policy, the app breaks with no fallback. No known plan to restrict CORS.
 - **Revisit if:** Any fetch call returns a CORS error in the browser console.
+
+---
+
+## Image Upload via Raw Binary POST (not JSON)
+
+- **Date:** 2026-02-21
+- **Decision:** `com.atproto.repo.uploadBlob` is called with the raw `File` object as the request body (binary), with `Content-Type` set to the file's MIME type, rather than JSON-encoding the file data.
+- **Rationale:** The AT Protocol `uploadBlob` endpoint explicitly requires raw binary POST — it is the only XRPC endpoint that is not JSON-encoded. The existing `authPost` helper always sets `Content-Type: application/json` and `JSON.stringify`s the body, making it unsuitable. A separate `uploadBlobRaw(file, token)` helper was added that calls `fetch` directly with the file as the body and the file's type as Content-Type.
+- **Alternatives considered:** Base64-encoding the file and sending as JSON (not supported by the endpoint); using FormData (not supported — the endpoint expects raw binary, not multipart).
+- **Trade-offs:** The `uploadBlobRaw` function bypasses the shared `post` helper. It still uses `withAuth` for token handling, so retry-on-401 works.
+- **Revisit if:** AT Protocol changes uploadBlob to accept multipart or JSON.
+
+---
+
+## Image Upload Before Post Creation (separate async step)
+
+- **Date:** 2026-02-21
+- **Decision:** When the user attaches images in Compose, all blobs are uploaded sequentially via `Promise.all` before `createPost` is called. The resulting blob references (containing CID and mimeType) are passed as an `images` array to `createPost`, which embeds them as `app.bsky.embed.images`.
+- **Rationale:** The AT Protocol requires blob CIDs at post-creation time — there is no way to attach a blob after a post is created. Uploading first and passing references to `createPost` is the only valid flow. `Promise.all` uploads in parallel for speed.
+- **Alternatives considered:** Uploading one at a time sequentially (slower for multiple images), combining upload+post in a single transaction (not possible in AT Protocol).
+- **Trade-offs:** If a blob upload succeeds but `createPost` fails, the uploaded blobs are orphaned in the repo (harmless but wasteful). The user sees the error and can retry; the blobs will eventually be garbage-collected.
+- **Revisit if:** AT Protocol adds a transactional blob+post endpoint.
+
+---
+
+## Notifications: Load-on-Demand, No Polling
+
+- **Date:** 2026-02-21
+- **Decision:** Notifications are loaded the first time the user navigates to the Notifications view (or on manual Refresh), not on a timer or WebSocket push. The unread badge is populated from the first batch and cleared when the view is opened.
+- **Rationale:** The app is a static GitHub Pages site with no server component. Persistent WebSocket subscriptions to the AT Protocol Firehose are not feasible. A polling timer would consume battery and bandwidth even when the user isn't looking at notifications. Load-on-demand is simpler and sufficient for the current use case.
+- **Alternatives considered:** `setInterval` polling every 60 s (keeps badge fresh but burns resources); Firehose WebSocket (requires a relay server); Service Worker with background sync (complex, requires HTTPS and manifest).
+- **Trade-offs:** Badge count and list are stale until the user taps Refresh or re-opens the view. Acceptable for an MVP.
+- **Revisit if:** Users find the stale badge confusing; at that point add a 60-second polling interval with exponential back-off on error.

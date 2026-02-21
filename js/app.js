@@ -22,15 +22,17 @@
   const navFeedBtn     = $('nav-feed-btn');
   const navSearchBtn   = $('nav-search-btn');
   const navComposeBtn  = $('nav-compose-btn');
+  const navNotifBtn    = $('nav-notif-btn');
   const navProfileBtn  = $('nav-profile-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
 
-  const viewFeed       = $('view-feed');
-  const viewSearch     = $('view-search');
-  const viewCompose    = $('view-compose');
-  const viewThread     = $('view-thread');
-  const viewProfile    = $('view-profile');
+  const viewFeed          = $('view-feed');
+  const viewSearch        = $('view-search');
+  const viewCompose       = $('view-compose');
+  const viewThread        = $('view-thread');
+  const viewProfile       = $('view-profile');
+  const viewNotifications = $('view-notifications');
 
   const feedResults    = $('feed-results');
   const feedRefreshBtn = $('feed-refresh-btn');
@@ -48,12 +50,21 @@
   const searchResults  = $('search-results');
   const filterChips    = document.querySelectorAll('.filter-chip');
 
-  const composeForm    = $('compose-form');
-  const composeText    = $('compose-text');
-  const composeCount   = $('compose-char-count');
-  const composeError   = $('compose-error');
-  const composeSuccess = $('compose-success');
-  const composeAvatar  = $('compose-avatar');
+  const composeForm          = $('compose-form');
+  const composeText          = $('compose-text');
+  const composeCount         = $('compose-char-count');
+  const composeError         = $('compose-error');
+  const composeSuccess       = $('compose-success');
+  const composeAvatar        = $('compose-avatar');
+  const composeImgBtn        = $('compose-img-btn');
+  const composeImgInput      = $('compose-img-input');
+  const composeImagesPreview = $('compose-images-preview');
+
+  const notifList        = $('notif-list');
+  const notifBadge       = $('notif-badge');
+  const notifLoadMore    = $('notif-load-more');
+  const notifLoadMoreBtn = $('notif-load-more-btn');
+  const notifRefreshBtn  = $('notif-refresh-btn');
 
   const threadContent    = $('thread-content');
   const threadBackBtn    = $('thread-back-btn');
@@ -101,6 +112,9 @@
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
   let profileCursor      = null; // pagination cursor for profile feed
+  let notifCursor        = null; // pagination cursor for notifications
+  let notifLoaded        = false;
+  let composeImages      = [];   // array of { file, previewUrl, altInput } for pending uploads
 
   /* ================================================================
      LOADING HELPERS
@@ -243,8 +257,20 @@
   function showView(name, fromHistory = false) {
     currentView = name;
 
-    const views = { feed: viewFeed, search: viewSearch, compose: viewCompose, thread: viewThread, profile: viewProfile };
-    const navBtns = { feed: navFeedBtn, search: navSearchBtn, compose: navComposeBtn };
+    const views = {
+      feed:          viewFeed,
+      search:        viewSearch,
+      compose:       viewCompose,
+      thread:        viewThread,
+      profile:       viewProfile,
+      notifications: viewNotifications,
+    };
+    const navBtns = {
+      feed:          navFeedBtn,
+      search:        navSearchBtn,
+      compose:       navComposeBtn,
+      notifications: navNotifBtn,
+    };
 
     Object.entries(views).forEach(([n, el]) => {
       el.hidden  = n !== name;
@@ -262,6 +288,7 @@
       composeCount.textContent = '300';
       hideError(composeError);
       composeSuccess.hidden = true;
+      clearComposeImages();
     }
 
     if (!fromHistory) {
@@ -280,6 +307,11 @@
   });
   navSearchBtn.addEventListener('click', () => showView('search'));
   navComposeBtn.addEventListener('click', () => showView('compose'));
+  navNotifBtn.addEventListener('click', () => {
+    showView('notifications');
+    clearNotifBadge();
+    if (!notifLoaded) loadNotifications();
+  });
 
   // Use browser history for the Back button so Forward/Back both work
   threadBackBtn.addEventListener('click',  () => history.back());
@@ -298,6 +330,7 @@
       showView(view, true);
       if (view === 'search' && state.query) searchInput.value = state.query;
       if (view === 'feed' && !feedLoaded) loadFeed();
+      if (view === 'notifications' && !notifLoaded) loadNotifications();
     }
   });
 
@@ -319,6 +352,10 @@
     authScreen.hidden = false;
     profileMenu.hidden = true;
     ownProfile = null;
+    feedLoaded = false;
+    notifLoaded = false;
+    notifBadge.hidden = true;
+    clearComposeImages();
     searchResults.innerHTML = '<div class="feed-empty"><p>Search for posts, people, or topics on BlueSky.</p></div>';
     threadContent.innerHTML = '';
   });
@@ -530,6 +567,8 @@
   feedRefreshBtn.addEventListener('click',    () => loadFeed(false));
   feedLoadMoreBtn.addEventListener('click',    () => loadFeed(true));
   profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
+  notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
+  notifLoadMoreBtn.addEventListener('click',   () => loadNotifications(true));
 
   /**
    * Render an array of timeline feed items (post + optional reason/reply context).
@@ -730,6 +769,151 @@
         profileFeedEl.innerHTML = `<div class="feed-empty"><p>Could not load posts: ${escHtml(err.message)}</p></div>`;
       }
     }
+  }
+
+  /* ================================================================
+     NOTIFICATIONS VIEW
+  ================================================================ */
+  async function loadNotifications(append = false) {
+    if (!append) {
+      notifCursor  = null;
+      notifLoaded  = false;
+      notifList.innerHTML = '<div class="feed-loading">Loading notifications…</div>';
+      notifLoadMore.hidden = true;
+    }
+
+    showLoading();
+    try {
+      const data   = await API.listNotifications(50, append ? notifCursor : undefined);
+      const notifs = data.notifications || [];
+      notifCursor  = data.cursor || null;
+      notifLoaded  = true;
+
+      if (!append) notifList.innerHTML = '';
+
+      if (!notifs.length && !append) {
+        notifList.innerHTML = '<div class="feed-empty"><p>No notifications yet.</p></div>';
+      } else {
+        renderNotifications(notifs, notifList, append);
+      }
+
+      // Update unread badge — count unread on first load
+      if (!append) {
+        const unread = notifs.filter((n) => !n.isRead).length;
+        if (unread > 0) {
+          notifBadge.textContent = unread > 99 ? '99+' : String(unread);
+          notifBadge.hidden = false;
+        } else {
+          notifBadge.hidden = true;
+        }
+        // Mark as seen
+        API.updateSeen().catch(() => {});
+      }
+
+      notifLoadMore.hidden = !notifCursor;
+    } catch (err) {
+      if (!append) {
+        notifList.innerHTML = `<div class="feed-empty"><p>Could not load notifications: ${escHtml(err.message)}</p></div>`;
+      }
+    } finally {
+      hideLoading();
+    }
+  }
+
+  /** Clear the notification badge (called after viewing notifications). */
+  function clearNotifBadge() {
+    notifBadge.hidden = true;
+  }
+
+  /**
+   * Render notification items into a container.
+   */
+  function renderNotifications(notifs, container, append = false) {
+    if (!append) container.innerHTML = '';
+
+    const ICONS = {
+      like:    `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
+      repost:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
+      follow:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      reply:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+      mention: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>`,
+      quote:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    };
+    const ACTION_TEXT = {
+      like:    'liked your post',
+      repost:  'reposted your post',
+      follow:  'followed you',
+      reply:   'replied to your post',
+      mention: 'mentioned you',
+      quote:   'quoted your post',
+    };
+
+    notifs.forEach((notif) => {
+      const reason = notif.reason || 'mention';
+      const author = notif.author || {};
+      const item = document.createElement('div');
+      item.className = `notif-item${notif.isRead ? '' : ' notif-unread'}`;
+
+      // Icon
+      const icon = document.createElement('div');
+      icon.className = `notif-icon notif-icon-${reason}`;
+      icon.innerHTML = ICONS[reason] || ICONS.mention;
+      item.appendChild(icon);
+
+      // Avatar
+      const avatar = document.createElement('img');
+      avatar.src       = author.avatar || '';
+      avatar.alt       = '';
+      avatar.className = 'notif-avatar';
+      avatar.loading   = 'lazy';
+      item.appendChild(avatar);
+
+      // Body
+      const body = document.createElement('div');
+      body.className = 'notif-body';
+
+      const meta = document.createElement('div');
+      meta.className = 'notif-meta';
+
+      const authorEl = document.createElement('span');
+      authorEl.className   = 'notif-author';
+      authorEl.textContent = author.displayName || author.handle || 'Someone';
+      meta.appendChild(authorEl);
+
+      const action = document.createElement('span');
+      action.className   = 'notif-action';
+      action.textContent = ACTION_TEXT[reason] || reason;
+      meta.appendChild(action);
+
+      const time = document.createElement('span');
+      time.className   = 'notif-time';
+      time.textContent = formatTimestamp(notif.indexedAt);
+      meta.appendChild(time);
+
+      body.appendChild(meta);
+
+      // Post preview text (for reply/mention/quote/like/repost)
+      const postText = notif.record?.text;
+      if (postText && reason !== 'follow') {
+        const preview = document.createElement('div');
+        preview.className   = 'notif-preview';
+        preview.textContent = postText;
+        body.appendChild(preview);
+      }
+
+      item.appendChild(body);
+
+      // Click to open profile for follows; open thread for others
+      item.addEventListener('click', () => {
+        if (reason === 'follow') {
+          openProfile(author.handle);
+        } else if (notif.uri) {
+          openThread(notif.uri, notif.cid, author.handle);
+        }
+      });
+
+      container.appendChild(item);
+    });
   }
 
   /* ================================================================
@@ -1292,7 +1476,77 @@
   });
 
   /* ================================================================
-     COMPOSE
+     COMPOSE — IMAGE ATTACHMENT
+  ================================================================ */
+  /** Clear all pending compose images and hide the preview area. */
+  function clearComposeImages() {
+    composeImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+    composeImages = [];
+    composeImagesPreview.innerHTML = '';
+    composeImagesPreview.hidden = true;
+    composeImgBtn.disabled = false;
+  }
+
+  /** Re-render the compose image preview grid from composeImages state. */
+  function refreshComposePreview() {
+    composeImagesPreview.innerHTML = '';
+    composeImagesPreview.hidden = composeImages.length === 0;
+    composeImgBtn.disabled = composeImages.length >= 4;
+
+    composeImages.forEach((entry, idx) => {
+      const item = document.createElement('div');
+      item.className = 'compose-image-item';
+
+      const thumb = document.createElement('img');
+      thumb.src       = entry.previewUrl;
+      thumb.alt       = '';
+      thumb.className = 'compose-image-thumb';
+      item.appendChild(thumb);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type      = 'button';
+      removeBtn.className = 'compose-image-remove';
+      removeBtn.setAttribute('aria-label', 'Remove image');
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        URL.revokeObjectURL(entry.previewUrl);
+        composeImages.splice(idx, 1);
+        refreshComposePreview();
+      });
+      item.appendChild(removeBtn);
+
+      const altInput = document.createElement('textarea');
+      altInput.className   = 'compose-alt-input';
+      altInput.placeholder = 'Alt text (describe image)…';
+      altInput.rows        = 2;
+      altInput.maxLength   = 1000;
+      altInput.value       = entry.alt || '';
+      altInput.addEventListener('input', () => { entry.alt = altInput.value; });
+      item.appendChild(altInput);
+
+      composeImagesPreview.appendChild(item);
+    });
+  }
+
+  // Clicking the attach button triggers the hidden file input
+  composeImgBtn.addEventListener('click', () => {
+    if (composeImages.length >= 4) return;
+    composeImgInput.click();
+  });
+
+  composeImgInput.addEventListener('change', () => {
+    const files = Array.from(composeImgInput.files || []);
+    const available = 4 - composeImages.length;
+    files.slice(0, available).forEach((file) => {
+      if (!file.type.startsWith('image/')) return;
+      composeImages.push({ file, previewUrl: URL.createObjectURL(file), alt: '' });
+    });
+    composeImgInput.value = ''; // reset so same file can be re-selected
+    refreshComposePreview();
+  });
+
+  /* ================================================================
+     COMPOSE — SUBMIT
   ================================================================ */
   composeText.addEventListener('input', () => {
     updateCharCount(composeText, composeCount);
@@ -1302,16 +1556,30 @@
     e.preventDefault();
     hideError(composeError);
     const text = composeText.value.trim();
-    if (!text) return;
+    if (!text && composeImages.length === 0) return;
 
     const btn = composeForm.querySelector('button[type="submit"]');
     btn.disabled = true;
     btn.textContent = 'Posting…';
+    composeImgBtn.disabled = true;
 
     try {
-      const result = await API.createPost(text);
+      // Upload any attached images first
+      let uploadedImages = [];
+      if (composeImages.length > 0) {
+        btn.textContent = `Uploading ${composeImages.length} image${composeImages.length > 1 ? 's' : ''}…`;
+        uploadedImages = await Promise.all(
+          composeImages.map(async ({ file, alt }) => {
+            const blob = await API.uploadBlob(file);
+            return { blob, alt: alt || '' };
+          })
+        );
+      }
+
+      const result = await API.createPost(text, null, uploadedImages);
       composeForm.reset();
       composeCount.textContent = '300';
+      clearComposeImages();
       composeSuccess.hidden = false;
 
       // Build a shareable bsky.app link from the AT URI
@@ -1325,6 +1593,7 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Post';
+      composeImgBtn.disabled = composeImages.length >= 4;
     }
   });
 
