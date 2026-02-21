@@ -1629,10 +1629,48 @@
       group.className = 'reply-group';
       group.dataset.depth = depth + 1;
 
+      // Small circle collapse button positioned on the connector line
+      const collapseBtn = document.createElement('button');
+      collapseBtn.type      = 'button';
+      collapseBtn.className = 'reply-collapse-btn';
+      collapseBtn.textContent = '−';
+      collapseBtn.setAttribute('aria-label', 'Collapse replies');
+      collapseBtn.setAttribute('aria-expanded', 'true');
+
+      // Body wrapper — all reply content lives here for easy hide/show
+      const body = document.createElement('div');
+      body.className = 'reply-group-body';
+
+      // Expand button shown when the group is collapsed
+      const expandBtn = document.createElement('button');
+      expandBtn.type      = 'button';
+      expandBtn.className = 'reply-expand-btn';
+      expandBtn.hidden    = true;
+
+      collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const total = body.querySelectorAll('.post-card').length;
+        body.hidden         = true;
+        collapseBtn.hidden  = true;
+        expandBtn.textContent = `↓ ${total} repl${total === 1 ? 'y' : 'ies'}`;
+        expandBtn.hidden    = false;
+      });
+
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        body.hidden        = false;
+        collapseBtn.hidden = false;
+        expandBtn.hidden   = true;
+      });
+
+      group.appendChild(collapseBtn);
+      group.appendChild(body);
+      group.appendChild(expandBtn);
+
       // Show up to 5 replies; collapse the rest behind a toggle
       const MAX_VISIBLE = 5;
       replies.slice(0, MAX_VISIBLE).forEach((reply) => {
-        renderThread(reply, authorHandle, group, false, depth + 1);
+        renderThread(reply, authorHandle, body, false, depth + 1);
       });
 
       if (replies.length > MAX_VISIBLE) {
@@ -1642,11 +1680,11 @@
         toggle.textContent = `Show ${remaining} more repl${remaining === 1 ? 'y' : 'ies'}`;
         toggle.addEventListener('click', () => {
           replies.slice(MAX_VISIBLE).forEach((reply) => {
-            renderThread(reply, authorHandle, group, false, depth + 1);
+            renderThread(reply, authorHandle, body, false, depth + 1);
           });
           toggle.remove();
         });
-        group.appendChild(toggle);
+        body.appendChild(toggle);
       }
 
       container.appendChild(group);

@@ -95,14 +95,22 @@ The app is live and functional. Milestones 1–10 are complete, plus the repost/
 ### Thread Nesting Visual Polish ✅
 - **Depth-colored connector lines**: Replaced the old single-color absolute-
   positioned vertical line (which overlapped post card borders) with a CSS
-  `border-left` on each `.reply-group` element. Five cycling colors keyed to
-  `data-depth` attributes (blue → violet → cyan → emerald → repeat).
+  `border-left` on each `.reply-group` element. Eight cycling colors keyed to
+  `data-depth` attributes (blue → violet → cyan → emerald → amber → red →
+  orange → pink → repeat).
+- **Depth-colored post card borders**: Each post card inside a reply group
+  also carries the same depth color as its connector line via
+  `border-left-color` on `.reply-group-body > .post-card`.
 - **No more awkward overlap**: Removed the `.reply-thread-connector` absolutely-
   positioned L-shaped element that had `top: -8px` overflow into parent cards.
   The colored left border of `.reply-group` is the visual connector — no
   separate element needed.
 - **`data-depth` on reply groups**: `renderThread` now sets `group.dataset.depth`
   to `depth + 1` on each `reply-group` div, enabling depth-specific CSS rules.
+- **Reddit-style collapse/expand**: Each reply group has a small circle `−`
+  button on the connector line. Clicking it collapses all replies in that
+  branch and shows a `↓ N replies` expand button. Works independently at
+  every nesting depth.
 
 ### Milestone 9: Inline Reply Compose ✅
 - **Inline compose box**: Clicking "Reply" on any post in the thread view now
