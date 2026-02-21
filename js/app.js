@@ -605,19 +605,20 @@
         wrapper.appendChild(bar);
       }
 
-      // Reply context
+      // Reply context — compact parent preview card
+      const rootUri = item.reply?.root?.uri || null;
+      const rootCid = item.reply?.root?.cid || null;
       if (item.reply?.parent?.author) {
-        const parentAuthor = item.reply.parent.author;
-        const bar = document.createElement('div');
-        bar.className = 'feed-reply-bar';
-        bar.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Replying to @${escHtml(parentAuthor.handle || '')}
-        `;
-        wrapper.appendChild(bar);
+        const preview = buildParentPreview(item.reply.parent, rootUri, rootCid);
+        wrapper.appendChild(preview);
       }
 
-      const card = buildPostCard(post, { clickable: true });
+      // Root-first navigation: when this post is a reply, clicking opens from the root
+      const card = buildPostCard(post, {
+        clickable: true,
+        openUri: rootUri || post.uri,
+        openCid: rootCid || post.cid,
+      });
       wrapper.appendChild(card);
       container.appendChild(wrapper);
     });
@@ -1040,6 +1041,10 @@
     card.appendChild(actions);
 
     // Wire up click to open thread
+    // opts.openUri/openCid allow feed items that are replies to navigate to the root
+    const targetUri = opts.openUri || post.uri;
+    const targetCid = opts.openCid || post.cid;
+
     if (opts.clickable) {
       card.addEventListener('click', (e) => {
         // Hashtag links → trigger search instead of following href="#"
@@ -1050,16 +1055,16 @@
           triggerSearch(`#${hashEl.dataset.hashtag}`);
           return;
         }
-        // Regular links and action buttons → let them handle their own events
-        if (e.target.closest('a') || e.target.closest('button')) return;
-        openThread(post.uri, post.cid, author.handle);
+        // Regular links, action buttons, and quoted post cards → let them handle their own events
+        if (e.target.closest('a') || e.target.closest('button') || e.target.closest('.quoted-post-card')) return;
+        openThread(targetUri, targetCid, author.handle);
       });
     }
 
     // Reply button → open thread and focus reply area
     actions.querySelector('.reply-action-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      openThread(post.uri, post.cid, author.handle, { focusReply: true });
+      openThread(targetUri, targetCid, author.handle, { focusReply: true });
     });
 
     // Like button
@@ -1335,6 +1340,78 @@
   }
 
   /* ================================================================
+     PARENT POST PREVIEW (feed reply context)
+  ================================================================ */
+  /**
+   * Build a compact preview of the parent post for a reply in the feed.
+   * Clicking opens the thread from the root post.
+   * @param {object} parentPost - PostView of the immediate parent
+   * @param {string|null} rootUri - AT URI of the thread root (for navigation)
+   * @param {string|null} rootCid
+   */
+  function buildParentPreview(parentPost, rootUri, rootCid) {
+    const wrap = document.createElement('div');
+    wrap.className = 'feed-parent-preview';
+
+    // "Replying to" label
+    const label = document.createElement('div');
+    label.className = 'feed-reply-label';
+    label.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    const labelText = document.createElement('span');
+    labelText.textContent = 'Replying to';
+    label.appendChild(labelText);
+    wrap.appendChild(label);
+
+    // Parent post compact card
+    const card = document.createElement('div');
+    card.className = 'feed-parent-card';
+
+    const pAuthor = parentPost.author || {};
+    const pText   = parentPost.record?.text || '';
+
+    const header = document.createElement('div');
+    header.className = 'feed-parent-header';
+
+    if (pAuthor.avatar) {
+      const av = document.createElement('img');
+      av.src       = pAuthor.avatar;
+      av.alt       = '';
+      av.className = 'feed-parent-avatar';
+      header.appendChild(av);
+    }
+
+    const authorName = document.createElement('span');
+    authorName.className   = 'feed-parent-author';
+    authorName.textContent = pAuthor.displayName || pAuthor.handle || '';
+    header.appendChild(authorName);
+
+    const authorHandle = document.createElement('span');
+    authorHandle.className   = 'feed-parent-handle';
+    authorHandle.textContent = `@${pAuthor.handle || ''}`;
+    header.appendChild(authorHandle);
+
+    card.appendChild(header);
+
+    if (pText) {
+      const textEl = document.createElement('p');
+      textEl.className   = 'feed-parent-text';
+      textEl.textContent = pText;
+      card.appendChild(textEl);
+    }
+
+    // Click opens thread from root (or parent if no root)
+    const navUri = rootUri || parentPost.uri;
+    const navCid = rootCid || parentPost.cid;
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openThread(navUri, navCid, pAuthor.handle);
+    });
+
+    wrap.appendChild(card);
+    return wrap;
+  }
+
+  /* ================================================================
      QUOTED POST CARD
   ================================================================ */
   /**
@@ -1440,11 +1517,13 @@
 
   /**
    * Recursively render a thread node returned by getPostThread.
-   * @param {object} node  - thread node ({ post, replies, ... })
-   * @param {HTMLElement} container - target container
-   * @param {boolean} isRoot
+   * @param {object}      node        - thread node ({ post, replies, ... })
+   * @param {string}      authorHandle
+   * @param {HTMLElement} container   - target container
+   * @param {boolean}     isRoot
+   * @param {number}      depth       - current nesting level (0 = root)
    */
-  function renderThread(node, authorHandle, container, isRoot = true) {
+  function renderThread(node, authorHandle, container, isRoot = true, depth = 0) {
     if (!container) {
       container = threadContent;
       container.innerHTML = '';
@@ -1452,13 +1531,7 @@
 
     if (!node || !node.post) return;
 
-    const card = buildPostCard(node.post, {
-      isRoot,
-      onReply: () => {
-        setupReplyArea(node.post.uri, node.post.cid, node.post.author.handle);
-        replyText.focus();
-      },
-    });
+    const card = buildPostCard(node.post, { isRoot });
 
     // Make reply button set this post as the reply target
     const replyBtn = card.querySelector('.reply-action-btn');
@@ -1473,6 +1546,24 @@
 
     // Render replies recursively
     if (node.replies && node.replies.length) {
+      const replies = node.replies.filter(
+        (r) => r.$type !== 'app.bsky.feed.defs#blockedPost' && r.post
+      );
+      if (!replies.length) return;
+
+      // Max depth: beyond 8 levels show a "Continue this thread →" link
+      if (depth >= 7) {
+        const best = replies[0];
+        const continueBtn = document.createElement('button');
+        continueBtn.className   = 'collapse-toggle';
+        continueBtn.textContent = 'Continue this thread →';
+        continueBtn.addEventListener('click', () => {
+          openThread(best.post.uri, best.post.cid, best.post.author.handle);
+        });
+        container.appendChild(continueBtn);
+        return;
+      }
+
       const group = document.createElement('div');
       group.className = 'reply-group';
 
@@ -1480,22 +1571,20 @@
       connector.className = 'reply-thread-connector';
       group.appendChild(connector);
 
-      // Collapse long reply lists
+      // Show up to 5 replies; collapse the rest behind a toggle
       const MAX_VISIBLE = 5;
-      const replies = node.replies.filter((r) => r.$type !== 'app.bsky.feed.defs#blockedPost');
-
       replies.slice(0, MAX_VISIBLE).forEach((reply) => {
-        renderThread(reply, authorHandle, group, false);
+        renderThread(reply, authorHandle, group, false, depth + 1);
       });
 
       if (replies.length > MAX_VISIBLE) {
         const remaining = replies.length - MAX_VISIBLE;
         const toggle = document.createElement('button');
-        toggle.className = 'collapse-toggle';
+        toggle.className   = 'collapse-toggle';
         toggle.textContent = `Show ${remaining} more repl${remaining === 1 ? 'y' : 'ies'}`;
         toggle.addEventListener('click', () => {
           replies.slice(MAX_VISIBLE).forEach((reply) => {
-            renderThread(reply, authorHandle, group, false);
+            renderThread(reply, authorHandle, group, false, depth + 1);
           });
           toggle.remove();
         });
