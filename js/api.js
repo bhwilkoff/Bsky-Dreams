@@ -86,6 +86,31 @@ const API = (() => {
     return text ? JSON.parse(text) : {};
   }
 
+  /**
+   * Upload a raw binary blob (image file) to the repo.
+   * Uses binary POST — NOT JSON-encoded.
+   * @param {File} file
+   * @param {string} token
+   * @returns {{ blob: object }} — AT Protocol blob reference
+   */
+  async function uploadBlobRaw(file, token) {
+    const res = await fetch(`${BASE}/com.atproto.repo.uploadBlob`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': file.type || 'application/octet-stream',
+      },
+      body: file,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const e = new Error(err.message || `Upload error ${res.status}`);
+      e.status = res.status;
+      throw e;
+    }
+    return res.json();
+  }
+
   /* ----------------------------------------------------------------
      Public API surface
   ---------------------------------------------------------------- */
@@ -147,11 +172,23 @@ const API = (() => {
   }
 
   /**
-   * Create a new post (com.atproto.repo.createRecord)
-   * @param {string} text          - post text (max 300 chars)
-   * @param {object|null} replyRef - { root: {uri,cid}, parent: {uri,cid} }
+   * Upload an image file to the AT Protocol blob store.
+   * @param {File} file - image file (JPEG, PNG, GIF, WEBP; max 1 MB)
+   * @returns {object} - AT Protocol blob reference object
    */
-  async function createPost(text, replyRef = null) {
+  async function uploadBlob(file) {
+    const data = await withAuth((token) => uploadBlobRaw(file, token));
+    return data.blob;
+  }
+
+  /**
+   * Create a new post (com.atproto.repo.createRecord)
+   * @param {string}      text     - post text (max 300 chars)
+   * @param {object|null} replyRef - { root: {uri,cid}, parent: {uri,cid} }
+   * @param {Array}       images   - optional array of { blob, alt } objects
+   *                                 where blob is the result of uploadBlob()
+   */
+  async function createPost(text, replyRef = null, images = []) {
     const session = AUTH.getSession();
     if (!session) throw new Error('Not authenticated.');
 
@@ -162,6 +199,12 @@ const API = (() => {
       langs:     ['en'],
     };
     if (replyRef) record.reply = replyRef;
+    if (images.length > 0) {
+      record.embed = {
+        $type:  'app.bsky.embed.images',
+        images: images.map(({ blob, alt }) => ({ image: blob, alt: alt || '' })),
+      };
+    }
 
     return authPost('com.atproto.repo.createRecord', {
       repo:       session.did,
@@ -282,6 +325,45 @@ const API = (() => {
   }
 
   /**
+   * Get any actor's full profile (app.bsky.actor.getProfile).
+   * @param {string} actor - handle or DID
+   */
+  async function getActorProfile(actor) {
+    return authGet('app.bsky.actor.getProfile', { actor });
+  }
+
+  /**
+   * Get an actor's post feed (app.bsky.feed.getAuthorFeed).
+   * Excludes replies to keep the profile feed focused on their own content.
+   * @param {string} actor  - handle or DID
+   * @param {number} limit
+   * @param {string} cursor - pagination cursor
+   */
+  async function getAuthorFeed(actor, limit = 25, cursor) {
+    return authGet('app.bsky.feed.getAuthorFeed', {
+      actor, limit, cursor, filter: 'posts_no_replies',
+    });
+  }
+
+  /**
+   * List notifications for the logged-in user (app.bsky.notification.listNotifications).
+   * Reasons: like, repost, follow, mention, reply, quote.
+   * @param {number} limit  - max results (default 50)
+   * @param {string} cursor - pagination cursor
+   */
+  async function listNotifications(limit = 50, cursor) {
+    return authGet('app.bsky.notification.listNotifications', { limit, cursor });
+  }
+
+  /**
+   * Mark all notifications as seen up to the given timestamp.
+   * @param {string} seenAt - ISO 8601 timestamp (default: now)
+   */
+  async function updateSeen(seenAt = new Date().toISOString()) {
+    return authPost('app.bsky.notification.updateSeen', { seenAt });
+  }
+
+  /**
    * Convert a bsky.app post URL to an AT URI.
    * e.g. https://bsky.app/profile/alice.bsky.social/post/3abc123
    * → at://alice.bsky.social/app.bsky.feed.post/3abc123
@@ -305,6 +387,7 @@ const API = (() => {
     getTimeline,
     getPostThread,
     getPost,
+    uploadBlob,
     createPost,
     likePost,
     unlikePost,
@@ -313,6 +396,10 @@ const API = (() => {
     followActor,
     unfollowActor,
     getOwnProfile,
+    getActorProfile,
+    getAuthorFeed,
+    listNotifications,
+    updateSeen,
     resolvePostUrl,
   };
 })();
