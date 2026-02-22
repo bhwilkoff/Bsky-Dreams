@@ -1617,10 +1617,23 @@
           tvCursor = data.cursor || null;
           posts = (data.feed || []).map((item) => item.post);
         } else {
-          // Topic mode: search for that term; use a large limit to maximise video hits
-          const data = await API.searchPosts(tvTopic, 'latest', 100, tvCursor || undefined);
-          tvCursor = data.cursor || null;
-          posts = data.posts || [];
+          // Topic mode: run hashtag search (#topic) AND free-text search (topic) in
+          // parallel. People who post videos typically tag them explicitly, so the
+          // hashtag search surfaces more video content; the text search catches posts
+          // that mention the topic without a hashtag. Combining both maximises hits.
+          const bare = tvTopic.replace(/^#/, ''); // strip leading # if user typed one
+          const [rHash, rText] = await Promise.allSettled([
+            API.searchPosts(`#${bare}`, 'latest', 50),                        // hashtag: always fresh
+            API.searchPosts(bare,        'latest', 50, tvCursor || undefined), // text: paginated
+          ]);
+          tvCursor = rText.status === 'fulfilled' ? (rText.value.cursor || null) : tvCursor;
+          const hashPosts = rHash.status === 'fulfilled' ? (rHash.value.posts || []) : [];
+          const textPosts = rText.status === 'fulfilled' ? (rText.value.posts || []) : [];
+          // Hashtag results first — higher topical precision for video content
+          const seen = new Set();
+          for (const p of [...hashPosts, ...textPosts]) {
+            if (p.uri && !seen.has(p.uri)) { seen.add(p.uri); posts.push(p); }
+          }
         }
 
         const found = dedup(posts).filter((p) => hasVideo(p) && (tvAllowAdult || !isAdultPost(p)));
