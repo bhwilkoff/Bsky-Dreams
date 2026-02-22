@@ -1086,13 +1086,7 @@
       const pull = Math.min(dy * 0.5, PTR_HEIGHT); // dampen pull
       ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
 
-      if (dy >= PTR_THRESHOLD) {
-        ptrIndicator.dataset.state = 'release';
-        ptrIndicator.querySelector('.ptr-label').textContent = 'Release to refresh';
-      } else {
-        ptrIndicator.dataset.state = 'pull';
-        ptrIndicator.querySelector('.ptr-label').textContent = 'Pull to refresh';
-      }
+      ptrIndicator.dataset.state = dy >= PTR_THRESHOLD ? 'release' : 'pull';
     }, { passive: true });
 
     viewFeed.addEventListener('touchend', async () => {
@@ -1105,7 +1099,6 @@
         ptrActive = true;
         ptrIndicator.style.marginTop = '0px';
         ptrIndicator.dataset.state   = 'loading';
-        ptrIndicator.querySelector('.ptr-label').textContent = 'Refreshing…';
         await loadFeed(false);
         ptrActive = false;
       }
@@ -1113,7 +1106,6 @@
       // Snap back
       ptrIndicator.style.marginTop = '';
       delete ptrIndicator.dataset.state;
-      ptrIndicator.querySelector('.ptr-label').textContent = 'Pull to refresh';
     });
   })();
 
