@@ -1513,7 +1513,8 @@
     const tvSetup        = $('tv-setup');
     const tvPlayer       = $('tv-player');
     const tvTopicInput   = $('tv-topic-input');
-    const tvVideo        = $('tv-video');
+    const tvSlides       = [$('tv-slide-a'), $('tv-slide-b')];
+    const tvVideos       = [$('tv-video'),   $('tv-video-b')];
     const tvAuthorAvatar = $('tv-author-avatar');
     const tvAuthorName   = $('tv-author-name');
     const tvAuthorHandle = $('tv-author-handle');
@@ -1534,11 +1535,18 @@
     let tvIndex    = 0;
     let tvCursor   = null;
     let tvTopic    = '';
-    let tvHls      = null;
+    const tvHlsArr   = [null, null];
+    let tvSlot       = 0;       // which slide slot is currently visible (0 = a, 1 = b)
+    let tvSliding    = false;   // true while a slide transition is in progress
     let tvRunning    = false;
     let tvCurrent    = null;
     let tvAllowAdult = false;
     let tvHideTimer  = null;
+
+    /* ---- Slot helpers ---- */
+    function activeVideo() { return tvVideos[tvSlot]; }
+    function nextSlot()    { return 1 - tvSlot; }
+    function destroyHls(s) { if (tvHlsArr[s]) { tvHlsArr[s].destroy(); tvHlsArr[s] = null; } }
 
     /* ---- Build HLS playlist URL from author DID + blob CID ---- */
     function buildPlaylistUrl(did, cid) {
@@ -1629,30 +1637,63 @@
         ? `${remaining} video${remaining !== 1 ? 's' : ''} queued` : '';
     }
 
-    /* ---- Load a video into the <video> element ---- */
-    function loadTvVideo(src, thumb) {
-      if (tvHls) { tvHls.destroy(); tvHls = null; }
-      tvVideo.removeAttribute('src');
-      tvVideo.load();
-      if (thumb) tvVideo.poster = thumb;
+    /* ---- Load a video into a specific slot ---- */
+    function loadVideoInSlot(s, src, thumb) {
+      destroyHls(s);
+      const vid = tvVideos[s];
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.load();
+      vid.muted = activeVideo().muted;  // inherit current mute state
+      if (thumb) vid.poster = thumb;
 
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        tvHls = new Hls({ lowLatencyMode: false, enableWorker: false });
-        tvHls.loadSource(src);
-        tvHls.attachMedia(tvVideo);
-        tvHls.on(Hls.Events.MANIFEST_PARSED, () => { tvVideo.play().catch(() => {}); });
-        tvHls.on(Hls.Events.ERROR, (event, data) => {
-          if (data.fatal) { tvHls.destroy(); tvHls = null; advanceToNext(); }
+        const hls = new Hls({ lowLatencyMode: false, enableWorker: false });
+        hls.loadSource(src);
+        hls.attachMedia(vid);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+        hls.on(Hls.Events.ERROR, (ev, data) => {
+          if (data.fatal) { destroyHls(s); if (s === tvSlot) advanceToNext(); }
         });
-      } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
-        tvVideo.src = src;
-        tvVideo.play().catch(() => {});
+        tvHlsArr[s] = hls;
+      } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+        vid.src = src;
+        vid.play().catch(() => {});
       }
+    }
+
+    /* ---- Slide transition: animates current slot out, next slot in ---- */
+    function slideTransition(direction, onComplete) {
+      const DURATION = 320;
+      const ns       = nextSlot();
+      const curSlide = tvSlides[tvSlot];
+      const nxtSlide = tvSlides[ns];
+
+      // Snap next slide to off-screen with no transition
+      nxtSlide.style.transition = 'none';
+      nxtSlide.style.transform  = direction === 'up' ? 'translateY(100%)' : 'translateY(-100%)';
+
+      // Force reflow so browser registers the starting position before we animate
+      void nxtSlide.offsetHeight;
+
+      // Animate both slides simultaneously
+      const t = `transform ${DURATION}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
+      curSlide.style.transition = t;
+      nxtSlide.style.transition = t;
+      curSlide.style.transform  = direction === 'up' ? 'translateY(-100%)' : 'translateY(100%)';
+      nxtSlide.style.transform  = 'translateY(0)';
+
+      setTimeout(() => {
+        tvSlot = ns;
+        tvVideos[1 - ns].pause();  // pause the now-offscreen slot
+        tvSliding = false;
+        onComplete();
+      }, DURATION);
     }
 
     /* ---- Sync mute-button icon with current video.muted state ---- */
     function syncMuteBtn() {
-      const muted = tvVideo.muted;
+      const muted = activeVideo().muted;
       tvMuteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
       tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
         l.style.display = muted ? '' : 'none';
@@ -1681,8 +1722,9 @@
       showTvMeta();
     }
 
-    /* ---- Play the video at tvIndex ---- */
-    async function playAt(idx) {
+    /* ---- Play video at idx with optional slide direction ('up'|'down'|'none') ---- */
+    async function playAt(idx, direction) {
+      if (idx < 0) { tvSliding = false; return; }
       if (idx >= tvQueue.length) {
         const before = tvQueue.length;
         await fetchMore();
@@ -1690,22 +1732,42 @@
           tvQueueCount.textContent = tvTopic
             ? `No more videos found for "${tvTopic}".`
             : 'No more videos in your feed right now.';
+          tvSliding = false;
           return;
         }
       }
       tvIndex = idx;
       const post  = tvQueue[idx];
       const embed = getVideoEmbed(post);
-      if (!embed?.playlist) { advanceToNext(); return; }
+      if (!embed?.playlist) { tvSliding = false; advanceToNext(); return; }
+
       showOverlay(post);
-      loadTvVideo(embed.playlist, embed.thumbnail);
-      updateQueueCount();
-      if (tvQueue.length - tvIndex < 5) fetchMore();
+
+      if (!direction || direction === 'none') {
+        // First load — no animation, load directly into the active slot
+        loadVideoInSlot(tvSlot, embed.playlist, embed.thumbnail);
+        updateQueueCount();
+        if (tvQueue.length - tvIndex < 5) fetchMore();
+      } else {
+        // Load into the incoming slot, then animate it into view
+        loadVideoInSlot(nextSlot(), embed.playlist, embed.thumbnail);
+        slideTransition(direction, () => {
+          updateQueueCount();
+          if (tvQueue.length - tvIndex < 5) fetchMore();
+        });
+      }
     }
 
     function advanceToNext() {
-      if (!tvRunning) return;
-      playAt(tvIndex + 1);
+      if (!tvRunning || tvSliding) return;
+      tvSliding = true;
+      playAt(tvIndex + 1, 'up');
+    }
+
+    function goBack() {
+      if (!tvRunning || tvSliding || tvIndex === 0) return;
+      tvSliding = true;
+      playAt(tvIndex - 1, 'down');
     }
 
     /* ---- Start TV (shared by main button, topic form, and chips) ---- */
@@ -1714,29 +1776,37 @@
       tvQueue      = [];
       tvIndex      = 0;
       tvCursor     = null;
+      tvSlot       = 0;
+      tvSliding    = false;
       tvAllowAdult = $('tv-adult-toggle').checked;
       tvTopicBadge.textContent = tvTopic || 'All videos';
+
+      // Reset slides: A at 0 (visible), B below screen (ready for next)
+      tvSlides[0].style.transition = 'none';
+      tvSlides[0].style.transform  = 'translateY(0)';
+      tvSlides[1].style.transition = 'none';
+      tvSlides[1].style.transform  = 'translateY(100%)';
 
       tvSetup.hidden  = true;
       tvPlayer.hidden = false;
       tvRunning       = true;
 
       // Start unmuted — the click that called startTV() IS the user gesture
-      tvVideo.muted = false;
+      tvVideos.forEach((v) => { v.muted = false; });
       syncMuteBtn();
 
-      fetchMore().then(() => playAt(0));
+      fetchMore().then(() => playAt(0, 'none'));
     }
 
     /* ---- Public stop function (called from showView) ---- */
     window.tvStop = function () {
       if (!tvRunning) return;
       tvRunning = false;
+      tvSliding = false;
       clearTimeout(tvHideTimer);
-      if (tvHls) { tvHls.destroy(); tvHls = null; }
-      tvVideo.pause();
-      tvVideo.removeAttribute('src');
-      tvVideo.load();
+      destroyHls(0);
+      destroyHls(1);
+      tvVideos.forEach((v) => { v.pause(); v.removeAttribute('src'); v.load(); });
       tvPlayer.hidden = true;
       tvSetup.hidden  = false;
       tvQueue   = [];
@@ -1759,12 +1829,13 @@
       chip.addEventListener('click', () => startTV(chip.dataset.topic));
     });
 
-    // Auto-advance when video ends
-    tvVideo.addEventListener('ended', advanceToNext);
+    // Auto-advance when either slot's video ends
+    tvVideos.forEach((v) => v.addEventListener('ended', advanceToNext));
 
     /* ---- Mute toggle ---- */
     tvMuteBtn.addEventListener('click', () => {
-      tvVideo.muted = !tvVideo.muted;
+      const muted = !activeVideo().muted;
+      tvVideos.forEach((v) => { v.muted = muted; });
       syncMuteBtn();
     });
 
@@ -1780,13 +1851,15 @@
     }, { passive: true });
     tvWrap.addEventListener('touchend', (e) => {
       const dy = e.changedTouches[0].clientY - tvTouchStartY;
-      if (dy < -60) advanceToNext();
+      if (dy < -60)      advanceToNext();   // swipe up   → next video
+      else if (dy > 60)  goBack();          // swipe down → previous video
     });
 
-    /* ---- Scroll down → next video (desktop) ---- */
+    /* ---- Scroll → navigate videos (desktop) ---- */
     tvWrap.addEventListener('wheel', (e) => {
       e.preventDefault();
-      if (e.deltaY > 30) advanceToNext();
+      if      (e.deltaY > 30)  advanceToNext();   // scroll down → next
+      else if (e.deltaY < -30) goBack();           // scroll up   → previous
     }, { passive: false });
 
     /* ---- Tap or mouse move → reveal meta overlay ---- */
