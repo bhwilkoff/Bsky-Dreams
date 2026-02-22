@@ -1542,6 +1542,7 @@
     let tvCurrent    = null;
     let tvAllowAdult = false;
     let tvHideTimer  = null;
+    const tvSeen     = loadSeen();  // URIs of videos already shown — loaded from localStorage
 
     /* ---- Slot helpers ---- */
     function activeVideo() { return tvVideos[tvSlot]; }
@@ -1590,6 +1591,28 @@
       return posts.filter((p) => p.uri && !seen.has(p.uri));
     }
 
+    /* ---- Persistent "seen videos" store ---- */
+    const TV_SEEN_KEY = 'bsky_tv_seen';
+    const TV_SEEN_MAX = 1000;   // FIFO cap — oldest URI evicted when full
+
+    function loadSeen() {
+      try {
+        const raw = localStorage.getItem(TV_SEEN_KEY);
+        return raw ? new Set(JSON.parse(raw)) : new Set();
+      } catch { return new Set(); }
+    }
+
+    function saveSeen() {
+      try { localStorage.setItem(TV_SEEN_KEY, JSON.stringify([...tvSeen])); } catch {}
+    }
+
+    function markSeen(uri) {
+      if (!uri || tvSeen.has(uri)) return;
+      tvSeen.add(uri);
+      if (tvSeen.size > TV_SEEN_MAX) tvSeen.delete(tvSeen.values().next().value);
+      saveSeen();
+    }
+
     /* ---- Show overlay meta and start auto-hide timer (3 s) ---- */
     function showTvMeta() {
       tvOverlayMeta.classList.remove('tv-meta-hidden');
@@ -1636,7 +1659,7 @@
           }
         }
 
-        const found = dedup(posts).filter((p) => hasVideo(p) && (tvAllowAdult || !isAdultPost(p)));
+        const found = dedup(posts).filter((p) => hasVideo(p) && (tvAllowAdult || !isAdultPost(p)) && !tvSeen.has(p.uri));
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
@@ -1754,6 +1777,7 @@
       const embed = getVideoEmbed(post);
       if (!embed?.playlist) { tvSliding = false; advanceToNext(); return; }
 
+      markSeen(post.uri);
       showOverlay(post);
 
       if (!direction || direction === 'none') {
@@ -1822,6 +1846,7 @@
       tvVideos.forEach((v) => { v.pause(); v.removeAttribute('src'); v.load(); });
       tvPlayer.hidden = true;
       tvSetup.hidden  = false;
+      updateSeenBtn();
       tvQueue   = [];
       tvIndex   = 0;
       tvCursor  = null;
@@ -1840,6 +1865,24 @@
     /* ---- Topic chips ---- */
     document.querySelectorAll('.tv-chip').forEach((chip) => {
       chip.addEventListener('click', () => startTV(chip.dataset.topic));
+    });
+
+    /* ---- "Clear watch history" button — shown only when history is non-empty ---- */
+    function updateSeenBtn() {
+      const btn = $('tv-clear-history-btn');
+      if (tvSeen.size > 0) {
+        btn.textContent = `Clear watch history (${tvSeen.size.toLocaleString()} seen)`;
+        btn.hidden = false;
+      } else {
+        btn.hidden = true;
+      }
+    }
+    updateSeenBtn();  // set initial state on load
+
+    $('tv-clear-history-btn').addEventListener('click', () => {
+      tvSeen.clear();
+      saveSeen();
+      updateSeenBtn();
     });
 
     // Auto-advance when either slot's video ends
