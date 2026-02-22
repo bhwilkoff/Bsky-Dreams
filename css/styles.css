@@ -2386,6 +2386,17 @@ button {
   gap: var(--space-xs);
 }
 
+.tv-adult-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-md);
+  cursor: pointer;
+}
+
 .tv-player {
   display: flex;
   flex-direction: column;
@@ -2413,16 +2424,60 @@ button {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  flex-direction: row;
   pointer-events: none;
 }
 
-.tv-overlay-inner {
+/* Auto-hide left section: author, text, mute, stop */
+.tv-overlay-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: auto;
+  transition: opacity 0.4s ease;
+}
+
+.tv-overlay-meta.tv-meta-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tv-meta-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: linear-gradient(rgba(0,0,0,0.5), transparent);
+}
+
+.tv-meta-bottom {
+  padding: var(--space-md);
   background: linear-gradient(transparent, rgba(0,0,0,0.75) 60%);
-  padding: var(--space-lg);
   color: #fff;
 }
+
+.tv-playback-btns {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.tv-ctrl-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition: background 0.15s;
+}
+.tv-ctrl-icon-btn:hover { background: rgba(0,0,0,0.7); }
 
 .tv-author {
   display: flex;
@@ -2463,12 +2518,11 @@ button {
 }
 
 .tv-actions {
-  position: absolute;
-  right: var(--space-md);
-  bottom: var(--space-xl);
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: var(--space-md);
+  padding: var(--space-md);
   pointer-events: auto;
 }
 
@@ -2494,37 +2548,18 @@ button {
   font-weight: 600;
 }
 
-.tv-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  background: #111;
-  color: #ccc;
-  flex-wrap: wrap;
-}
-
-.tv-ctrl-btn {
-  color: #ccc;
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  font-size: 0.875rem;
-}
-.tv-ctrl-btn:hover { color: #fff; }
-
 .tv-topic-badge {
-  margin-left: auto;
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  background: var(--color-bg);
+  color: #fff;
+  background: rgba(0,0,0,0.4);
   padding: 2px var(--space-sm);
   border-radius: var(--radius-sm);
 }
 
 .tv-queue-count {
   font-size: 0.8125rem;
-  color: #888;
+  color: rgba(255,255,255,0.7);
+  margin-left: auto;
 }
 
 /* Hide the X lines on mute icon when not muted */
