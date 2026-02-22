@@ -1512,10 +1512,8 @@
     /* ---- DOM refs ---- */
     const tvSetup        = $('tv-setup');
     const tvPlayer       = $('tv-player');
-    const tvForm         = $('tv-form');
     const tvTopicInput   = $('tv-topic-input');
     const tvVideo        = $('tv-video');
-    const tvOverlay      = $('tv-overlay');
     const tvAuthorAvatar = $('tv-author-avatar');
     const tvAuthorName   = $('tv-author-name');
     const tvAuthorHandle = $('tv-author-handle');
@@ -1533,41 +1531,74 @@
     const tvQueueCount   = $('tv-queue-count');
 
     /* ---- State ---- */
-    let tvQueue    = [];   // array of post objects with video embeds
+    let tvQueue    = [];
     let tvIndex    = 0;
     let tvCursor   = null;
     let tvTopic    = '';
-    let tvHls      = null; // current Hls instance
+    let tvHls      = null;
     let tvRunning  = false;
-    let tvCurrent  = null; // current post object
+    let tvCurrent  = null;
 
-    /* ---- Extract video posts from search results ---- */
-    function extractVideoPosts(posts) {
-      return posts.filter((p) => {
-        const e = p.embed;
-        return (
-          e && (
-            e.$type === 'app.bsky.embed.video#view' ||
-            (e.$type === 'app.bsky.embed.recordWithMedia#view' && e.media?.$type === 'app.bsky.embed.video#view')
-          )
-        );
-      });
+    /* ---- Build HLS playlist URL from author DID + blob CID ---- */
+    function buildPlaylistUrl(did, cid) {
+      return `https://video.bsky.app/watch/${encodeURIComponent(did)}/${encodeURIComponent(cid)}/playlist.m3u8`;
     }
 
+    /* ---- Resolve the best available video embed from a post ---- *
+     * Handles all four cases seen in the wild:
+     *   1. post.embed.$type === 'app.bsky.embed.video#view'   → hydrated view, has .playlist
+     *   2. post.embed.$type === 'app.bsky.embed.video'        → record embed, has .cid or .video.ref
+     *   3. Same two patterns wrapped in recordWithMedia
+     *   4. post.record.embed.$type === 'app.bsky.embed.video' → raw record only (search results)
+     */
     function getVideoEmbed(post) {
-      const e = post.embed;
-      if (!e) return null;
-      if (e.$type === 'app.bsky.embed.video#view') return e;
-      if (e.$type === 'app.bsky.embed.recordWithMedia#view' && e.media?.$type === 'app.bsky.embed.video#view') return e.media;
-      return null;
+      const did = post.author?.did || '';
+
+      function resolve(e) {
+        if (!e) return null;
+        const t = e.$type || '';
+        if (t === 'app.bsky.embed.video#view' || t === 'app.bsky.embed.video') {
+          // Case A: already has a ready-made playlist URL
+          if (e.playlist) return e;
+          // Case B: has a CID but no playlist — construct the URL
+          const cid = e.cid || e.video?.ref?.$link;
+          if (cid && did) return { ...e, playlist: buildPlaylistUrl(did, cid) };
+        }
+        if (t === 'app.bsky.embed.recordWithMedia#view' || t === 'app.bsky.embed.recordWithMedia') {
+          return resolve(e.media);
+        }
+        return null;
+      }
+
+      return resolve(post.embed) || resolve(post.record?.embed);
     }
 
-    /* ---- Fetch more videos into the queue ---- */
+    function hasVideo(post) { return !!getVideoEmbed(post); }
+
+    /* ---- Deduplicate posts already in the queue ---- */
+    function dedup(posts) {
+      const seen = new Set(tvQueue.map((p) => p.uri));
+      return posts.filter((p) => p.uri && !seen.has(p.uri));
+    }
+
+    /* ---- Fetch more video posts ---- */
     async function fetchMore() {
       try {
-        const data = await API.searchPosts(tvTopic, 'latest', 25, tvCursor || undefined);
-        tvCursor = data.cursor || null;
-        const found = extractVideoPosts(data.posts || []);
+        let posts = [];
+
+        if (!tvTopic) {
+          // No topic: pull from the user's timeline (personalized + reliable)
+          const data = await API.getTimeline(100, tvCursor || undefined);
+          tvCursor = data.cursor || null;
+          posts = (data.feed || []).map((item) => item.post);
+        } else {
+          // Topic mode: search for that term; use a large limit to maximise video hits
+          const data = await API.searchPosts(tvTopic, 'latest', 100, tvCursor || undefined);
+          tvCursor = data.cursor || null;
+          posts = data.posts || [];
+        }
+
+        const found = dedup(posts).filter(hasVideo);
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
@@ -1577,31 +1608,24 @@
 
     function updateQueueCount() {
       const remaining = tvQueue.length - tvIndex;
-      tvQueueCount.textContent = remaining > 0 ? `${remaining} video${remaining !== 1 ? 's' : ''} queued` : '';
+      tvQueueCount.textContent = remaining > 0
+        ? `${remaining} video${remaining !== 1 ? 's' : ''} queued` : '';
     }
 
     /* ---- Load a video into the <video> element ---- */
-    function loadTvVideo(src, thumb, muted) {
-      // Destroy any existing HLS instance
+    function loadTvVideo(src, thumb) {
       if (tvHls) { tvHls.destroy(); tvHls = null; }
-
       tvVideo.removeAttribute('src');
       tvVideo.load();
       if (thumb) tvVideo.poster = thumb;
-      tvVideo.muted = muted;
 
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         tvHls = new Hls({ lowLatencyMode: false, enableWorker: false });
         tvHls.loadSource(src);
         tvHls.attachMedia(tvVideo);
-        tvHls.on(Hls.Events.MANIFEST_PARSED, () => {
-          tvVideo.play().catch(() => {});
-        });
+        tvHls.on(Hls.Events.MANIFEST_PARSED, () => { tvVideo.play().catch(() => {}); });
         tvHls.on(Hls.Events.ERROR, (event, data) => {
-          if (data.fatal) {
-            tvHls.destroy(); tvHls = null;
-            advanceToNext();
-          }
+          if (data.fatal) { tvHls.destroy(); tvHls = null; advanceToNext(); }
         });
       } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
         tvVideo.src = src;
@@ -1609,63 +1633,80 @@
       }
     }
 
+    /* ---- Sync mute-button label/icon with current video.muted state ---- */
+    function syncMuteBtn() {
+      const muted = tvVideo.muted;
+      tvMuteLabel.textContent = muted ? 'Unmute' : 'Mute';
+      tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
+        l.style.display = muted ? '' : 'none';
+      });
+    }
+
     /* ---- Show a post in the overlay ---- */
     function showOverlay(post) {
       tvCurrent = post;
       const author = post.author || {};
-      tvAuthorAvatar.src = author.avatar || '';
-      tvAuthorAvatar.alt = author.displayName || author.handle || '';
-      tvAuthorName.textContent   = author.displayName || author.handle || '';
-      tvAuthorHandle.textContent = `@${author.handle || ''}`;
-      tvPostText.textContent     = post.record?.text || '';
-
-      // Like state
+      tvAuthorAvatar.src             = author.avatar || '';
+      tvAuthorAvatar.alt             = author.displayName || author.handle || '';
+      tvAuthorName.textContent       = author.displayName || author.handle || '';
+      tvAuthorHandle.textContent     = `@${author.handle || ''}`;
+      tvPostText.textContent         = post.record?.text || '';
       tvLikeBtn.classList.toggle('tv-action-liked', !!post.viewer?.like);
-      tvLikeBtn.dataset.uri      = post.uri;
-      tvLikeBtn.dataset.cid      = post.cid;
-      tvLikeBtn.dataset.likeUri  = post.viewer?.like || '';
-      tvLikeCount.textContent    = formatCount(post.likeCount  || 0);
-
-      // Repost state
+      tvLikeBtn.dataset.uri          = post.uri;
+      tvLikeBtn.dataset.cid          = post.cid;
+      tvLikeBtn.dataset.likeUri      = post.viewer?.like || '';
+      tvLikeCount.textContent        = formatCount(post.likeCount   || 0);
       tvRepostBtn.classList.toggle('tv-action-reposted', !!post.viewer?.repost);
-      tvRepostBtn.dataset.uri       = post.uri;
-      tvRepostBtn.dataset.cid       = post.cid;
-      tvRepostBtn.dataset.repostUri = post.viewer?.repost || '';
-      tvRepostCount.textContent     = formatCount(post.repostCount || 0);
+      tvRepostBtn.dataset.uri        = post.uri;
+      tvRepostBtn.dataset.cid        = post.cid;
+      tvRepostBtn.dataset.repostUri  = post.viewer?.repost || '';
+      tvRepostCount.textContent      = formatCount(post.repostCount || 0);
     }
 
     /* ---- Play the video at tvIndex ---- */
     async function playAt(idx) {
       if (idx >= tvQueue.length) {
-        // Try fetching more
         const before = tvQueue.length;
         await fetchMore();
         if (tvQueue.length === before) {
-          // No more videos
-          tvQueueCount.textContent = 'No more videos found.';
+          tvQueueCount.textContent = tvTopic
+            ? `No more videos found for "${tvTopic}".`
+            : 'No more videos in your feed right now.';
           return;
         }
       }
       tvIndex = idx;
       const post  = tvQueue[idx];
       const embed = getVideoEmbed(post);
-      if (!embed || !embed.playlist) {
-        advanceToNext(); // skip posts without playable video
-        return;
-      }
+      if (!embed?.playlist) { advanceToNext(); return; }
       showOverlay(post);
-      loadTvVideo(embed.playlist, embed.thumbnail, tvVideo.muted);
+      loadTvVideo(embed.playlist, embed.thumbnail);
       updateQueueCount();
-
-      // Pre-fetch when getting near the end
-      if (tvQueue.length - tvIndex < 5 && tvCursor) {
-        fetchMore();
-      }
+      if (tvQueue.length - tvIndex < 5) fetchMore();
     }
 
     function advanceToNext() {
       if (!tvRunning) return;
       playAt(tvIndex + 1);
+    }
+
+    /* ---- Start TV (shared by main button, topic form, and chips) ---- */
+    function startTV(topic) {
+      tvTopic  = (topic || '').trim();
+      tvQueue  = [];
+      tvIndex  = 0;
+      tvCursor = null;
+      tvTopicBadge.textContent = tvTopic || 'All videos';
+
+      tvSetup.hidden  = true;
+      tvPlayer.hidden = false;
+      tvRunning       = true;
+
+      // Start unmuted — the click that called startTV() IS the user gesture
+      tvVideo.muted = false;
+      syncMuteBtn();
+
+      fetchMore().then(() => playAt(0));
     }
 
     /* ---- Public stop function (called from showView) ---- */
@@ -1684,29 +1725,18 @@
       tvCurrent = null;
     };
 
-    /* ---- Start TV ---- */
-    tvForm.addEventListener('submit', async (e) => {
+    /* ---- "Start Bsky Dreams TV" (no topic) ---- */
+    $('tv-start-main-btn').addEventListener('click', () => startTV(''));
+
+    /* ---- Topic form (optional custom topic) ---- */
+    $('tv-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      const topic = tvTopicInput.value.trim();
-      if (!topic) return;
+      startTV(tvTopicInput.value);
+    });
 
-      tvTopic  = topic;
-      tvQueue  = [];
-      tvIndex  = 0;
-      tvCursor = null;
-      tvTopicBadge.textContent = topic;
-
-      tvSetup.hidden  = true;
-      tvPlayer.hidden = false;
-      tvRunning = true;
-
-      // Muted by default; user can unmute
-      tvVideo.muted = true;
-      tvMuteLabel.textContent = 'Unmute';
-      tvMuteBtn.querySelector('.tv-muted-x') && (tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => l.style.display = ''));
-
-      await fetchMore();
-      playAt(0);
+    /* ---- Topic chips ---- */
+    document.querySelectorAll('.tv-chip').forEach((chip) => {
+      chip.addEventListener('click', () => startTV(chip.dataset.topic));
     });
 
     // Auto-advance when video ends
@@ -1715,34 +1745,28 @@
     /* ---- Mute toggle ---- */
     tvMuteBtn.addEventListener('click', () => {
       tvVideo.muted = !tvVideo.muted;
-      tvMuteLabel.textContent = tvVideo.muted ? 'Unmute' : 'Mute';
-      tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
-        l.style.display = tvVideo.muted ? '' : 'none';
-      });
+      syncMuteBtn();
     });
 
-    /* ---- Skip ---- */
+    /* ---- Skip / Stop ---- */
     tvSkipBtn.addEventListener('click', () => advanceToNext());
-
-    /* ---- Stop ---- */
-    tvStopBtn.addEventListener('click', () => tvStop());
+    tvStopBtn.addEventListener('click', () => window.tvStop());
 
     /* ---- Like (in-view) ---- */
     tvLikeBtn.addEventListener('click', async () => {
       if (!tvCurrent) return;
-      const isLiked  = tvLikeBtn.classList.contains('tv-action-liked');
-      const likeUri  = tvLikeBtn.dataset.likeUri;
+      const isLiked = tvLikeBtn.classList.contains('tv-action-liked');
       tvLikeBtn.disabled = true;
       try {
-        if (isLiked && likeUri) {
-          await API.unlikePost(likeUri);
+        if (isLiked && tvLikeBtn.dataset.likeUri) {
+          await API.unlikePost(tvLikeBtn.dataset.likeUri);
           tvLikeBtn.classList.remove('tv-action-liked');
           tvLikeBtn.dataset.likeUri = '';
           tvLikeCount.textContent = formatCount(Math.max(0, (tvCurrent.likeCount || 1) - 1));
         } else {
-          const result = await API.likePost(tvLikeBtn.dataset.uri, tvLikeBtn.dataset.cid);
+          const r = await API.likePost(tvLikeBtn.dataset.uri, tvLikeBtn.dataset.cid);
           tvLikeBtn.classList.add('tv-action-liked');
-          tvLikeBtn.dataset.likeUri = result.uri || '';
+          tvLikeBtn.dataset.likeUri = r.uri || '';
           tvLikeCount.textContent = formatCount((tvCurrent.likeCount || 0) + 1);
         }
       } catch (err) { console.error('TV like error:', err.message); }
@@ -1753,18 +1777,17 @@
     tvRepostBtn.addEventListener('click', async () => {
       if (!tvCurrent) return;
       const isReposted = tvRepostBtn.classList.contains('tv-action-reposted');
-      const repostUri  = tvRepostBtn.dataset.repostUri;
       tvRepostBtn.disabled = true;
       try {
-        if (isReposted && repostUri) {
-          await API.unrepost(repostUri);
+        if (isReposted && tvRepostBtn.dataset.repostUri) {
+          await API.unrepost(tvRepostBtn.dataset.repostUri);
           tvRepostBtn.classList.remove('tv-action-reposted');
           tvRepostBtn.dataset.repostUri = '';
           tvRepostCount.textContent = formatCount(Math.max(0, (tvCurrent.repostCount || 1) - 1));
         } else {
-          const result = await API.repost(tvRepostBtn.dataset.uri, tvRepostBtn.dataset.cid);
+          const r = await API.repost(tvRepostBtn.dataset.uri, tvRepostBtn.dataset.cid);
           tvRepostBtn.classList.add('tv-action-reposted');
-          tvRepostBtn.dataset.repostUri = result.uri || '';
+          tvRepostBtn.dataset.repostUri = r.uri || '';
           tvRepostCount.textContent = formatCount((tvCurrent.repostCount || 0) + 1);
         }
       } catch (err) { console.error('TV repost error:', err.message); }
@@ -1774,7 +1797,6 @@
     /* ---- Open post ---- */
     tvOpenBtn.addEventListener('click', () => {
       if (!tvCurrent) return;
-      showView('thread');
       openThread(tvCurrent.uri, tvCurrent.cid, tvCurrent.author?.handle || '');
     });
   })();
