@@ -295,17 +295,40 @@
 
     <!-- ---- TV VIEW ---- -->
     <section id="view-tv" class="view view-tv" hidden aria-labelledby="tv-heading">
-      <!-- Topic input + Start button -->
+      <!-- Setup screen -->
       <div id="tv-setup" class="tv-setup">
         <h2 id="tv-heading" class="tv-heading">Bsky Dreams TV</h2>
-        <p class="tv-desc">Watch a continuous stream of videos on any topic.</p>
+        <p class="tv-desc">Continuous video from BlueSky, playing with sound.</p>
+
+        <button type="button" class="btn btn-primary tv-start-main-btn" id="tv-start-main-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          Start Bsky Dreams TV
+        </button>
+
+        <p class="tv-or-label">or pick a topic</p>
+
+        <div class="tv-chips" role="group" aria-label="Suggested topics">
+          <button class="tv-chip" data-topic="nature">Nature</button>
+          <button class="tv-chip" data-topic="travel">Travel</button>
+          <button class="tv-chip" data-topic="music">Music</button>
+          <button class="tv-chip" data-topic="cooking">Food</button>
+          <button class="tv-chip" data-topic="art">Art</button>
+          <button class="tv-chip" data-topic="photography">Photography</button>
+          <button class="tv-chip" data-topic="animals">Animals</button>
+          <button class="tv-chip" data-topic="sports">Sports</button>
+          <button class="tv-chip" data-topic="gaming">Gaming</button>
+          <button class="tv-chip" data-topic="technology">Tech</button>
+          <button class="tv-chip" data-topic="dance">Dance</button>
+          <button class="tv-chip" data-topic="science">Science</button>
+        </div>
+
         <form id="tv-form" class="tv-form">
           <input id="tv-topic-input" class="field-input tv-topic-input" type="search"
-                 placeholder="e.g. nature, travel, music…"
-                 autocapitalize="none" spellcheck="false" aria-label="Topic or hashtag">
-          <button type="submit" class="btn btn-primary tv-start-btn" id="tv-start-btn">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-            Start TV
+                 placeholder="Custom topic…"
+                 autocapitalize="none" spellcheck="false" aria-label="Custom topic or hashtag">
+          <button type="submit" class="btn btn-ghost tv-search-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            Search
           </button>
         </form>
       </div>
@@ -345,9 +368,9 @@
         </div>
         <!-- TV controls bar -->
         <div class="tv-controls">
-          <button class="btn btn-ghost tv-ctrl-btn" id="tv-mute-btn" aria-label="Unmute">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true" id="tv-mute-icon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x"/></svg>
-            <span id="tv-mute-label">Unmute</span>
+          <button class="btn btn-ghost tv-ctrl-btn" id="tv-mute-btn" aria-label="Mute">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true" id="tv-mute-icon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/></svg>
+            <span id="tv-mute-label">Mute</span>
           </button>
           <button class="btn btn-ghost tv-ctrl-btn" id="tv-skip-btn" aria-label="Skip to next video">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
