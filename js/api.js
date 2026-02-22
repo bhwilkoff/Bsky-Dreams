@@ -370,6 +370,18 @@ const API = (() => {
    *
    * Resolves handle to DID if needed for full AT URI.
    */
+  /**
+   * Submit a moderation report (com.atproto.moderation.createReport).
+   * @param {object} subject      - { $type, uri, cid } for a post, or { $type, did } for an account
+   * @param {string} reasonType   - com.atproto.moderation.defs#reason* constant
+   * @param {string} [reason]     - optional free-text elaboration
+   */
+  async function createReport(subject, reasonType, reason = '') {
+    const body = { subject, reasonType };
+    if (reason && reason.trim()) body.reason = reason.trim();
+    return authPost('com.atproto.moderation.createReport', body);
+  }
+
   async function resolvePostUrl(url) {
     const m = url.match(/bsky\.app\/profile\/([^/]+)\/post\/([^/?#]+)/);
     if (!m) throw new Error('Not a recognized bsky.app post URL.');
@@ -401,5 +413,6 @@ const API = (() => {
     listNotifications,
     updateSeen,
     resolvePostUrl,
+    createReport,
   };
 })();

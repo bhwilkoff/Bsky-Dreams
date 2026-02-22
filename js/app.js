@@ -23,6 +23,7 @@
   const navSearchBtn   = $('nav-search-btn');
   const navComposeBtn  = $('nav-compose-btn');
   const navNotifBtn    = $('nav-notif-btn');
+  const navTvBtn       = $('nav-tv-btn');
   const navProfileBtn  = $('nav-profile-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
@@ -33,9 +34,10 @@
   const viewThread        = $('view-thread');
   const viewProfile       = $('view-profile');
   const viewNotifications = $('view-notifications');
+  const viewTv            = $('view-tv');
 
   const feedResults    = $('feed-results');
-  const feedRefreshBtn = $('feed-refresh-btn');
+  const ptrIndicator   = $('ptr-indicator');
   const feedLoadMore   = $('feed-load-more');
   const feedLoadMoreBtn = $('feed-load-more-btn');
 
@@ -88,6 +90,14 @@
   const menuSignOut      = $('menu-sign-out');
 
   const loadingOverlay   = $('loading-overlay');
+
+  const reportModal        = $('report-modal');
+  const reportModalClose   = $('report-modal-close');
+  const reportModalCancel  = $('report-modal-cancel');
+  const reportModalSubmit  = $('report-modal-submit');
+  const reportModalSubtitle = $('report-modal-subtitle');
+  const reportModalError   = $('report-modal-error');
+  const reportNote         = $('report-note');
 
   const imageLightbox    = $('image-lightbox');
   const lightboxImg      = $('lightbox-img');
@@ -413,6 +423,62 @@
   }
 
   /* ================================================================
+     REPORT MODAL
+  ================================================================ */
+  let reportSubject = null; // { subject, subtitle } set by openReportModal
+
+  function openReportModal({ subject, subtitle }) {
+    reportSubject = subject;
+    reportModalSubtitle.textContent = subtitle || '';
+    reportNote.value = '';
+    hideError(reportModalError);
+    // Default to "Other" radio
+    const defaultRadio = reportModal.querySelector('input[value="com.atproto.moderation.defs#reasonOther"]');
+    if (defaultRadio) defaultRadio.checked = true;
+    reportModal.hidden = false;
+    reportModalSubmit.disabled = false;
+    // Focus first radio for accessibility
+    const firstRadio = reportModal.querySelector('input[type="radio"]');
+    if (firstRadio) firstRadio.focus();
+  }
+
+  function closeReportModal() {
+    reportModal.hidden = true;
+    reportSubject = null;
+  }
+
+  reportModalClose.addEventListener('click', closeReportModal);
+  reportModalCancel.addEventListener('click', closeReportModal);
+  reportModal.addEventListener('click', (e) => {
+    if (e.target === reportModal) closeReportModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !reportModal.hidden) closeReportModal();
+  });
+
+  reportModalSubmit.addEventListener('click', async () => {
+    if (!reportSubject) return;
+    const reasonType = (reportModal.querySelector('input[name="report-reason"]:checked') || {}).value
+      || 'com.atproto.moderation.defs#reasonOther';
+    const reason = reportNote.value.trim();
+    reportModalSubmit.disabled = true;
+    hideError(reportModalError);
+    try {
+      await API.createReport(reportSubject, reasonType, reason);
+      closeReportModal();
+      // Brief confirmation banner reusing the feed-empty pattern
+      const banner = document.createElement('div');
+      banner.className = 'report-success-banner';
+      banner.textContent = 'Report submitted. Thank you.';
+      document.body.appendChild(banner);
+      setTimeout(() => banner.remove(), 3000);
+    } catch (err) {
+      showError(reportModalError, `Could not submit report: ${err.message}`);
+      reportModalSubmit.disabled = false;
+    }
+  });
+
+  /* ================================================================
      ADULT CONTENT FILTER
   ================================================================ */
   const ADULT_LABELS = new Set([
@@ -522,7 +588,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     // Seed history preserving any existing URL params
     if (!window.location.search) {
-      history.replaceState({ view: 'search' }, '', '?');
+      history.replaceState({ view: 'feed' }, '', '?view=feed');
     }
 
     if (AUTH.isLoggedIn()) {
@@ -599,7 +665,8 @@
       showView('search', true);
       searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     } else {
-      showView('search', true);
+      showView('feed', true);
+      loadFeed();
     }
   }
 
@@ -633,12 +700,14 @@
       thread:        viewThread,
       profile:       viewProfile,
       notifications: viewNotifications,
+      tv:            viewTv,
     };
     const navBtns = {
       feed:          navFeedBtn,
       search:        navSearchBtn,
       compose:       navComposeBtn,
       notifications: navNotifBtn,
+      tv:            navTvBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -680,8 +749,15 @@
         url = '?view=notifications';
       } else if (name === 'compose') {
         url = '?view=compose';
+      } else if (name === 'tv') {
+        url = '?view=tv';
       }
       history.pushState(state, '', url);
+    }
+
+    // Pause TV playback when leaving the TV view
+    if (name !== 'tv') {
+      window.tvStop?.();
     }
   }
 
@@ -696,6 +772,7 @@
     clearNotifBadge();
     if (!notifLoaded) loadNotifications();
   });
+  navTvBtn.addEventListener('click', () => showView('tv'));
 
   // Use browser history for the Back button so Forward/Back both work
   threadBackBtn.addEventListener('click',  () => history.back());
@@ -985,7 +1062,61 @@
     }
   }
 
-  feedRefreshBtn.addEventListener('click',    () => loadFeed(false));
+  /* ---- Pull-to-refresh on the home feed ---- */
+  (() => {
+    const PTR_THRESHOLD = 64;  // px of pull needed to trigger refresh
+    const PTR_HEIGHT    = 52;  // must match CSS height of .ptr-indicator
+    let ptrStartY   = 0;
+    let ptrDragging = false;
+    let ptrActive   = false;   // true while refresh is in progress
+
+    viewFeed.addEventListener('touchstart', (e) => {
+      if (viewFeed.scrollTop === 0 && !ptrActive) {
+        ptrStartY   = e.touches[0].clientY;
+        ptrDragging = true;
+      }
+    }, { passive: true });
+
+    viewFeed.addEventListener('touchmove', (e) => {
+      if (!ptrDragging) return;
+      const dy = Math.max(0, e.touches[0].clientY - ptrStartY);
+      if (dy <= 0) return;
+
+      // Reveal the indicator by shrinking its negative top margin
+      const pull = Math.min(dy * 0.5, PTR_HEIGHT); // dampen pull
+      ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
+
+      if (dy >= PTR_THRESHOLD) {
+        ptrIndicator.dataset.state = 'release';
+        ptrIndicator.querySelector('.ptr-label').textContent = 'Release to refresh';
+      } else {
+        ptrIndicator.dataset.state = 'pull';
+        ptrIndicator.querySelector('.ptr-label').textContent = 'Pull to refresh';
+      }
+    }, { passive: true });
+
+    viewFeed.addEventListener('touchend', async () => {
+      if (!ptrDragging) return;
+      ptrDragging = false;
+
+      const wasFarEnough = ptrIndicator.dataset.state === 'release';
+
+      if (wasFarEnough) {
+        ptrActive = true;
+        ptrIndicator.style.marginTop = '0px';
+        ptrIndicator.dataset.state   = 'loading';
+        ptrIndicator.querySelector('.ptr-label').textContent = 'Refreshing…';
+        await loadFeed(false);
+        ptrActive = false;
+      }
+
+      // Snap back
+      ptrIndicator.style.marginTop = '';
+      delete ptrIndicator.dataset.state;
+      ptrIndicator.querySelector('.ptr-label').textContent = 'Pull to refresh';
+    });
+  })();
+
   feedLoadMoreBtn.addEventListener('click',    () => loadFeed(true));
   profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
   notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
@@ -1168,6 +1299,23 @@
         }
       });
       el.appendChild(followBtn);
+
+      // Report account button
+      const reportActorBtn = document.createElement('button');
+      reportActorBtn.type      = 'button';
+      reportActorBtn.className = 'btn btn-ghost report-actor-btn';
+      reportActorBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
+      reportActorBtn.setAttribute('aria-label', `Report @${profile.handle}`);
+      reportActorBtn.addEventListener('click', () => {
+        openReportModal({
+          subject: {
+            $type: 'com.atproto.admin.defs#repoRef',
+            did:   profile.did,
+          },
+          subtitle: `Account @${escHtml(profile.handle)}`,
+        });
+      });
+      el.appendChild(reportActorBtn);
     }
 
     profileHeaderEl.innerHTML = '';
@@ -1365,6 +1513,280 @@
     });
   }
 
+  /* ================================================================
+     BSKY DREAMS TV — continuous video feed
+  ================================================================ */
+  (() => {
+    /* ---- DOM refs ---- */
+    const tvSetup        = $('tv-setup');
+    const tvPlayer       = $('tv-player');
+    const tvForm         = $('tv-form');
+    const tvTopicInput   = $('tv-topic-input');
+    const tvVideo        = $('tv-video');
+    const tvOverlay      = $('tv-overlay');
+    const tvAuthorAvatar = $('tv-author-avatar');
+    const tvAuthorName   = $('tv-author-name');
+    const tvAuthorHandle = $('tv-author-handle');
+    const tvPostText     = $('tv-post-text');
+    const tvLikeBtn      = $('tv-like-btn');
+    const tvLikeCount    = $('tv-like-count');
+    const tvRepostBtn    = $('tv-repost-btn');
+    const tvRepostCount  = $('tv-repost-count');
+    const tvOpenBtn      = $('tv-open-btn');
+    const tvMuteBtn      = $('tv-mute-btn');
+    const tvMuteLabel    = $('tv-mute-label');
+    const tvSkipBtn      = $('tv-skip-btn');
+    const tvStopBtn      = $('tv-stop-btn');
+    const tvTopicBadge   = $('tv-topic-badge');
+    const tvQueueCount   = $('tv-queue-count');
+
+    /* ---- State ---- */
+    let tvQueue    = [];   // array of post objects with video embeds
+    let tvIndex    = 0;
+    let tvCursor   = null;
+    let tvTopic    = '';
+    let tvHls      = null; // current Hls instance
+    let tvRunning  = false;
+    let tvCurrent  = null; // current post object
+
+    /* ---- Extract video posts from search results ---- */
+    function extractVideoPosts(posts) {
+      return posts.filter((p) => {
+        const e = p.embed;
+        return (
+          e && (
+            e.$type === 'app.bsky.embed.video#view' ||
+            (e.$type === 'app.bsky.embed.recordWithMedia#view' && e.media?.$type === 'app.bsky.embed.video#view')
+          )
+        );
+      });
+    }
+
+    function getVideoEmbed(post) {
+      const e = post.embed;
+      if (!e) return null;
+      if (e.$type === 'app.bsky.embed.video#view') return e;
+      if (e.$type === 'app.bsky.embed.recordWithMedia#view' && e.media?.$type === 'app.bsky.embed.video#view') return e.media;
+      return null;
+    }
+
+    /* ---- Fetch more videos into the queue ---- */
+    async function fetchMore() {
+      try {
+        const data = await API.searchPosts(tvTopic, 'latest', 25, tvCursor || undefined);
+        tvCursor = data.cursor || null;
+        const found = extractVideoPosts(data.posts || []);
+        tvQueue = tvQueue.concat(found);
+        updateQueueCount();
+      } catch (err) {
+        console.warn('TV fetch error:', err.message);
+      }
+    }
+
+    function updateQueueCount() {
+      const remaining = tvQueue.length - tvIndex;
+      tvQueueCount.textContent = remaining > 0 ? `${remaining} video${remaining !== 1 ? 's' : ''} queued` : '';
+    }
+
+    /* ---- Load a video into the <video> element ---- */
+    function loadTvVideo(src, thumb, muted) {
+      // Destroy any existing HLS instance
+      if (tvHls) { tvHls.destroy(); tvHls = null; }
+
+      tvVideo.removeAttribute('src');
+      tvVideo.load();
+      if (thumb) tvVideo.poster = thumb;
+      tvVideo.muted = muted;
+
+      if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        tvHls = new Hls({ lowLatencyMode: false, enableWorker: false });
+        tvHls.loadSource(src);
+        tvHls.attachMedia(tvVideo);
+        tvHls.on(Hls.Events.MANIFEST_PARSED, () => {
+          tvVideo.play().catch(() => {});
+        });
+        tvHls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            tvHls.destroy(); tvHls = null;
+            advanceToNext();
+          }
+        });
+      } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
+        tvVideo.src = src;
+        tvVideo.play().catch(() => {});
+      }
+    }
+
+    /* ---- Show a post in the overlay ---- */
+    function showOverlay(post) {
+      tvCurrent = post;
+      const author = post.author || {};
+      tvAuthorAvatar.src = author.avatar || '';
+      tvAuthorAvatar.alt = author.displayName || author.handle || '';
+      tvAuthorName.textContent   = author.displayName || author.handle || '';
+      tvAuthorHandle.textContent = `@${author.handle || ''}`;
+      tvPostText.textContent     = post.record?.text || '';
+
+      // Like state
+      tvLikeBtn.classList.toggle('tv-action-liked', !!post.viewer?.like);
+      tvLikeBtn.dataset.uri      = post.uri;
+      tvLikeBtn.dataset.cid      = post.cid;
+      tvLikeBtn.dataset.likeUri  = post.viewer?.like || '';
+      tvLikeCount.textContent    = formatCount(post.likeCount  || 0);
+
+      // Repost state
+      tvRepostBtn.classList.toggle('tv-action-reposted', !!post.viewer?.repost);
+      tvRepostBtn.dataset.uri       = post.uri;
+      tvRepostBtn.dataset.cid       = post.cid;
+      tvRepostBtn.dataset.repostUri = post.viewer?.repost || '';
+      tvRepostCount.textContent     = formatCount(post.repostCount || 0);
+    }
+
+    /* ---- Play the video at tvIndex ---- */
+    async function playAt(idx) {
+      if (idx >= tvQueue.length) {
+        // Try fetching more
+        const before = tvQueue.length;
+        await fetchMore();
+        if (tvQueue.length === before) {
+          // No more videos
+          tvQueueCount.textContent = 'No more videos found.';
+          return;
+        }
+      }
+      tvIndex = idx;
+      const post  = tvQueue[idx];
+      const embed = getVideoEmbed(post);
+      if (!embed || !embed.playlist) {
+        advanceToNext(); // skip posts without playable video
+        return;
+      }
+      showOverlay(post);
+      loadTvVideo(embed.playlist, embed.thumbnail, tvVideo.muted);
+      updateQueueCount();
+
+      // Pre-fetch when getting near the end
+      if (tvQueue.length - tvIndex < 5 && tvCursor) {
+        fetchMore();
+      }
+    }
+
+    function advanceToNext() {
+      if (!tvRunning) return;
+      playAt(tvIndex + 1);
+    }
+
+    /* ---- Public stop function (called from showView) ---- */
+    window.tvStop = function () {
+      if (!tvRunning) return;
+      tvRunning = false;
+      if (tvHls) { tvHls.destroy(); tvHls = null; }
+      tvVideo.pause();
+      tvVideo.removeAttribute('src');
+      tvVideo.load();
+      tvPlayer.hidden = true;
+      tvSetup.hidden  = false;
+      tvQueue   = [];
+      tvIndex   = 0;
+      tvCursor  = null;
+      tvCurrent = null;
+    };
+
+    /* ---- Start TV ---- */
+    tvForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const topic = tvTopicInput.value.trim();
+      if (!topic) return;
+
+      tvTopic  = topic;
+      tvQueue  = [];
+      tvIndex  = 0;
+      tvCursor = null;
+      tvTopicBadge.textContent = topic;
+
+      tvSetup.hidden  = true;
+      tvPlayer.hidden = false;
+      tvRunning = true;
+
+      // Muted by default; user can unmute
+      tvVideo.muted = true;
+      tvMuteLabel.textContent = 'Unmute';
+      tvMuteBtn.querySelector('.tv-muted-x') && (tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => l.style.display = ''));
+
+      await fetchMore();
+      playAt(0);
+    });
+
+    // Auto-advance when video ends
+    tvVideo.addEventListener('ended', advanceToNext);
+
+    /* ---- Mute toggle ---- */
+    tvMuteBtn.addEventListener('click', () => {
+      tvVideo.muted = !tvVideo.muted;
+      tvMuteLabel.textContent = tvVideo.muted ? 'Unmute' : 'Mute';
+      tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
+        l.style.display = tvVideo.muted ? '' : 'none';
+      });
+    });
+
+    /* ---- Skip ---- */
+    tvSkipBtn.addEventListener('click', () => advanceToNext());
+
+    /* ---- Stop ---- */
+    tvStopBtn.addEventListener('click', () => tvStop());
+
+    /* ---- Like (in-view) ---- */
+    tvLikeBtn.addEventListener('click', async () => {
+      if (!tvCurrent) return;
+      const isLiked  = tvLikeBtn.classList.contains('tv-action-liked');
+      const likeUri  = tvLikeBtn.dataset.likeUri;
+      tvLikeBtn.disabled = true;
+      try {
+        if (isLiked && likeUri) {
+          await API.unlikePost(likeUri);
+          tvLikeBtn.classList.remove('tv-action-liked');
+          tvLikeBtn.dataset.likeUri = '';
+          tvLikeCount.textContent = formatCount(Math.max(0, (tvCurrent.likeCount || 1) - 1));
+        } else {
+          const result = await API.likePost(tvLikeBtn.dataset.uri, tvLikeBtn.dataset.cid);
+          tvLikeBtn.classList.add('tv-action-liked');
+          tvLikeBtn.dataset.likeUri = result.uri || '';
+          tvLikeCount.textContent = formatCount((tvCurrent.likeCount || 0) + 1);
+        }
+      } catch (err) { console.error('TV like error:', err.message); }
+      tvLikeBtn.disabled = false;
+    });
+
+    /* ---- Repost (in-view) ---- */
+    tvRepostBtn.addEventListener('click', async () => {
+      if (!tvCurrent) return;
+      const isReposted = tvRepostBtn.classList.contains('tv-action-reposted');
+      const repostUri  = tvRepostBtn.dataset.repostUri;
+      tvRepostBtn.disabled = true;
+      try {
+        if (isReposted && repostUri) {
+          await API.unrepost(repostUri);
+          tvRepostBtn.classList.remove('tv-action-reposted');
+          tvRepostBtn.dataset.repostUri = '';
+          tvRepostCount.textContent = formatCount(Math.max(0, (tvCurrent.repostCount || 1) - 1));
+        } else {
+          const result = await API.repost(tvRepostBtn.dataset.uri, tvRepostBtn.dataset.cid);
+          tvRepostBtn.classList.add('tv-action-reposted');
+          tvRepostBtn.dataset.repostUri = result.uri || '';
+          tvRepostCount.textContent = formatCount((tvCurrent.repostCount || 0) + 1);
+        }
+      } catch (err) { console.error('TV repost error:', err.message); }
+      tvRepostBtn.disabled = false;
+    });
+
+    /* ---- Open post ---- */
+    tvOpenBtn.addEventListener('click', () => {
+      if (!tvCurrent) return;
+      showView('thread');
+      openThread(tvCurrent.uri, tvCurrent.cid, tvCurrent.author?.handle || '');
+    });
+  })();
+
   /**
    * Build a single post card DOM element.
    * @param {object}  post            - post view object from BlueSky API
@@ -1479,6 +1901,26 @@
       }).catch(() => {/* clipboard unavailable — silent */});
     });
     actions.appendChild(shareBtn);
+
+    // Report button (⋯ overflow → report post)
+    const reportBtn = document.createElement('button');
+    reportBtn.type      = 'button';
+    reportBtn.className = 'action-btn report-action-btn';
+    reportBtn.setAttribute('aria-label', 'Report post');
+    reportBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
+    reportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openReportModal({
+        subject: {
+          $type: 'com.atproto.repo.strongRef',
+          uri:   post.uri,
+          cid:   post.cid,
+        },
+        subtitle: `Post by @${escHtml(author.handle || '')}`,
+      });
+    });
+    actions.appendChild(reportBtn);
+
     card.appendChild(actions);
 
     // Wire up click to open thread

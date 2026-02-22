@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app is live and functional. Milestones 1–11 are complete, plus M19 (Deep-Link URL Routing), the repost/quote-post rendering fixes, thread nesting visual polish, Milestone 9 (Inline Reply Compose). Video player interaction bug is also fixed.
+Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), and UX improvements (default home view, pull-to-refresh).
 
 ## Completed Milestones
 
@@ -193,24 +193,40 @@ Items marked **[RESEARCH]** need API/cost investigation before work begins.
 
 ---
 
-### Milestone 12: Bsky Dreams TV (Continuous Video Feed)
+### Milestone 12: Bsky Dreams TV (Continuous Video Feed) ✅
+- **Entry**: "TV" nav tab (television icon).
+- **Setup screen**: Topic/hashtag input + "▶ Start TV" button — ensures first user
+  interaction fires before audio is requested.
+- **Queue engine**: `searchPosts(topic, 'latest', 25)` → extracts posts with
+  `app.bsky.embed.video#view` (or `recordWithMedia` with video media). Pre-fetches
+  more when <5 remain. Skips non-playable entries automatically.
+- **HLS player**: Reuses the same HLS.js-based loading pattern as the post-card video
+  embed. `tvStop()` destroys the Hls instance and resets state.
+- **Overlay**: Author avatar, name, handle, post text (2-line clamp). Like and Repost
+  buttons on the right side update counts and toggle state in-place.
+- **Controls bar**: Mute/Unmute, Skip, Stop, topic badge, queue count.
+- **Navigation**: "Open post" button jumps to the full thread view. Navigating away
+  from TV via any nav button automatically calls `tvStop()`.
+- **Muted by default**: Audio starts muted after the first Start TV click; user
+  unmutes intentionally to satisfy browser autoplay policies.
 
-**Goal:** TikTok/TV-channel-style continuous video feed on a topic.
+### Milestone 21: Reporting Bad Actors ✅
+- **Report post**: Three-dot button on every post card (visible on hover/focus).
+  Opens a modal with reason chips and optional free-text note.
+- **Report account**: Three-dot button next to Follow on profile headers.
+- **Modal**: Reason chips (Spam, Harassment, Misleading, Sexual, Rude, Other),
+  optional textarea, Cancel / Submit. `API.createReport()` calls
+  `com.atproto.moderation.createReport` with appropriate `$type` for post vs. account.
+- **Confirmation**: Floating success banner for 3 seconds after submit.
 
-- **Entry**: Dedicated "TV" nav tab (television icon). Opens to a full-screen video
-  player view.
-- **Channel selector**: A search/hashtag input at the top lets the user set the
-  "channel" (e.g., `#nature`, `travel`). Default to an empty prompt asking for a topic.
-- **Start screen**: A prominent "▶ Start TV" splash button is shown before any video
-  plays, ensuring the first user interaction enables audio. Audio is on by default
-  after that.
-- **Queue**: Fetches posts with videos via `searchPosts(q, 'latest')`, extracts
-  video embeds, plays them sequentially. When the last video in the queue is reached,
-  a background refetch loads more and continues seamlessly.
-- **Controls**: Mute/unmute, skip to next, pause. Post author + text overlay at bottom
-  (semi-transparent, dismissible).
-- **Like/repost in-view**: Like and repost buttons visible during playback without
-  leaving TV mode.
+### UX Improvements (this session) ✅
+- **Default home view**: App opens to the Following feed instead of Search.
+  `enterApp()` fallback changed to `showView('feed'); loadFeed()`. History seed
+  updated to `?view=feed`.
+- **Pull-to-refresh**: Feed refresh button replaced with pull-to-refresh gesture.
+  `#ptr-indicator` element hidden above scroll area (`margin-top: -52px`). Touch
+  handlers on `viewFeed` detect downward pull at `scrollTop === 0`, reveal and
+  animate the indicator, trigger `loadFeed()` on release past 64px threshold.
 
 ---
 
@@ -537,7 +553,6 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 12 — Bsky Dreams TV** (continuous video feed)
-2. **Milestone 21 — Reporting Bad Actors** (moderation integration)
-3. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency)
-4. **Milestone 13 — Horizontal Event Timeline Scrubber** (chronological topic view)
+1. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency heatmap)
+2. **Milestone 13 — Horizontal Event Timeline Scrubber** (chronological topic view)
+3. **Milestone 14 — Network Constellation Visualization** (D3.js force-directed graph)
