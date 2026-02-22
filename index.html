@@ -331,26 +331,46 @@
             Search
           </button>
         </form>
+
+        <label class="tv-adult-label">
+          <input type="checkbox" id="tv-adult-toggle">
+          Show adult content
+        </label>
       </div>
 
-      <!-- Player area (hidden until TV starts) -->
+      <!-- Player (hidden until TV starts) -->
       <div id="tv-player" class="tv-player" hidden>
-        <!-- Video container -->
         <div id="tv-video-wrap" class="tv-video-wrap">
           <video id="tv-video" class="tv-video" playsinline></video>
-          <!-- Post overlay -->
           <div id="tv-overlay" class="tv-overlay">
-            <div class="tv-overlay-inner">
-              <div id="tv-author" class="tv-author">
-                <img id="tv-author-avatar" class="tv-author-avatar" src="" alt="">
-                <div>
-                  <div id="tv-author-name" class="tv-author-name"></div>
-                  <div id="tv-author-handle" class="tv-author-handle"></div>
+
+            <!-- Auto-hide: author, text, mute + power -->
+            <div id="tv-overlay-meta" class="tv-overlay-meta">
+              <div class="tv-meta-top">
+                <span class="tv-topic-badge" id="tv-topic-badge"></span>
+                <span class="tv-queue-count" id="tv-queue-count"></span>
+              </div>
+              <div class="tv-meta-bottom">
+                <div id="tv-author" class="tv-author" role="button" tabindex="0" aria-label="View profile">
+                  <img id="tv-author-avatar" class="tv-author-avatar" src="" alt="">
+                  <div>
+                    <div id="tv-author-name" class="tv-author-name"></div>
+                    <div id="tv-author-handle" class="tv-author-handle"></div>
+                  </div>
+                </div>
+                <p id="tv-post-text" class="tv-post-text"></p>
+                <div class="tv-playback-btns">
+                  <button class="tv-ctrl-icon-btn" id="tv-mute-btn" aria-label="Mute">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/></svg>
+                  </button>
+                  <button class="tv-ctrl-icon-btn" id="tv-stop-btn" aria-label="Stop TV">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                  </button>
                 </div>
               </div>
-              <p id="tv-post-text" class="tv-post-text"></p>
             </div>
-            <!-- In-view action buttons -->
+
+            <!-- Always visible: like, repost, open -->
             <div class="tv-actions">
               <button class="tv-action-btn" id="tv-like-btn" aria-label="Like">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
@@ -364,24 +384,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               </button>
             </div>
+
           </div>
-        </div>
-        <!-- TV controls bar -->
-        <div class="tv-controls">
-          <button class="btn btn-ghost tv-ctrl-btn" id="tv-mute-btn" aria-label="Mute">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true" id="tv-mute-icon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/></svg>
-            <span id="tv-mute-label">Mute</span>
-          </button>
-          <button class="btn btn-ghost tv-ctrl-btn" id="tv-skip-btn" aria-label="Skip to next video">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
-            Skip
-          </button>
-          <button class="btn btn-ghost tv-ctrl-btn" id="tv-stop-btn" aria-label="Stop TV">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
-            Stop
-          </button>
-          <span class="tv-topic-badge" id="tv-topic-badge"></span>
-          <span class="tv-queue-count" id="tv-queue-count"></span>
         </div>
       </div>
     </section>

@@ -1524,9 +1524,8 @@
     const tvRepostCount  = $('tv-repost-count');
     const tvOpenBtn      = $('tv-open-btn');
     const tvMuteBtn      = $('tv-mute-btn');
-    const tvMuteLabel    = $('tv-mute-label');
-    const tvSkipBtn      = $('tv-skip-btn');
     const tvStopBtn      = $('tv-stop-btn');
+    const tvOverlayMeta  = $('tv-overlay-meta');
     const tvTopicBadge   = $('tv-topic-badge');
     const tvQueueCount   = $('tv-queue-count');
 
@@ -1536,8 +1535,10 @@
     let tvCursor   = null;
     let tvTopic    = '';
     let tvHls      = null;
-    let tvRunning  = false;
-    let tvCurrent  = null;
+    let tvRunning    = false;
+    let tvCurrent    = null;
+    let tvAllowAdult = false;
+    let tvHideTimer  = null;
 
     /* ---- Build HLS playlist URL from author DID + blob CID ---- */
     function buildPlaylistUrl(did, cid) {
@@ -1581,6 +1582,22 @@
       return posts.filter((p) => p.uri && !seen.has(p.uri));
     }
 
+    /* ---- Show overlay meta and start auto-hide timer (3 s) ---- */
+    function showTvMeta() {
+      tvOverlayMeta.classList.remove('tv-meta-hidden');
+      clearTimeout(tvHideTimer);
+      tvHideTimer = setTimeout(() => {
+        tvOverlayMeta.classList.add('tv-meta-hidden');
+      }, 3000);
+    }
+
+    /* ---- Adult content filter ---- */
+    const TV_ADULT_LABELS = new Set(['porn', 'sexual', 'nudity', 'graphic-media', 'gore', 'nsfw', 'adult']);
+    function isAdultPost(post) {
+      const labels = post.labels || [];
+      return labels.some((l) => TV_ADULT_LABELS.has(l.val));
+    }
+
     /* ---- Fetch more video posts ---- */
     async function fetchMore() {
       try {
@@ -1598,7 +1615,7 @@
           posts = data.posts || [];
         }
 
-        const found = dedup(posts).filter(hasVideo);
+        const found = dedup(posts).filter((p) => hasVideo(p) && (tvAllowAdult || !isAdultPost(p)));
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
@@ -1633,10 +1650,10 @@
       }
     }
 
-    /* ---- Sync mute-button label/icon with current video.muted state ---- */
+    /* ---- Sync mute-button icon with current video.muted state ---- */
     function syncMuteBtn() {
       const muted = tvVideo.muted;
-      tvMuteLabel.textContent = muted ? 'Unmute' : 'Mute';
+      tvMuteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
       tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
         l.style.display = muted ? '' : 'none';
       });
@@ -1661,6 +1678,7 @@
       tvRepostBtn.dataset.cid        = post.cid;
       tvRepostBtn.dataset.repostUri  = post.viewer?.repost || '';
       tvRepostCount.textContent      = formatCount(post.repostCount || 0);
+      showTvMeta();
     }
 
     /* ---- Play the video at tvIndex ---- */
@@ -1692,10 +1710,11 @@
 
     /* ---- Start TV (shared by main button, topic form, and chips) ---- */
     function startTV(topic) {
-      tvTopic  = (topic || '').trim();
-      tvQueue  = [];
-      tvIndex  = 0;
-      tvCursor = null;
+      tvTopic      = (topic || '').trim();
+      tvQueue      = [];
+      tvIndex      = 0;
+      tvCursor     = null;
+      tvAllowAdult = $('tv-adult-toggle').checked;
       tvTopicBadge.textContent = tvTopic || 'All videos';
 
       tvSetup.hidden  = true;
@@ -1713,6 +1732,7 @@
     window.tvStop = function () {
       if (!tvRunning) return;
       tvRunning = false;
+      clearTimeout(tvHideTimer);
       if (tvHls) { tvHls.destroy(); tvHls = null; }
       tvVideo.pause();
       tvVideo.removeAttribute('src');
@@ -1748,9 +1768,44 @@
       syncMuteBtn();
     });
 
-    /* ---- Skip / Stop ---- */
-    tvSkipBtn.addEventListener('click', () => advanceToNext());
+    /* ---- Stop ---- */
     tvStopBtn.addEventListener('click', () => window.tvStop());
+
+    /* ---- Swipe up → next video (mobile) ---- */
+    let tvTouchStartY = 0;
+    const tvWrap = $('tv-video-wrap');
+    tvWrap.addEventListener('touchstart', (e) => {
+      tvTouchStartY = e.touches[0].clientY;
+      showTvMeta();
+    }, { passive: true });
+    tvWrap.addEventListener('touchend', (e) => {
+      const dy = e.changedTouches[0].clientY - tvTouchStartY;
+      if (dy < -60) advanceToNext();
+    });
+
+    /* ---- Scroll down → next video (desktop) ---- */
+    tvWrap.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY > 30) advanceToNext();
+    }, { passive: false });
+
+    /* ---- Tap or mouse move → reveal meta overlay ---- */
+    tvWrap.addEventListener('click', (e) => {
+      if (!e.target.closest('button') && !e.target.closest('[role="button"]')) showTvMeta();
+    });
+    tvWrap.addEventListener('mousemove', showTvMeta);
+
+    /* ---- Author click → profile ---- */
+    $('tv-author').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (tvCurrent?.author?.handle) openProfile(tvCurrent.author.handle);
+    });
+    $('tv-author').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (tvCurrent?.author?.handle) openProfile(tvCurrent.author.handle);
+      }
+    });
 
     /* ---- Like (in-view) ---- */
     tvLikeBtn.addEventListener('click', async () => {
