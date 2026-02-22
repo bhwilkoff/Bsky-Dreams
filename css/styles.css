@@ -2397,6 +2397,19 @@ button {
   cursor: pointer;
 }
 
+.tv-clear-history-btn {
+  display: block;
+  margin: var(--space-sm) auto 0;
+  background: none;
+  border: none;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tv-clear-history-btn:hover { color: var(--color-text); }
+
 .tv-player {
   display: flex;
   flex-direction: column;
