@@ -285,6 +285,16 @@ const API = (() => {
   }
 
   /**
+   * Get posts from an algorithmic feed generator (app.bsky.feed.getFeed)
+   * @param {string} feed   - AT URI of the feed generator (e.g. Discover)
+   * @param {number} limit  - results per page (default: 50)
+   * @param {string} cursor - pagination cursor
+   */
+  async function getFeed(feed, limit = 50, cursor) {
+    return authGet('app.bsky.feed.getFeed', { feed, limit, cursor });
+  }
+
+  /**
    * Follow an actor (com.atproto.repo.createRecord → app.bsky.graph.follow)
    * @param {string} subjectDid - DID of the actor to follow
    * @returns {object} - { uri, cid } of the created follow record
@@ -397,6 +407,7 @@ const API = (() => {
     searchPosts,
     searchActors,
     getTimeline,
+    getFeed,
     getPostThread,
     getPost,
     uploadBlob,

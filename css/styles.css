@@ -437,6 +437,7 @@ button {
 .view {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: none;
 }
 
 .view-inner {
@@ -451,6 +452,39 @@ button {
   color: var(--color-text);
   letter-spacing: -0.02em;
   margin-bottom: var(--space-lg);
+}
+
+/* ================================================================
+   FEED TABS (Following / Discover)
+================================================================ */
+.feed-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: var(--space-md);
+}
+
+.feed-tab {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.feed-tab:hover {
+  color: var(--color-text);
+}
+
+.feed-tab-active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 /* ================================================================
