@@ -130,7 +130,7 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
-  const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/discover';
+  const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
   let feedMode           = 'following'; // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
