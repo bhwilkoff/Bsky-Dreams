@@ -40,6 +40,8 @@
   const ptrIndicator   = $('ptr-indicator');
   const feedLoadMore   = $('feed-load-more');
   const feedLoadMoreBtn = $('feed-load-more-btn');
+  const feedTabFollowing = $('feed-tab-following');
+  const feedTabDiscover  = $('feed-tab-discover');
 
   const profileHeaderEl    = $('profile-header');
   const profileFeedEl      = $('profile-feed');
@@ -128,6 +130,8 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
+  const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/discover';
+  let feedMode           = 'following'; // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
@@ -1028,6 +1032,16 @@
   /* ================================================================
      HOME / FOLLOWING FEED
   ================================================================ */
+
+  function setFeedMode(mode) {
+    feedMode = mode;
+    const isFollowing = mode === 'following';
+    feedTabFollowing.classList.toggle('feed-tab-active', isFollowing);
+    feedTabDiscover.classList.toggle('feed-tab-active', !isFollowing);
+    feedTabFollowing.setAttribute('aria-selected', isFollowing ? 'true' : 'false');
+    feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
+  }
+
   async function loadFeed(append = false) {
     if (!append) {
       feedCursor  = null;
@@ -1038,7 +1052,9 @@
 
     showLoading();
     try {
-      const data   = await API.getTimeline(50, append ? feedCursor : undefined);
+      const data = feedMode === 'discover'
+        ? await API.getFeed(DISCOVER_FEED_URI, 50, append ? feedCursor : undefined)
+        : await API.getTimeline(50, append ? feedCursor : undefined);
       const items  = data.feed || [];
       feedCursor   = data.cursor || null;
       feedLoaded   = true;
@@ -1046,7 +1062,10 @@
       if (!append) feedResults.innerHTML = '';
 
       if (!items.length && !append) {
-        feedResults.innerHTML = '<div class="feed-empty"><p>No posts yet. Follow some people to see their posts here.</p></div>';
+        const msg = feedMode === 'discover'
+          ? 'Nothing to discover right now. Try again in a moment.'
+          : 'No posts yet. Follow some people to see their posts here.';
+        feedResults.innerHTML = `<div class="feed-empty"><p>${msg}</p></div>`;
       } else {
         renderFeedItems(items, feedResults, append);
       }
@@ -1109,6 +1128,12 @@
     });
   })();
 
+  feedTabFollowing.addEventListener('click', () => {
+    if (feedMode !== 'following') { setFeedMode('following'); loadFeed(); }
+  });
+  feedTabDiscover.addEventListener('click', () => {
+    if (feedMode !== 'discover') { setFeedMode('discover'); loadFeed(); }
+  });
   feedLoadMoreBtn.addEventListener('click',    () => loadFeed(true));
   profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
   notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
