@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *; img-src * data: blob:; media-src * blob:; style-src 'self' 'unsafe-inline'; script-src 'self';">
   <title>Bsky Dreams</title>
+  <!-- PWA / iOS Safari standalone support (M32) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bsky Dreams">
+  <meta name="theme-color" content="#0085ff">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -375,6 +381,9 @@
                   <button class="tv-ctrl-icon-btn" id="tv-mute-btn" aria-label="Mute">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/></svg>
                   </button>
+                  <button class="tv-ctrl-icon-btn" id="tv-pause-btn" aria-label="Pause">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                  </button>
                   <button class="tv-ctrl-icon-btn" id="tv-stop-btn" aria-label="Stop TV">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
                   </button>
@@ -467,6 +476,35 @@
     </section>
 
   </div><!-- /#app-screen -->
+
+  <!-- Scroll-to-top button (M34) — fixed, appears after scrolling 300px -->
+  <button id="scroll-to-top-btn" class="scroll-to-top-btn" hidden aria-label="Scroll to top">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
+  </button>
+
+  <!-- Quote Post Modal (M30) -->
+  <div id="quote-modal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="quote-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="quote-modal-title" class="modal-title">Quote Post</h2>
+        <button class="modal-close-btn" id="quote-modal-close" aria-label="Close quote dialog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <textarea id="quote-modal-text" class="compose-textarea" placeholder="Add your thoughts…" maxlength="300" rows="4" aria-label="Quote post text"></textarea>
+      <div class="compose-footer">
+        <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
+        <div id="quote-modal-error" class="error-banner" hidden role="alert"></div>
+      </div>
+      <div id="quote-modal-preview" class="quote-modal-preview">
+        <!-- Quoted post preview injected by JS -->
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="quote-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="quote-modal-submit">Quote Post</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ============================================================
        PROFILE DROPDOWN MENU

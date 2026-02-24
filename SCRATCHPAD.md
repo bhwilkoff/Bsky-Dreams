@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation), home feed Discover tab with elastic overscroll fix, and M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish).
+Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation, pause button, 2× speed hold, dual-feed queue, short-clip filter), home feed Discover tab with elastic overscroll fix, M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish), M20 (cross-device prefs sync via AT Protocol repo), M29 (GIF playback in timeline), M30 (quote post interface), M32 (iOS Safari PWA session persistence), M34 (PTR resistance + scroll-to-top button), M35 (inline reply from home feed), M40 (seen-posts deduplication).
 
 ## Completed Milestones
 
@@ -228,6 +228,113 @@ Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, 
   `openSidebar()` / `closeSidebar()` add/remove `body.sidebar-open` on desktop and
   persist the preference in `localStorage` under `bsky_sidebar_open`. `enterApp()`
   restores the saved state on login.
+
+### Milestone 20: Cross-Device Settings Sync (AT Protocol Repo) ✅
+- **API additions**: `API.getRecord(repo, collection, rkey)` and `API.putRecord(repo,
+  collection, rkey, record)` added to `api.js`, wrapping `com.atproto.repo.getRecord` and
+  `com.atproto.repo.putRecord`. Both exported.
+- **Prefs record schema**: Collection `app.bsky-dreams.prefs`, rkey `self`. Record
+  contains `{ $type, savedChannels, uiPrefs: { hideAdult } }`.
+- **Load on login**: `loadPrefsFromCloud()` called inside `enterApp()` after auth succeeds.
+  Falls back to localStorage if the record doesn't exist yet.
+- **Write on change**: `schedulePrefsSync()` (2-second debounce) called after every
+  `channelsAdd`, `channelsRemove`, `channelsRename`, and adult-toggle change.
+- **Privacy note**: The record is publicly readable by anyone who knows the DID +
+  collection + rkey. Only non-sensitive prefs are stored.
+
+### Milestone 29: GIF Playback in Timeline ✅
+- **`isGifExternalEmbed(external)`**: Returns true when the external embed hostname is
+  `tenor.com`, `c.tenor.com`, `media.giphy.com`, or `giphy.com`, or when the URL path
+  ends in `.gif`.
+- **`buildGifEmbed(external)`**: Returns `<div class="post-gif-wrap"><img class="post-gif">`
+  with the GIF URL. For Tenor URLs ending in `.mp4` the extension is swapped to `.gif`
+  to get the animated version.
+- **Wiring**: In `buildPostCard()`, the external embed branch and the media portion of
+  `recordWithMedia` both route through `isGifExternalEmbed` before falling through to
+  the standard link card. Matching embeds use `buildGifEmbed` instead.
+- **CSS**: `.post-gif-wrap` with border-radius; `.post-gif` with `max-height: 400px` and
+  `object-fit: contain`.
+
+### Milestone 30: Quote Post Interface ✅
+- **Repost action sheet**: `showRepostActionSheet(btn, post)` creates a small dropdown
+  (`.repost-action-sheet`) above the repost button with two options: "Repost/Undo repost"
+  and "Quote Post". Dismisses on outside click.
+- **Quote post modal**: `#quote-modal` in `index.html` with compose textarea (char count,
+  error display), a read-only quoted-post preview (`buildQuotedPost()`), Cancel and
+  "Quote Post" submit buttons.
+- **API**: `API.createPost(text, null, [], { uri, cid })` sends
+  `app.bsky.embed.record` embed. `API.createQuotePost(text, embedRef)` convenience wrapper
+  added to `api.js`.
+- **CSS**: `.repost-action-sheet`, `.repost-sheet-item`, `.quote-modal-preview`.
+
+### Milestone 32: iOS Safari PWA Session Persistence ✅
+- **PWA manifest**: `manifest.json` created with `"display": "standalone"`,
+  `"start_url": "./index.html?view=feed"`, and `"theme_color": "#0085ff"`.
+- **Apple meta tags**: `<meta name="apple-mobile-web-app-capable" content="yes">`,
+  status bar style, title, and `theme-color` meta added to `index.html`.
+- **Token refresh on visibility**: `handleVisibilityChange()` fires on
+  `document.visibilitychange`. If the page becomes visible, the stored `accessJwt` expiry
+  (`exp` field decoded from the JWT payload) is checked. If expired or within 15 minutes
+  of expiry, `AUTH.refreshSession(refreshJwt)` is called proactively. If both tokens are
+  expired, session is cleared and the auth screen is shown with a friendly message.
+- **`getJwtExp(token)`**: Decodes the base64url JWT payload and returns `exp * 1000` (ms).
+
+### Milestone 34: PTR Resistance + Scroll-to-Top Button ✅
+- **Increased PTR threshold**: Changed `PTR_THRESHOLD` from `64` to `96` pixels.
+- **Hold timer**: Added `PTR_HOLD_MS = 400`. A `ptrHoldTimer` must expire before
+  `ptrReadyToRelease` is set to `true`, preventing accidental triggers during fast
+  upward flicks.
+- **Scroll-to-top button**: `#scroll-to-top-btn` added to `index.html` (fixed position,
+  hidden by default). Scroll listeners on all view elements show it when `scrollTop ≥ 300px`
+  in the active view. Clicking smoothly scrolls the active view to top.
+- **View-switch reset**: `showView()` sets `scrollToTopBtn.hidden = true` on every view
+  transition so the button is never orphaned when switching views.
+- **CSS**: `.scroll-to-top-btn` fixed at `bottom: 80px`, centered on mobile; right of the
+  content column on desktop (≥768px).
+
+### Milestone 35: Inline Reply from Home Feed ✅
+- **Feed reply override**: In `renderFeedItems()`, after building each post card, a
+  `{ capture: true }` listener overrides the reply button's default thread-navigation
+  behavior. It calls `expandInlineReply(card, post, feedRootRef, onSuccess)` instead.
+- **Root reference**: `feedRootRef` = `{ uri: rootUri || post.uri, cid: rootCid || post.cid }`.
+  `expandInlineReply` now accepts a fourth `feedRootRef` param and uses it in preference to
+  `currentThread.rootUri/rootCid` when constructing the `replyRef`.
+- **Success callback**: `onSuccess` is called on successful post instead of reloading the
+  thread. The callback shows "Replied ✓" text on the reply button for 3 seconds, then
+  restores the original label.
+- **No navigation required**: Users can reply to any home-feed post without leaving the feed.
+
+### Milestone 36: Bsky Dreams TV Enhancements ✅
+- **Pause button**: `#tv-pause-btn` wired to toggle `tvPaused` state. Calls
+  `activeVideo().pause()` or `activeVideo().play()`. `syncPauseBtn()` swaps the button icon
+  between the ⏸ pause bars and ▶ play triangle. `advanceToNext()` skips auto-advance while
+  paused so the video stays frozen at end-of-clip.
+- **2× speed hold**: `pointerdown` on the video wrap (excluding buttons) sets
+  `activeVideo().playbackRate = 2`. `pointerup` / `pointercancel` restores to `1`. Works on
+  both touch and mouse; `pointerdown` is cross-device and cleaner than separate touch/mouse
+  handlers.
+- **Dual-feed queue** (no-topic mode): `fetchMore()` now fires `API.getTimeline(100)` and
+  `API.getFeed(DISCOVER_FEED_URI, 50)` in parallel via `Promise.allSettled()`. Results are
+  merged and deduped by URI before being passed to the video filter. Gives a much richer
+  video queue for users who haven't set a topic.
+- **Short-clip / GIF filter**: `loadVideoInSlot()` checks if the source URL ends in `.gif`
+  and skips immediately. A `durationchange` listener skips videos with `duration < 5`
+  seconds once the duration is known.
+- **State reset**: `tvPaused` is reset to `false` in both `startTV()` and `tvStop()`.
+
+### Milestone 40: Seen-Posts Deduplication ✅
+- **Storage**: `bsky_feed_seen` in localStorage. Value: JSON object where keys are post
+  URIs and values are `{ seenAt, likeCount, repostCount }`. Loaded into a `Map` on startup.
+  FIFO eviction at 5,000 entries.
+- **Marking**: After each `renderFeedItems()` call, `markFeedPostSeen(uri, likeCount,
+  repostCount)` is called for every rendered item.
+- **Filtering**: Before rendering, `isFeedPostSeen()` returns `true` if the post has been
+  seen AND its current engagement (likes + reposts) hasn't grown by ≥ 50 interactions since
+  first view. Viral posts resurface automatically.
+- **Show-anyway hint**: `showFeedSeenHint(count)` injects a subtle bar below the feed
+  results: "N posts filtered (show anyway)". Clicking sets `feedSeenBypass = true` and
+  re-runs `loadFeed()` with the bypass active.
+- **Scope**: Applies to both Following and Discover modes on the home feed.
 
 ---
 
@@ -894,19 +1001,11 @@ None currently.
 Priority order for implementation (roughly):
 
 ### High priority — feature enhancements (next up)
-1. **M34 — PTR resistance + scroll-to-top button** (increase threshold, add overlay button)
-2. **M35 — Inline reply from home feed** (re-use expandInlineReply from thread view)
-3. **M30 — Quote post interface** (action sheet on repost button, compose modal)
-4. **M29 — GIF playback in timeline** (isGifEmbed helper, img rendering for Tenor/Giphy)
-5. **M32 — iOS Safari PWA session persistence** (visibilitychange refresh, manifest audit)
+1. **M37 — Image browser / Gallery** (dedicated image feed, dedup, lightbox reuse)
+2. **M39 — Feed content filters** (keyword filter panel, ephemeral by default)
+3. **M22 — Analytics Dashboard** (engagement over time, top posts, Chart.js)
 
 ### Larger features
-6. **M36 — Bsky Dreams TV enhancements** (autoplay fix, dual-feed queue, 2× hold, pause)
-7. **M37 — Image browser / Gallery**
-8. **M39 — Feed content filters**
-9. **M40 — Seen-posts deduplication**
-
-### Existing pipeline (deprioritized relative to above)
-10. **M22 — Analytics Dashboard**
-11. **M13 — Horizontal Event Timeline Scrubber**
-12. **M14 — Network Constellation Visualization**
+4. **M13 — Horizontal Event Timeline Scrubber**
+5. **M14 — Network Constellation Visualization**
+6. **M16 — Direct Messages** (chat.bsky.convo.* API)
