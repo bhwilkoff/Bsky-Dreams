@@ -2662,15 +2662,11 @@ a.post-timestamp:hover {
   --sidebar-width: 220px;
 }
 
-/* ---- Hamburger / channels toggle button in nav (mobile only) ---- */
+/* ---- Channels sidebar toggle button (visible on all screen sizes) ---- */
+/* Now that the sidebar is collapsed by default on desktop too, the toggle
+   button must remain accessible at all widths. */
 .channels-nav-btn {
-  /* visible on mobile, hidden on desktop */
-}
-
-@media (min-width: 768px) {
-  .channels-nav-btn {
-    display: none;
-  }
+  /* visible on all screen sizes */
 }
 
 /*
@@ -2721,9 +2717,12 @@ a.post-timestamp:hover {
   }
 }
 
-/* Clip the pull-to-refresh indicator above the visible area on all screen sizes */
-#view-feed .view-inner {
-  overflow: hidden;
+/* PTR is a touch gesture — hide the indicator entirely on desktop
+   so it never peeks above the feed content */
+@media (min-width: 768px) {
+  #ptr-indicator {
+    display: none;
+  }
 }
 
 /* ---- Mobile sidebar backdrop overlay ---- */
