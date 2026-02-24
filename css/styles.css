@@ -2943,3 +2943,151 @@ a.post-timestamp:hover {
   gap: 6px;
   border-radius: var(--radius-pill);
 }
+
+/* ================================================================
+   M34 — Scroll-to-top button
+================================================================ */
+.scroll-to-top-btn {
+  position: fixed;
+  bottom: 80px;         /* above the PTR / nav bar area */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.2s, background 0.15s;
+}
+
+.scroll-to-top-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.scroll-to-top-btn[hidden] {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .scroll-to-top-btn {
+    left: auto;
+    right: calc(50% - 340px);  /* right of the content column */
+    transform: none;
+  }
+}
+
+/* ================================================================
+   M30 — Repost action sheet (dropdown above repost button)
+================================================================ */
+.repost-action-sheet {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-elevated);
+  min-width: 148px;
+  overflow: hidden;
+}
+
+.repost-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.repost-sheet-item:hover {
+  background: var(--color-surface-alt);
+}
+
+/* ================================================================
+   M30 — Quote post modal preview
+================================================================ */
+.quote-modal-preview {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-alt);
+  margin-top: var(--space-sm);
+}
+
+.quote-modal-preview .post-card {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* ================================================================
+   M29 — GIF embed in posts
+================================================================ */
+.post-gif-wrap {
+  margin-top: var(--space-sm);
+  border-radius: var(--radius);
+  overflow: hidden;
+  line-height: 0;
+  max-width: 100%;
+}
+
+.post-gif {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  background: #000;
+}
+
+/* ================================================================
+   M40 — Seen-posts filter hint bar
+================================================================ */
+.feed-seen-hint {
+  text-align: center;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.feed-seen-hint-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-size: inherit;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: underline;
+}
+
+/* ================================================================
+   M35 — Inline reply "Replied ✓" state on feed cards
+================================================================ */
+.action-btn.replied {
+  color: var(--color-accent);
+}
+
+.action-btn.replied svg {
+  stroke: var(--color-accent);
+}

@@ -101,6 +101,17 @@
   const reportModalError   = $('report-modal-error');
   const reportNote         = $('report-note');
 
+  const scrollToTopBtn   = $('scroll-to-top-btn');  // M34 scroll-to-top
+
+  const quoteModal       = $('quote-modal');          // M30 quote post
+  const quoteModalClose  = $('quote-modal-close');
+  const quoteModalCancel = $('quote-modal-cancel');
+  const quoteModalSubmit = $('quote-modal-submit');
+  const quoteModalText   = $('quote-modal-text');
+  const quoteModalCount  = $('quote-modal-count');
+  const quoteModalError  = $('quote-modal-error');
+  const quoteModalPreview = $('quote-modal-preview');
+
   const imageLightbox    = $('image-lightbox');
   const lightboxImg      = $('lightbox-img');
   const lightboxCaption  = $('lightbox-caption');
@@ -140,6 +151,20 @@
   let notifLoaded        = false;
   let composeImages      = [];   // array of { file, previewUrl, altInput } for pending uploads
 
+  // M40 — Seen-posts deduplication
+  const FEED_SEEN_KEY = 'bsky_feed_seen';
+  const FEED_SEEN_MAX = 5000;
+  let feedSeenMap     = loadFeedSeen();  // Map<uri, { seenAt, likeCount, repostCount }>
+  let feedSeenBypass  = false;           // session flag: "show anyway" escape hatch
+
+  // M20 — Cross-device prefs sync
+  const PREFS_COLLECTION = 'app.bsky-dreams.prefs';
+  const PREFS_RKEY       = 'self';
+  let prefsSyncTimer     = null;
+
+  // M30 — Quote post state
+  let quoteModalPostRef  = null;  // { uri, cid, post } being quoted
+
   /* ================================================================
      CHANNELS (M11) — Saved Searches / Channel Sidebar
   ================================================================ */
@@ -167,17 +192,19 @@
       unreadCount: 0,
     });
     channelsSave(list);
+    schedulePrefsSync(); // M20
     return id;
   }
 
   function channelsRemove(id) {
     channelsSave(channelsLoad().filter((c) => c.id !== id));
+    schedulePrefsSync(); // M20
   }
 
   function channelsRename(id, newName) {
     const list = channelsLoad();
     const ch = list.find((c) => c.id === id);
-    if (ch) { ch.name = newName; channelsSave(list); }
+    if (ch) { ch.name = newName; channelsSave(list); schedulePrefsSync(); } // M20
   }
 
   function channelsMarkSeen(id) {
@@ -492,6 +519,141 @@
   });
 
   /* ================================================================
+     M40 — SEEN-POSTS DEDUPLICATION (home feed)
+  ================================================================ */
+  function loadFeedSeen() {
+    try {
+      const raw = localStorage.getItem(FEED_SEEN_KEY);
+      return raw ? new Map(JSON.parse(raw)) : new Map();
+    } catch { return new Map(); }
+  }
+
+  function saveFeedSeen() {
+    try {
+      localStorage.setItem(FEED_SEEN_KEY, JSON.stringify([...feedSeenMap.entries()]));
+    } catch {}
+  }
+
+  function markFeedPostSeen(uri, likeCount, repostCount) {
+    if (!uri || feedSeenMap.has(uri)) return;
+    if (feedSeenMap.size >= FEED_SEEN_MAX) {
+      feedSeenMap.delete(feedSeenMap.keys().next().value); // evict oldest (FIFO)
+    }
+    feedSeenMap.set(uri, { seenAt: Date.now(), likeCount: likeCount || 0, repostCount: repostCount || 0 });
+    saveFeedSeen();
+  }
+
+  function isFeedPostSeen(uri, likeCount, repostCount) {
+    if (feedSeenBypass) return false;
+    const entry = feedSeenMap.get(uri);
+    if (!entry) return false;
+    // "Gone viral" threshold: resurface if engagement jumped by ≥ 50
+    const delta = (likeCount || 0) + (repostCount || 0)
+                - (entry.likeCount || 0) - (entry.repostCount || 0);
+    return delta < 50;
+  }
+
+  function showFeedSeenHint(count) {
+    document.querySelector('.feed-seen-hint')?.remove();
+    const hint = document.createElement('div');
+    hint.className = 'feed-seen-hint';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost feed-seen-hint-btn';
+    btn.textContent = `${count} post${count === 1 ? '' : 's'} filtered as already seen (show anyway)`;
+    btn.addEventListener('click', () => {
+      feedSeenBypass = true;
+      hint.remove();
+      loadFeed(false);
+    });
+    hint.appendChild(btn);
+    feedResults.insertAdjacentElement('afterend', hint);
+  }
+
+  /* ================================================================
+     M20 — CROSS-DEVICE PREFS SYNC (AT Protocol repo)
+  ================================================================ */
+  async function loadPrefsFromCloud() {
+    const session = AUTH.getSession();
+    if (!session?.did) return;
+    try {
+      const result = await API.getRecord(session.did, PREFS_COLLECTION, PREFS_RKEY);
+      const prefs = result?.value || {};
+      if (prefs.savedChannels && Array.isArray(prefs.savedChannels)) {
+        channelsSave(prefs.savedChannels);
+        renderChannelsSidebar();
+      }
+      if (prefs.uiPrefs) {
+        if (typeof prefs.uiPrefs.hideAdult === 'boolean') {
+          hideAdultContent = prefs.uiPrefs.hideAdult;
+          if (adultToggle) adultToggle.checked = hideAdultContent;
+        }
+      }
+    } catch {
+      // Record doesn't exist yet or network error — silently fall back to localStorage
+    }
+  }
+
+  async function savePrefsToCloud() {
+    const session = AUTH.getSession();
+    if (!session?.did) return;
+    try {
+      const record = {
+        $type:        PREFS_COLLECTION,
+        savedChannels: channelsLoad(),
+        uiPrefs:      { hideAdult: hideAdultContent },
+      };
+      await API.putRecord(session.did, PREFS_COLLECTION, PREFS_RKEY, record);
+    } catch (err) {
+      console.warn('Cloud prefs save failed:', err.message);
+    }
+  }
+
+  function schedulePrefsSync() {
+    clearTimeout(prefsSyncTimer);
+    prefsSyncTimer = setTimeout(savePrefsToCloud, 2000);
+  }
+
+  /* ================================================================
+     M32 — iOS SAFARI PWA SESSION PERSISTENCE
+  ================================================================ */
+  function getJwtExp(token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    } catch { return null; }
+  }
+
+  async function handleVisibilityChange() {
+    if (document.hidden || !AUTH.isLoggedIn()) return;
+    const session = AUTH.getSession();
+    if (!session?.accessJwt || !session?.refreshJwt) return;
+
+    const exp = getJwtExp(session.accessJwt);
+    if (!exp) return;
+
+    const msUntilExpiry = exp - Date.now();
+
+    if (msUntilExpiry < 0) {
+      // Access token expired — try to refresh using the refresh token
+      try {
+        await AUTH.refreshSession(session.refreshJwt);
+      } catch {
+        // Both tokens expired — return to auth screen with a message
+        AUTH.clearSession();
+        appScreen.hidden  = true;
+        authScreen.hidden = false;
+        showError(authError, 'Your session expired. Please sign in again.');
+      }
+    } else if (msUntilExpiry < 15 * 60 * 1000) {
+      // Within 15 minutes of expiry — proactively refresh
+      try { await AUTH.refreshSession(session.refreshJwt); } catch { /* non-fatal */ }
+    }
+  }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  /* ================================================================
      ADULT CONTENT FILTER
   ================================================================ */
   const ADULT_LABELS = new Set([
@@ -648,9 +810,10 @@
       hideLoading();
     }
 
-    // Render channels sidebar and kick off background unread check
+    // Render channels sidebar and kick off background tasks
     renderChannelsSidebar();
-    checkChannelUnreads(); // async, runs in background
+    checkChannelUnreads();    // async background unread check
+    loadPrefsFromCloud();     // M20: merge cloud prefs with localStorage
 
     // Restore sidebar open state on desktop (hidden by default for new users)
     if (window.innerWidth >= 768) {
@@ -779,6 +942,9 @@
     if (name !== 'tv') {
       window.tvStop?.();
     }
+
+    // Hide scroll-to-top button on view switch (M34)
+    scrollToTopBtn.hidden = true;
   }
 
   // Logo / title click always returns to feed and refreshes
@@ -875,6 +1041,7 @@
     if (lastSearchType === 'posts' && lastSearchResults.length) {
       renderPostFeed(lastSearchResults, searchResults);
     }
+    schedulePrefsSync(); // M20
   });
 
   // Advanced panel toggle
@@ -1066,10 +1233,12 @@
 
   async function loadFeed(append = false) {
     if (!append) {
-      feedCursor  = null;
-      feedLoaded  = false;
+      feedCursor     = null;
+      feedLoaded     = false;
+      feedSeenBypass = false; // M40: reset bypass on fresh feed load
       feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
       feedLoadMore.hidden   = true;
+      document.querySelector('.feed-seen-hint')?.remove(); // M40: clear old hint
     }
 
     showLoading();
@@ -1083,14 +1252,32 @@
 
       if (!append) feedResults.innerHTML = '';
 
-      if (!items.length && !append) {
+      // M40: filter out already-seen posts (unless bypass is active)
+      let seenCount = 0;
+      const displayItems = items.filter((item) => {
+        const post = item.post;
+        if (!post) return true;
+        if (isFeedPostSeen(post.uri, post.likeCount, post.repostCount)) {
+          seenCount++;
+          return false;
+        }
+        return true;
+      });
+
+      if (!displayItems.length && !append) {
         const msg = feedMode === 'discover'
           ? 'Nothing to discover right now. Try again in a moment.'
           : 'No posts yet. Follow some people to see their posts here.';
         feedResults.innerHTML = `<div class="feed-empty"><p>${msg}</p></div>`;
       } else {
-        renderFeedItems(items, feedResults, append);
+        renderFeedItems(displayItems, feedResults, append);
       }
+
+      // M40: mark rendered posts as seen + show filtered hint
+      displayItems.forEach((item) => {
+        if (item.post) markFeedPostSeen(item.post.uri, item.post.likeCount, item.post.repostCount);
+      });
+      if (seenCount > 0) showFeedSeenHint(seenCount);
 
       // Show "Load more" only if there's a next page
       feedLoadMore.hidden = !feedCursor;
@@ -1105,16 +1292,20 @@
 
   /* ---- Pull-to-refresh on the home feed ---- */
   (() => {
-    const PTR_THRESHOLD = 64;  // px of pull needed to trigger refresh
+    const PTR_THRESHOLD = 96;  // M34: increased from 64px to reduce accidental triggers
+    const PTR_HOLD_MS   = 400; // M34: must hold at threshold for 400ms before triggering
     const PTR_HEIGHT    = 52;  // must match CSS height of .ptr-indicator
     let ptrStartY   = 0;
     let ptrDragging = false;
     let ptrActive   = false;   // true while refresh is in progress
+    let ptrHoldTimer = null;   // M34: hold timer
+    let ptrReadyToRelease = false; // M34: true after hold completes
 
     viewFeed.addEventListener('touchstart', (e) => {
       if (viewFeed.scrollTop === 0 && !ptrActive) {
         ptrStartY   = e.touches[0].clientY;
         ptrDragging = true;
+        ptrReadyToRelease = false;
       }
     }, { passive: true });
 
@@ -1127,16 +1318,31 @@
       const pull = Math.min(dy * 0.5, PTR_HEIGHT); // dampen pull
       ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
 
-      ptrIndicator.dataset.state = dy >= PTR_THRESHOLD ? 'release' : 'pull';
+      if (dy >= PTR_THRESHOLD) {
+        // M34: start hold timer if not already counting
+        if (!ptrHoldTimer && !ptrReadyToRelease) {
+          ptrHoldTimer = setTimeout(() => {
+            ptrReadyToRelease = true;
+            ptrIndicator.dataset.state = 'release';
+          }, PTR_HOLD_MS);
+        }
+      } else {
+        // Below threshold — cancel hold timer
+        clearTimeout(ptrHoldTimer);
+        ptrHoldTimer = null;
+        ptrReadyToRelease = false;
+        ptrIndicator.dataset.state = 'pull';
+      }
     }, { passive: true });
 
     viewFeed.addEventListener('touchend', async () => {
       if (!ptrDragging) return;
       ptrDragging = false;
+      clearTimeout(ptrHoldTimer);
+      ptrHoldTimer = null;
 
-      const wasFarEnough = ptrIndicator.dataset.state === 'release';
-
-      if (wasFarEnough) {
+      if (ptrReadyToRelease) {
+        ptrReadyToRelease = false;
         ptrActive = true;
         ptrIndicator.style.marginTop = '0px';
         ptrIndicator.dataset.state   = 'loading';
@@ -1156,6 +1362,26 @@
   feedTabDiscover.addEventListener('click', () => {
     if (feedMode !== 'discover') { setFeedMode('discover'); loadFeed(); }
   });
+
+  /* ---- M34: Scroll-to-top button ---- */
+  (() => {
+    const SCROLL_SHOW_THRESHOLD = 300;
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv];
+
+    ALL_VIEWS.forEach((view) => {
+      view.addEventListener('scroll', () => {
+        if (!view.hidden) {
+          scrollToTopBtn.hidden = view.scrollTop < SCROLL_SHOW_THRESHOLD;
+        }
+      }, { passive: true });
+    });
+
+    scrollToTopBtn.addEventListener('click', () => {
+      const active = ALL_VIEWS.find((v) => !v.hidden);
+      if (active) active.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  })();
+
   feedLoadMoreBtn.addEventListener('click',    () => loadFeed(true));
   profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
   notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
@@ -1221,6 +1447,26 @@
         openUri: rootUri || post.uri,
         openCid: rootCid || post.cid,
       });
+
+      // M35: override reply button in feed to use inline reply (not navigate to thread)
+      const feedRootRef = { uri: rootUri || post.uri, cid: rootCid || post.cid };
+      const replyBtnFeed = card.querySelector('.reply-action-btn');
+      replyBtnFeed.addEventListener('click', (e) => {
+        e.stopPropagation();
+        expandInlineReply(card, post, feedRootRef, () => {
+          // On success: show "Replied ✓" briefly without navigating
+          const countEl = replyBtnFeed.querySelector('.action-count');
+          replyBtnFeed.classList.add('replied');
+          const prev = replyBtnFeed.getAttribute('aria-label');
+          replyBtnFeed.setAttribute('aria-label', 'Replied!');
+          if (countEl) countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
+          setTimeout(() => {
+            replyBtnFeed.classList.remove('replied');
+            replyBtnFeed.setAttribute('aria-label', prev);
+          }, 3000);
+        });
+      }, { capture: true });
+
       wrapper.appendChild(card);
       container.appendChild(wrapper);
     });
@@ -1583,6 +1829,7 @@
     const tvRepostCount  = $('tv-repost-count');
     const tvOpenBtn      = $('tv-open-btn');
     const tvMuteBtn      = $('tv-mute-btn');
+    const tvPauseBtn     = $('tv-pause-btn');  // M36 pause
     const tvStopBtn      = $('tv-stop-btn');
     const tvOverlayMeta  = $('tv-overlay-meta');
     const tvTopicBadge   = $('tv-topic-badge');
@@ -1597,6 +1844,7 @@
     let tvSlot       = 0;       // which slide slot is currently visible (0 = a, 1 = b)
     let tvSliding    = false;   // true while a slide transition is in progress
     let tvRunning    = false;
+    let tvPaused     = false;    // M36 pause
     let tvCurrent    = null;
     let tvAllowAdult = false;
     let tvHideTimer  = null;
@@ -1693,10 +1941,22 @@
         let posts = [];
 
         if (!tvTopic) {
-          // No topic: pull from the user's timeline (personalized + reliable)
-          const data = await API.getTimeline(100, tvCursor || undefined);
-          tvCursor = data.cursor || null;
-          posts = (data.feed || []).map((item) => item.post);
+          // No topic: pull from Timeline AND Discover in parallel for more video variety (M36).
+          // Both feeds are seeded from the user's account, so content is personalized.
+          const [rTimeline, rDiscover] = await Promise.allSettled([
+            API.getTimeline(100, tvCursor || undefined),
+            API.getFeed(DISCOVER_FEED_URI, 50),
+          ]);
+          if (rTimeline.status === 'fulfilled') {
+            tvCursor = rTimeline.value.cursor || null;
+            posts = posts.concat((rTimeline.value.feed || []).map((item) => item.post));
+          }
+          if (rDiscover.status === 'fulfilled') {
+            posts = posts.concat((rDiscover.value.feed || []).map((item) => item.post));
+          }
+          // Dedup by URI before adding to queue
+          const uriSet = new Set();
+          posts = posts.filter((p) => p.uri && !uriSet.has(p.uri) && uriSet.add(p.uri));
         } else {
           // Topic mode: run hashtag search (#topic) AND free-text search (topic) in
           // parallel. People who post videos typically tag them explicitly, so the
@@ -1741,6 +2001,9 @@
       vid.muted = activeVideo().muted;  // inherit current mute state
       if (thumb) vid.poster = thumb;
 
+      // M36: Skip GIF URLs (they autoplay as images, not true videos)
+      if (/\.gif(\?|$)/i.test(src)) { if (s === tvSlot) advanceToNext(); return; }
+
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         const hls = new Hls({ lowLatencyMode: false, enableWorker: false });
         hls.loadSource(src);
@@ -1754,6 +2017,15 @@
         vid.src = src;
         vid.play().catch(() => {});
       }
+
+      // M36: Short-clip filter — skip videos shorter than 5 seconds
+      const onDuration = () => {
+        vid.removeEventListener('durationchange', onDuration);
+        if (isFinite(vid.duration) && vid.duration < 5) {
+          if (s === tvSlot) advanceToNext();
+        }
+      };
+      vid.addEventListener('durationchange', onDuration);
     }
 
     /* ---- Slide transition: animates current slot out, next slot in ---- */
@@ -1792,6 +2064,15 @@
       tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
         l.style.display = muted ? '' : 'none';
       });
+    }
+
+    /* ---- Sync pause-button icon with paused state (M36) ---- */
+    function syncPauseBtn() {
+      tvPauseBtn.setAttribute('aria-label', tvPaused ? 'Play' : 'Pause');
+      // Show play triangle or pause bars depending on state
+      tvPauseBtn.innerHTML = tvPaused
+        ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="20" height="20" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
     }
 
     /* ---- Show a post in the overlay ---- */
@@ -1854,7 +2135,7 @@
     }
 
     function advanceToNext() {
-      if (!tvRunning || tvSliding) return;
+      if (!tvRunning || tvSliding || tvPaused) return;
       tvSliding = true;
       playAt(tvIndex + 1, 'up');
     }
@@ -1873,6 +2154,7 @@
       tvCursor     = null;
       tvSlot       = 0;
       tvSliding    = false;
+      tvPaused     = false;
       tvAllowAdult = $('tv-adult-toggle').checked;
       tvTopicBadge.textContent = tvTopic || 'All videos';
 
@@ -1889,6 +2171,7 @@
       // Start unmuted — the click that called startTV() IS the user gesture
       tvVideos.forEach((v) => { v.muted = false; });
       syncMuteBtn();
+      syncPauseBtn();
 
       fetchMore().then(() => playAt(0, 'none'));
     }
@@ -1898,6 +2181,7 @@
       if (!tvRunning) return;
       tvRunning = false;
       tvSliding = false;
+      tvPaused  = false;
       clearTimeout(tvHideTimer);
       destroyHls(0);
       destroyHls(1);
@@ -1953,6 +2237,17 @@
       syncMuteBtn();
     });
 
+    /* ---- Pause / Resume toggle (M36) ---- */
+    tvPauseBtn.addEventListener('click', () => {
+      tvPaused = !tvPaused;
+      if (tvPaused) {
+        activeVideo().pause();
+      } else {
+        activeVideo().play().catch(() => {});
+      }
+      syncPauseBtn();
+    });
+
     /* ---- Stop ---- */
     tvStopBtn.addEventListener('click', () => window.tvStop());
 
@@ -1975,6 +2270,15 @@
       if      (e.deltaY > 30)  advanceToNext();   // scroll down → next
       else if (e.deltaY < -30) goBack();           // scroll up   → previous
     }, { passive: false });
+
+    /* ---- 2× speed hold (M36): hold pointer on the video area for fast-forward ---- */
+    tvWrap.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button') || e.target.closest('[role="button"]')) return;
+      if (!tvPaused) activeVideo().playbackRate = 2;
+    });
+    const restoreSpeed = () => { activeVideo().playbackRate = 1; };
+    tvWrap.addEventListener('pointerup',     restoreSpeed);
+    tvWrap.addEventListener('pointercancel', restoreSpeed);
 
     /* ---- Tap or mouse move → reveal meta overlay ---- */
     tvWrap.addEventListener('click', (e) => {
@@ -2042,6 +2346,139 @@
       openThread(tvCurrent.uri, tvCurrent.cid, tvCurrent.author?.handle || '');
     });
   })();
+
+  /* ================================================================
+     M30 — REPOST ACTION SHEET + QUOTE POST MODAL
+  ================================================================ */
+  function showRepostActionSheet(btn, post) {
+    // Dismiss any existing sheet
+    document.querySelector('.repost-action-sheet')?.remove();
+
+    const isReposted = btn.classList.contains('reposted');
+    const repostUri  = btn.dataset.repostUri;
+    const countEl    = btn.querySelector('.action-count');
+
+    const sheet = document.createElement('div');
+    sheet.className = 'repost-action-sheet';
+    sheet.setAttribute('role', 'menu');
+
+    const repostOpt = document.createElement('button');
+    repostOpt.type      = 'button';
+    repostOpt.className = 'repost-sheet-item';
+    repostOpt.setAttribute('role', 'menuitem');
+    repostOpt.innerHTML = isReposted
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Undo repost`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Repost`;
+
+    const quoteOpt = document.createElement('button');
+    quoteOpt.type      = 'button';
+    quoteOpt.className = 'repost-sheet-item';
+    quoteOpt.setAttribute('role', 'menuitem');
+    quoteOpt.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Quote Post`;
+
+    repostOpt.addEventListener('click', async () => {
+      sheet.remove();
+      btn.disabled = true;
+      try {
+        if (isReposted && repostUri) {
+          await API.unrepost(repostUri);
+          btn.classList.remove('reposted');
+          btn.dataset.repostUri = '';
+          countEl.textContent = formatCount(Math.max(0, parseFmtCount(countEl.textContent) - 1));
+        } else {
+          const result = await API.repost(post.uri, post.cid);
+          btn.classList.add('reposted');
+          btn.dataset.repostUri = result.uri || '';
+          countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
+        }
+      } catch (err) { console.error('Repost error:', err.message); }
+      btn.disabled = false;
+    });
+
+    quoteOpt.addEventListener('click', () => {
+      sheet.remove();
+      openQuoteModal(post);
+    });
+
+    sheet.appendChild(repostOpt);
+    sheet.appendChild(quoteOpt);
+
+    // Position relative to the button's parent actions row
+    const actionsRow = btn.closest('.post-actions');
+    if (actionsRow) {
+      actionsRow.style.position = 'relative';
+      actionsRow.appendChild(sheet);
+    } else {
+      document.body.appendChild(sheet);
+    }
+
+    // Dismiss on outside click
+    setTimeout(() => document.addEventListener('click', () => sheet.remove(), { once: true }), 0);
+  }
+
+  function openQuoteModal(post) {
+    quoteModalPostRef = post;
+    quoteModalText.value   = '';
+    quoteModalCount.textContent = '300';
+    quoteModalError.hidden = true;
+    quoteModalSubmit.disabled = false;
+    quoteModalSubmit.textContent = 'Quote Post';
+
+    // Render quoted post preview
+    quoteModalPreview.innerHTML = '';
+    const preview = buildQuotedPost({
+      uri:    post.uri,
+      cid:    post.cid,
+      author: post.author,
+      value:  post.record,
+    });
+    // Prevent click navigation inside the modal preview
+    preview.style.pointerEvents = 'none';
+    quoteModalPreview.appendChild(preview);
+
+    quoteModal.hidden = false;
+    quoteModalText.focus();
+  }
+
+  function closeQuoteModal() {
+    quoteModal.hidden   = true;
+    quoteModalPostRef   = null;
+  }
+
+  quoteModalClose.addEventListener('click', closeQuoteModal);
+  quoteModalCancel.addEventListener('click', closeQuoteModal);
+  quoteModal.addEventListener('click', (e) => { if (e.target === quoteModal) closeQuoteModal(); });
+  quoteModalText.addEventListener('input', () => {
+    const remaining = 300 - quoteModalText.value.length;
+    quoteModalCount.textContent = remaining;
+    quoteModalCount.className = 'char-count' +
+      (remaining <= 0 ? ' over' : remaining <= 20 ? ' warn' : '');
+  });
+
+  quoteModalSubmit.addEventListener('click', async () => {
+    if (!quoteModalPostRef) return;
+    const text = quoteModalText.value.trim();
+    if (!text) { quoteModalText.focus(); return; }
+
+    quoteModalSubmit.disabled    = true;
+    quoteModalSubmit.textContent = 'Posting…';
+    quoteModalError.hidden = true;
+
+    try {
+      await API.createPost(text, null, [], { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid });
+      closeQuoteModal();
+      // Brief success banner
+      const banner = document.createElement('div');
+      banner.className   = 'report-success-banner'; // reuse existing success banner style
+      banner.textContent = 'Quote post published!';
+      document.body.appendChild(banner);
+      setTimeout(() => banner.remove(), 3000);
+    } catch (err) {
+      showError(quoteModalError, err.message || 'Failed to post quote.');
+      quoteModalSubmit.disabled    = false;
+      quoteModalSubmit.textContent = 'Quote Post';
+    }
+  });
 
   /**
    * Build a single post card DOM element.
@@ -2117,8 +2554,13 @@
     } else if (embedType === 'app.bsky.embed.video#view') {
       card.appendChild(buildVideoEmbed(embed));
     } else if (embedType === 'app.bsky.embed.external#view' && embed.external) {
-      const extEl = buildExternalEmbed(embed.external);
-      if (extEl) card.appendChild(extEl);
+      // M29: route Tenor/Giphy/GIF URLs to animated <img> instead of link card
+      if (isGifExternalEmbed(embed.external)) {
+        card.appendChild(buildGifEmbed(embed.external));
+      } else {
+        const extEl = buildExternalEmbed(embed.external);
+        if (extEl) card.appendChild(extEl);
+      }
     } else if (embedType === 'app.bsky.embed.record#view') {
       // Pure quote-post (no attached media)
       card.appendChild(buildQuotedPost(embed.record));
@@ -2130,8 +2572,12 @@
       } else if (media.$type === 'app.bsky.embed.video#view') {
         card.appendChild(buildVideoEmbed(media));
       } else if (media.$type === 'app.bsky.embed.external#view' && media.external) {
-        const extEl = buildExternalEmbed(media.external);
-        if (extEl) card.appendChild(extEl);
+        if (isGifExternalEmbed(media.external)) {
+          card.appendChild(buildGifEmbed(media.external));
+        } else {
+          const extEl = buildExternalEmbed(media.external);
+          if (extEl) card.appendChild(extEl);
+        }
       }
       // embed.record is app.bsky.embed.record#view; its .record is the viewRecord
       if (embed.record?.record) {
@@ -2280,34 +2726,11 @@
       }
     });
 
-    // Repost button (toggle repost/unrepost)
-    actions.querySelector('.repost-action-btn').addEventListener('click', async (e) => {
+    // Repost button (M30): show action sheet with Repost / Quote Post options
+    actions.querySelector('.repost-action-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      const btn       = e.currentTarget;
-      const uri       = btn.dataset.uri;
-      const cid       = btn.dataset.cid;
-      const repostUri = btn.dataset.repostUri;
-      const countEl   = btn.querySelector('.action-count');
-      const isReposted = btn.classList.contains('reposted');
-
-      btn.disabled = true;
-      try {
-        if (isReposted && repostUri) {
-          await API.unrepost(repostUri);
-          btn.classList.remove('reposted');
-          btn.dataset.repostUri = '';
-          countEl.textContent = formatCount(Math.max(0, parseFmtCount(countEl.textContent) - 1));
-        } else {
-          const result = await API.repost(uri, cid);
-          btn.classList.add('reposted');
-          btn.dataset.repostUri = result.uri || '';
-          countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
-        }
-      } catch (err) {
-        console.error('Repost error:', err.message);
-      } finally {
-        btn.disabled = false;
-      }
+      const btn = e.currentTarget;
+      showRepostActionSheet(btn, post);
     });
 
     return card;
@@ -2474,6 +2897,43 @@
       wrap.appendChild(altEl);
     }
 
+    return wrap;
+  }
+
+  /* ================================================================
+     GIF EMBED (M29)
+  ================================================================ */
+  /** Return true if an external embed is an animated GIF from Tenor or Giphy. */
+  function isGifExternalEmbed(external) {
+    if (!external?.uri) return false;
+    try {
+      const url  = new URL(external.uri);
+      const host = url.hostname;
+      if (
+        host === 'tenor.com' || host.endsWith('.tenor.com') ||
+        host === 'giphy.com' || host.endsWith('.giphy.com')
+      ) return true;
+      // Direct .gif URL from any host
+      if (url.pathname.toLowerCase().endsWith('.gif')) return true;
+    } catch { /* invalid URL */ }
+    return false;
+  }
+
+  /** Build an <img> element that plays the GIF directly. */
+  function buildGifEmbed(external) {
+    const wrap = document.createElement('div');
+    wrap.className = 'post-gif-wrap';
+    let src = external.uri;
+    // Tenor media URLs sometimes end in .mp4 — swap to .gif for animated display
+    if (src.includes('tenor.com') && src.endsWith('.mp4')) {
+      src = src.replace(/\.mp4$/, '.gif');
+    }
+    const img = document.createElement('img');
+    img.src       = src;
+    img.alt       = external.title || 'GIF';
+    img.className = 'post-gif';
+    img.loading   = 'lazy';
+    wrap.appendChild(img);
     return wrap;
   }
 
@@ -2875,7 +3335,7 @@
    * @param {HTMLElement} postCard  - the post card element to reply to
    * @param {object}      post      - the AT Protocol PostView being replied to
    */
-  function expandInlineReply(postCard, post) {
+  function expandInlineReply(postCard, post, feedRootRef = null, onSuccess = null) {
     // Close any existing inline reply box
     const existing = document.querySelector('.inline-reply-box');
     if (existing) {
@@ -2883,6 +3343,12 @@
       existing.remove();
       if (samePost) return; // toggle closed if same card clicked again
     }
+
+    // Determine root: explicit feedRootRef (feed context) or currentThread (thread context)
+    const effectiveRoot = feedRootRef || {
+      uri: currentThread?.rootUri || post.uri,
+      cid: currentThread?.rootCid || post.cid,
+    };
 
     const author = post.author  || {};
     const record = post.record  || {};
@@ -2993,24 +3459,30 @@
       const replyText = textarea.value.trim();
       if (!replyText) return;
 
-      errorEl.hidden   = true;
+      errorEl.hidden        = true;
       submitBtn.disabled    = true;
       submitBtn.textContent = 'Posting…';
 
       const replyRef = {
-        root:   { uri: currentThread.rootUri, cid: currentThread.rootCid },
-        parent: { uri: post.uri,              cid: post.cid },
+        root:   { uri: effectiveRoot.uri, cid: effectiveRoot.cid },
+        parent: { uri: post.uri,          cid: post.cid },
       };
 
       try {
         await API.createPost(replyText, replyRef);
         box.remove();
-        showLoading();
-        const data = await API.getPostThread(currentThread.rootUri);
-        renderThread(data.thread, currentThread.authorHandle);
+        if (onSuccess) {
+          // Feed context: call success callback without reloading thread
+          onSuccess();
+        } else {
+          // Thread context: reload the full thread
+          showLoading();
+          const data = await API.getPostThread(effectiveRoot.uri);
+          renderThread(data.thread, currentThread?.authorHandle || '');
+        }
       } catch (err) {
-        errorEl.textContent = err.message || 'Failed to post reply.';
-        errorEl.hidden      = false;
+        errorEl.textContent   = err.message || 'Failed to post reply.';
+        errorEl.hidden        = false;
         submitBtn.disabled    = false;
         submitBtn.textContent = 'Reply';
       } finally {

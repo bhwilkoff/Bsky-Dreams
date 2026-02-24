@@ -722,3 +722,140 @@
 - **Revisit if:** The app adds all major post actions and there is less reason to link
   out to bsky.app; at that point the link could be removed or made optional.
 
+---
+
+## GIF Detection — Hostname + URL Extension Heuristic (M29)
+
+- **Date:** 2026-02-24
+- **Decision:** GIF embeds are detected via `isGifExternalEmbed(external)` which checks
+  the hostname for `tenor.com` / `c.tenor.com` / `media.giphy.com` / `giphy.com` and also
+  checks whether the URL path ends in `.gif`. Matching embeds are rendered as `<img>` via
+  `buildGifEmbed()`, which swaps Tenor `.mp4` URLs to `.gif` for animated display.
+- **Rationale:** GIFs posted to BlueSky via Tenor/Giphy are attached as
+  `app.bsky.embed.external` link cards, not as image blobs. The browser's native `<img>`
+  element handles GIF animation without any autoplay policy restrictions, unlike `<video>`.
+  Hostname-based detection is reliable because only these two services are used for GIF
+  embedding in practice.
+- **Alternatives considered:** MIME type sniffing (requires a HEAD request per embed —
+  too slow); always rendering external links as images (breaks ordinary link card display);
+  treating all `.gif` URLs as GIFs without hostname check (could falsely match favicon URLs).
+- **Trade-offs:** If Tenor or Giphy change their CDN domain structure, the hostname list
+  must be updated.
+- **Revisit if:** BlueSky adds native GIF support (dedicated embed type), at which point
+  a `$type` check would be cleaner than a hostname heuristic.
+
+---
+
+## Quote Post — Action Sheet on Repost Button (M30)
+
+- **Date:** 2026-02-24
+- **Decision:** The existing repost toggle button is replaced with a two-option action
+  sheet (`showRepostActionSheet`): "Repost / Undo repost" and "Quote Post". Quote posts
+  open a full modal with a compose textarea and a read-only quoted-post preview card.
+  Plain reposts retain the existing toggle behavior inside the sheet.
+- **Rationale:** The native BlueSky app uses the same action-sheet pattern for the repost
+  button. Splitting into a sheet avoids adding a new button to the already-crowded post
+  actions row, and makes "Quote Post" discoverable without requiring users to learn a
+  separate button.
+- **Alternatives considered:** Separate "Quote" button on the actions row (too crowded);
+  right-click / long-press context menu (not discoverable on mobile); repost always opens
+  modal (breaks the fast "just repost" flow).
+- **Trade-offs:** Reposting now requires two taps (button → sheet option) instead of one.
+  Acceptable given the added value of quote posting.
+- **Revisit if:** User testing shows the extra tap is consistently annoying for plain
+  reposts; at that point a one-tap repost with a separate quote button may be preferable.
+
+---
+
+## iOS Safari PWA Session Persistence — `visibilitychange` JWT Refresh (M32)
+
+- **Date:** 2026-02-24
+- **Decision:** `auth.js` session management is augmented with a
+  `document.visibilitychange` listener in `app.js`. On `document.hidden === false`
+  (page becomes visible), the stored `accessJwt` expiry (`exp` from the JWT payload)
+  is checked. If within 15 minutes of expiry, `AUTH.refreshSession(refreshJwt)` is
+  called proactively. If fully expired, the session is cleared and the auth screen
+  is shown with a message.
+- **Rationale:** Safari standalone PWA mode suspends JavaScript timers while the app
+  is backgrounded. A `~2-hour accessJwt` can expire between launches without any
+  in-app timer firing. The `visibilitychange` event is the only reliable hook that
+  fires immediately on cold launch or app foreground.
+- **Alternatives considered:** `setInterval` polling (suspended by Safari background
+  throttling); decoding JWT `exp` on every API call in `api.js` (adds latency to every
+  request); Service Worker background sync (requires additional manifest configuration
+  and is unreliable on iOS).
+- **Trade-offs:** Adds one async operation on every app foreground. If the refresh API
+  call fails (network offline), the original token remains in use and will expire
+  naturally; the next API call will attempt a refresh via the existing `withAuth` 401 retry.
+- **Revisit if:** AT Protocol introduces shorter `refreshJwt` TTLs, at which point more
+  aggressive proactive refresh (checking both tokens) would be needed.
+
+---
+
+## PTR Resistance — Two-Stage Threshold (M34)
+
+- **Date:** 2026-02-24
+- **Decision:** Pull-to-refresh requires a drag of ≥ 96px (up from 64px) *plus* a 400ms
+  hold at that distance before `ptrReadyToRelease` becomes `true`. Both conditions must
+  be met before releasing triggers a refresh.
+- **Rationale:** The 64px threshold caused accidental refreshes when users quickly
+  scrolled past the top of the feed. The hold timer ensures only deliberate, sustained
+  pulls trigger a refresh — a pattern used by iOS's native pull-to-refresh.
+- **Trade-offs:** Slightly slower to trigger for intentional pulls. The 400ms delay is
+  imperceptible in practice; users holding the pull past 96px are clearly intentional.
+- **Revisit if:** The 400ms hold proves too long for users with motor-impairment concerns
+  or accessibility feedback; at that point make the hold duration configurable.
+
+---
+
+## Seen-Posts Deduplication — Map + Viral Threshold + Show-Anyway Escape (M40)
+
+- **Date:** 2026-02-24
+- **Decision:** Seen feed posts are stored as `Map<uri, { seenAt, likeCount, repostCount }>`
+  in `localStorage` under `bsky_feed_seen` with a 5,000-entry FIFO cap. Posts are filtered
+  before render unless their engagement has grown by ≥ 50 interactions since first view
+  (the "gone viral" threshold). A "N posts filtered (show anyway)" link below the feed
+  bypasses the filter for the current session.
+- **Rationale:** Deduplication prevents the frustrating experience of seeing the same posts
+  repeatedly across feed reloads and tab switches. The viral threshold resurfaces genuinely
+  popular content without requiring any server-side intelligence. The show-anyway escape
+  hatch respects user agency — some users may want to revisit posts.
+- **Alternatives considered:** Simple URI blocklist with no viral threshold (misses
+  resurging content); time-based expiry (20-minute TTL) rather than engagement-based
+  (doesn't account for slow-to-trend posts); server-side dedup (not possible without
+  a backend).
+- **Trade-offs:** The viral threshold of 50 is arbitrary. Very popular posts on large
+  accounts may still not resurface if their like count grew by fewer than 50 while the
+  user wasn't looking. Acceptable for a first implementation.
+- **Revisit if:** User feedback suggests the threshold is too high or too low; at that
+  point expose it as a configurable preference.
+
+---
+
+## TV Dual-Feed Queue + Short-Clip Filter + Pause + 2× Hold (M36)
+
+- **Date:** 2026-02-24
+- **Decision:** Four enhancements were added to Bsky Dreams TV in a single milestone:
+  (1) The no-topic queue seeds from both `API.getTimeline()` and `API.getFeed(DISCOVER_FEED_URI)`
+  in parallel; (2) `loadVideoInSlot()` skips videos with `duration < 5s` or `.gif` source
+  URLs; (3) a pause/resume button (`tv-pause-btn`) was added to the playback controls bar;
+  (4) holding the pointer on the video area (not on a button) sets `playbackRate = 2`,
+  releasing restores to `1`.
+- **Rationale for dual-feed**: The timeline alone is sparse in video content for accounts
+  that follow few video creators. Adding Discover gives access to the broader "what's hot"
+  pool without requiring a topic filter. `Promise.allSettled()` ensures one failure doesn't
+  block the other.
+- **Rationale for short-clip filter**: Very short clips (< 5s) include animated preview
+  stills, GIF-loops, and preview segments that are not satisfying as standalone TV content.
+  The `durationchange` listener fires once the duration is known, keeping the check lazy.
+- **Rationale for pause**: Users interrupted during TV viewing had no way to hold a frame.
+  The pause button is the most universally expected video control.
+- **Rationale for 2× hold**: Common in TikTok and YouTube Shorts for quickly previewing
+  less interesting clips. `pointerdown`/`pointerup` events are cross-device (touch + mouse)
+  and cleaner than separate `touchstart`/`mousedown` pairs.
+- **Trade-offs**: Two HLS instances are active simultaneously (for slide transitions); the
+  2× speed hold applies only to the currently active slot. Pausing blocks `advanceToNext()`
+  so video-end auto-advance is suppressed while paused.
+- **Revisit if:** Memory pressure on low-end devices becomes an issue; at that point
+  destroy the off-screen HLS instance after each transition.
+

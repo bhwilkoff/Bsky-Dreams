@@ -188,7 +188,7 @@ const API = (() => {
    * @param {Array}       images   - optional array of { blob, alt } objects
    *                                 where blob is the result of uploadBlob()
    */
-  async function createPost(text, replyRef = null, images = []) {
+  async function createPost(text, replyRef = null, images = [], embedRef = null) {
     const session = AUTH.getSession();
     if (!session) throw new Error('Not authenticated.');
 
@@ -203,6 +203,11 @@ const API = (() => {
       record.embed = {
         $type:  'app.bsky.embed.images',
         images: images.map(({ blob, alt }) => ({ image: blob, alt: alt || '' })),
+      };
+    } else if (embedRef) {
+      record.embed = {
+        $type:  'app.bsky.embed.record',
+        record: { uri: embedRef.uri, cid: embedRef.cid },
       };
     }
 
@@ -392,6 +397,36 @@ const API = (() => {
     return authPost('com.atproto.moderation.createReport', body);
   }
 
+  /**
+   * Read a record from the AT Protocol repo (M20 cross-device sync).
+   * @param {string} repo       - DID of the repo owner
+   * @param {string} collection - collection NSID
+   * @param {string} rkey       - record key
+   */
+  async function getRecord(repo, collection, rkey) {
+    return authGet('com.atproto.repo.getRecord', { repo, collection, rkey });
+  }
+
+  /**
+   * Write (create/replace) a record in the AT Protocol repo (M20).
+   * @param {string} repo       - DID of the repo owner
+   * @param {string} collection - collection NSID
+   * @param {string} rkey       - record key
+   * @param {object} record     - the record value (must include $type)
+   */
+  async function putRecord(repo, collection, rkey, record) {
+    return authPost('com.atproto.repo.putRecord', { repo, collection, rkey, record });
+  }
+
+  /**
+   * Create a quote post (post with an embedded record reference) (M30).
+   * @param {string} text
+   * @param {{ uri: string, cid: string }} embedRef - the quoted post's AT URI and CID
+   */
+  async function createQuotePost(text, embedRef) {
+    return createPost(text, null, [], embedRef);
+  }
+
   async function resolvePostUrl(url) {
     const m = url.match(/bsky\.app\/profile\/([^/]+)\/post\/([^/?#]+)/);
     if (!m) throw new Error('Not a recognized bsky.app post URL.');
@@ -425,5 +460,8 @@ const API = (() => {
     updateSeen,
     resolvePostUrl,
     createReport,
+    getRecord,
+    putRecord,
+    createQuotePost,
   };
 })();
