@@ -74,6 +74,25 @@ No build step required. The app runs as a static file.
 - `.git/` directory
 - GitHub Pages deployment settings (configured in repo settings, branch: main)
 
+## Reference Repositories
+
+When researching new features, API capabilities, or implementation patterns, consult
+these repositories in addition to the official BlueSky documentation:
+
+- **AT Protocol Python SDK + examples**: https://github.com/MarshalX/atproto
+  Good for understanding AT Protocol record schemas, lexicon types, and API edge cases
+  even when the implementation language differs.
+- **Awesome AT Protocol**: https://github.com/beeman/awesome-atproto
+  Curated list of AT Protocol tools, libraries, feed generators, and community projects.
+  Useful for discovering existing solutions before building from scratch.
+- **Awesome Bluesky**: https://github.com/fishttp/awesome-bluesky
+  Curated list of Bluesky-specific apps, bots, utilities, and resources. Check here for
+  prior art on any feature before implementing it.
+
+When a feature request touches AT Protocol specifics (lexicons, record types, feed
+generators, labelers, chat API), scan these repos first. They frequently contain
+working code samples and gotchas not covered in the official docs.
+
 ## Current State
 
 See @SCRATCHPAD.md for current session state.

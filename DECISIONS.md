@@ -549,3 +549,176 @@
 - **Revisit if:** The user decides to fund specific API keys, or an open/free
   alternative emerges (e.g., if BlueSky labelers provide standardized bias/AI labels).
 
+---
+
+## Discover Feed — `whats-hot` URI, Tab-Based Toggle
+
+- **Date:** 2026-02-24
+- **Decision:** The "Discover" tab on the home feed uses BlueSky's official What's Hot
+  feed generator at
+  `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot` via
+  `app.bsky.feed.getFeed`. The home feed header is a two-tab toggle (Following /
+  Discover) rather than a dropdown or separate nav entry.
+- **Rationale:** `whats-hot` is the canonical AT URI for BlueSky's curated discovery
+  feed as documented in the official BlueSky API docs and used by bsky.app itself. The
+  rkey `discover` does not exist and returns a "Could not locate record" error. A tab
+  bar is the lightest-weight toggle pattern and consistent with how other social clients
+  (Twitter/X, Mastodon Elk) handle algorithm switching. Adding a separate nav entry would
+  clutter the nav bar.
+- **Alternatives considered:** A dropdown/select on the feed header (less discoverable
+  on mobile); a separate "Discover" nav tab (adds nav clutter); using a third-party feed
+  generator URI (unnecessary dependency when the official one exists).
+- **Trade-offs:** The `whats-hot` feed is curated by BlueSky and its content policy
+  cannot be influenced by the app. If BlueSky changes the feed URI or deprecates the
+  generator, the URI constant in `app.js` must be updated manually.
+- **Revisit if:** BlueSky publishes a more personalized discovery endpoint, or if a
+  user-configurable "feed picker" (selecting from pinned feeds in their AT Protocol
+  repo) is implemented.
+
+---
+
+## Elastic Overscroll Suppression — `overscroll-behavior: none` on `.view`
+
+- **Date:** 2026-02-24
+- **Decision:** Added `overscroll-behavior: none` to the `.view` CSS rule (the
+  `overflow-y: auto` scroll container used by all views).
+- **Rationale:** `body` already had `overscroll-behavior: none` to suppress the
+  browser pull-to-reload gesture. However, `.view` is the *actual* scroll container
+  for the thread, profile, notifications, and feed pages. Inner scroll containers are
+  subject to their own overscroll behavior, independent of `body`. Without the property
+  on `.view`, iOS Safari and Chrome on Android both exhibited elastic rubber-banding
+  when scrolling to the edge of content in those views.
+- **Alternatives considered:** Setting `overscroll-behavior: contain` (allows inner
+  scroll without propagating to the body — rejected because `.view` IS the outermost
+  scroll container and `contain` still allows the bounce within the element itself).
+- **Trade-offs:** Suppresses the bounce effect entirely; this is intentional. The app
+  implements its own pull-to-refresh gesture, making the native bounce unnecessary and
+  confusing.
+- **Revisit if:** A native-feel bounce is desired for any specific view.
+
+---
+
+## Bsky Dreams TV — Two-Slot Slide System + Dual-Feed Seeding
+
+- **Date:** 2026-02-24
+- **Decision:** TV uses two `position: absolute` video containers (`tv-slide-a`,
+  `tv-slide-b`) that swap roles on each transition, enabling simultaneous outgoing and
+  incoming CSS `translateY` animations. The TV queue is seeded from custom topic search
+  using `Promise.allSettled()` across a hashtag search and a text search in parallel.
+- **Rationale:** A single `<video>` element cannot transition out while a new one
+  transitions in. The two-slot pattern (used by TikTok, YouTube Shorts, Instagram Reels)
+  is the standard approach. `Promise.allSettled()` for dual search ensures hashtag results
+  (high video density) are combined with text results (broader coverage) without either
+  search failure blocking the other.
+- **Alternatives considered:** Single video element with a CSS fade transition (no
+  directional slide possible); three slots with a recycled queue (more complex, no
+  benefit at queue sizes we use); single search only (was the prior implementation —
+  returned no results for most custom topics).
+- **Trade-offs:** Two HLS instances (`tvHlsArr[0]`, `tvHlsArr[1]`) exist simultaneously;
+  the off-screen slot's instance is kept alive (paused) to enable instant back-navigation.
+  Memory cost is acceptable for video on a mobile device.
+- **Revisit if:** Memory pressure on low-end devices causes crashes; at that point destroy
+  the off-screen Hls instance immediately after the transition.
+
+---
+
+## Discover Feed as Default + `whats-hot` URI
+
+- **Date:** 2026-02-24
+- **Decision:** The home feed opens to the Discover (What's Hot) feed by default.
+  `feedMode` initialises to `'discover'`; the Discover tab is marked `feed-tab-active`
+  in the HTML so there is no flash of the wrong active tab on load. The Following tab
+  remains one tap away and the user's choice is remembered per session via the tab
+  click handler.
+- **Rationale:** New and returning users benefit from a populated discovery feed on
+  first load rather than an empty Following feed. Following is always one tap away,
+  so no content is hidden.
+- **Trade-offs:** Users who primarily use Following must tap once per session. If this
+  proves annoying, a localStorage preference (`bsky_feed_default`) could persist the
+  user's last-used tab.
+- **Revisit if:** User feedback indicates Following is more commonly desired as default.
+
+---
+
+## Channels Sidebar Hidden by Default on Desktop
+
+- **Date:** 2026-02-24
+- **Decision:** The channels sidebar is hidden by default on all screen sizes, including
+  desktop. The user opens it via the hamburger/channels toggle in the nav bar. The last
+  open/closed state is persisted in `localStorage` under `bsky_sidebar_open` and restored
+  on login. `body.sidebar-open` controls the content offset CSS (`padding-left` on `.view`
+  and `.top-bar-inner`) on desktop; the class is added/removed by `openSidebar()` /
+  `closeSidebar()`.
+- **Rationale:** Most first-time users have no saved channels, so an empty sidebar wastes
+  horizontal space and creates visual clutter. Power users who do have channels will
+  reopen it and the preference is remembered.
+- **Alternatives considered:** Always-visible on desktop (previous behaviour — too
+  aggressive for new users); separate nav tab for channels (reduces nav bar to fewer
+  options but loses the persistent-workspace feel).
+- **Trade-offs:** Users who relied on the always-open desktop sidebar need to open it
+  once; thereafter the preference is saved.
+- **Revisit if:** Channels become a core part of the app's identity, at which point
+  defaulting to open (with a channel count badge visible) may be worthwhile.
+
+---
+
+## Mention Links — DID-based Navigation via Data Attribute + Event Delegation
+
+- **Date:** 2026-02-24
+- **Decision:** Mention facets (`app.bsky.richtext.facet#mention`) embed the DID directly
+  in a `data-mention-did` attribute on the rendered `<span>`. Click/keyboard handlers are
+  wired via `querySelectorAll('[data-mention-did]')` inside `buildPostCard()` after the
+  card's inner HTML is set. `openProfile(did)` is called with `stopPropagation()`.
+- **Rationale:** `renderPostText()` returns an HTML string (set via `innerHTML`), so
+  direct event listener attachment is not possible during construction. Embedding the
+  DID in a data attribute and delegating from `buildPostCard` after innerHTML is set is
+  the minimal, correct pattern. DIDs are available directly in AT Protocol mention facets
+  — no handle-resolution round-trip is needed.
+- **Alternatives considered:** Switching `renderPostText` to return DOM nodes instead of
+  an HTML string (large refactor, not justified); event delegation on the whole card
+  (would require checking the target on every card click, slightly less clean).
+- **Trade-offs:** One `querySelectorAll` per card render. Negligible performance cost
+  for the number of cards rendered at any given time.
+- **Revisit if:** `renderPostText` is refactored to return DOM nodes, at which point
+  listeners can be attached directly.
+
+---
+
+## Like Button — Optimistic Update with Rollback
+
+- **Date:** 2026-02-24
+- **Decision:** The like button applies the UI change (toggle class, count, SVG fill)
+  before the API call resolves. On API error, the pre-change state is restored from a
+  snapshot taken before the update. The button is disabled during the in-flight request
+  to prevent double-tap issues.
+- **Rationale:** Optimistic updates make the interaction feel instant on slow connections.
+  The previous code updated inside the `try` block (not truly optimistic — it waited for
+  the API) but had no error rollback, so a failed API call would leave the UI in a wrong
+  state. The fix snapshot-then-update-then-rollback-on-error pattern is the standard
+  approach for social media interactions.
+- **Alternatives considered:** Non-optimistic (update only after API confirms) — correct
+  but laggy on slow mobile connections; no rollback (previous behaviour) — leaves UI
+  desynced from server.
+- **Trade-offs:** A snapshot of three fields (likeUri, count text, class) is held in
+  closure for the duration of each API call. Negligible memory cost.
+- **Revisit if:** The AT Protocol adds a batch-interaction endpoint; at that point
+  queuing interactions and flushing them in bulk would be more efficient.
+
+---
+
+## Timestamp as External Link to bsky.app
+
+- **Date:** 2026-02-24
+- **Decision:** The relative-time badge on each post card is wrapped in
+  `<a href="https://bsky.app/profile/{handle}/post/{rkey}" target="_blank" rel="noopener">`.
+  The `rkey` is derived from the AT URI (`uri.split('/').pop()`). Falls back to a plain
+  `<time>` element if handle or rkey cannot be determined.
+- **Rationale:** Tapping the time badge is a natural affordance for "see the original
+  post" — this is standard behaviour on most social clients. It gives users a quick
+  escape hatch to the official Bluesky app, which is important for actions the app
+  doesn't yet support.
+- **Trade-offs:** Opens bsky.app in a new tab, which leaves the app in the background.
+  Acceptable since it's an intentional navigation to an external resource.
+- **Revisit if:** The app adds all major post actions and there is less reason to link
+  out to bsky.app; at that point the link could be removed or made optional.
+
