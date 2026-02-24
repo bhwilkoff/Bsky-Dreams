@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation), and home feed Discover tab with elastic overscroll fix.
+Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation), home feed Discover tab with elastic overscroll fix, and M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish).
 
 ## Completed Milestones
 
@@ -183,6 +183,51 @@ Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, 
 - **Desktop layout**: `padding-left: var(--sidebar-width)` on `.view` and
   `top-bar-inner` shifts all content right to coexist with the fixed sidebar.
 - **Mobile layout**: `closeSidebar()` restores drawer state on sign-out and view switch.
+
+### Milestone 28: Discover Feed as Default ✅
+- Changed `feedMode` initial value from `'following'` to `'discover'` in `app.js`.
+- Updated `index.html` feed tab HTML so Discover tab has `feed-tab-active` and
+  `aria-selected="true"` by default; Following tab starts unselected.
+- `setFeedMode()` is called by tab click handlers and keeps both JS state and HTML
+  in sync; Discover is shown on first load with no extra init call needed.
+
+### Milestone 31: Reposter Name as Profile Link ✅
+- Replaced the static `<span>` "Reposted by X" label in `renderFeedItems()` with a
+  `<button class="repost-author-link">` wrapping the reposter's avatar image and
+  display name.
+- Click calls `openProfile(by.handle)` with `stopPropagation()` so the outer post
+  card click does not also trigger thread navigation.
+- New CSS: `.repost-author-link` renders as borderless inline-flex button; hover
+  shows underline.
+
+### Milestone 33: Mention Links in Posts ✅
+- In `renderPostText()`, mention facets now render as
+  `<span class="mention-text mention-link" role="button" tabindex="0" data-mention-did="{DID}">`.
+  The DID is embedded directly from the facet — no handle-resolution step needed.
+- In `buildPostCard()`, after the card's inner HTML is set, `querySelectorAll('[data-mention-did]')`
+  wires `click` and `keydown` (Enter/Space) handlers that call `openProfile(did)` with
+  `stopPropagation()`.
+- New CSS: `.mention-link { cursor: pointer }` with hover underline.
+
+### Milestone 38: Minor Interface Polish ✅
+- **Logo click**: `$('nav-home-btn')` listener calls `showView('feed', true); loadFeed()` —
+  clicking the Bsky Dreams title/cloud always returns to a fresh Discover feed.
+- **Timestamp as external link**: In `buildPostCard()`, derive `rkey` from the AT URI
+  and build a `bsky.app` URL; render the timestamp as
+  `<a class="post-timestamp" href="..." target="_blank" rel="noopener">` wrapping
+  `<time>`. Falls back to plain `<time>` if handle or rkey are unavailable.
+- **Like button race condition**: Moved UI update before the `try` block (optimistic).
+  Added full rollback in the `catch` block — restores `liked` class, SVG fill,
+  `data-like-uri`, and count text. Button is disabled during the in-flight request.
+- **PTR indicator clipping**: Added `overflow: hidden` to `#view-feed .view-inner`
+  in `styles.css` so the `-52px` margin-top on the indicator is fully clipped above
+  the scroll area on desktop.
+- **Channels sidebar hidden by default**: Removed the desktop `@media (min-width: 768px)`
+  rule that forced `.channels-sidebar { left: 0 }` and `.view { padding-left }` always.
+  Replaced with `body.sidebar-open .view` and `body.sidebar-open .top-bar-inner` rules.
+  `openSidebar()` / `closeSidebar()` add/remove `body.sidebar-open` on desktop and
+  persist the preference in `localStorage` under `bsky_sidebar_open`. `enterApp()`
+  restores the saved state on login.
 
 ---
 
@@ -848,26 +893,20 @@ None currently.
 
 Priority order for implementation (roughly):
 
-### High priority — bug fixes and small UX (tackle first, each under 1 hour)
-1. **M31 — Reposter name as profile link** (one-line DOM change + click handler)
-2. **M33 — Mention links in posts** (wire missing click handler in renderRichText)
-3. **M38 — Minor interface polish** (PTR clipping, sidebar default, logo click, timestamp link, like race condition)
-4. **M28 — Discover feed as default** (change one line; `feedMode = 'discover'`)
-
-### Medium priority — feature enhancements
-5. **M34 — PTR resistance + scroll-to-top button**
-6. **M35 — Inline reply from home feed**
-7. **M30 — Quote post interface**
-8. **M29 — GIF playback in timeline**
-9. **M32 — iOS Safari PWA session persistence**
+### High priority — feature enhancements (next up)
+1. **M34 — PTR resistance + scroll-to-top button** (increase threshold, add overlay button)
+2. **M35 — Inline reply from home feed** (re-use expandInlineReply from thread view)
+3. **M30 — Quote post interface** (action sheet on repost button, compose modal)
+4. **M29 — GIF playback in timeline** (isGifEmbed helper, img rendering for Tenor/Giphy)
+5. **M32 — iOS Safari PWA session persistence** (visibilitychange refresh, manifest audit)
 
 ### Larger features
-10. **M36 — Bsky Dreams TV enhancements** (autoplay fix, dual-feed queue, 2× hold, pause)
-11. **M37 — Image browser / Gallery**
-12. **M39 — Feed content filters**
-13. **M40 — Seen-posts deduplication**
+6. **M36 — Bsky Dreams TV enhancements** (autoplay fix, dual-feed queue, 2× hold, pause)
+7. **M37 — Image browser / Gallery**
+8. **M39 — Feed content filters**
+9. **M40 — Seen-posts deduplication**
 
 ### Existing pipeline (deprioritized relative to above)
-14. **M22 — Analytics Dashboard**
-15. **M13 — Horizontal Event Timeline Scrubber**
-16. **M14 — Network Constellation Visualization**
+10. **M22 — Analytics Dashboard**
+11. **M13 — Horizontal Event Timeline Scrubber**
+12. **M14 — Network Constellation Visualization**

@@ -131,7 +131,7 @@
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
   const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
-  let feedMode           = 'following'; // 'following' | 'discover'
+  let feedMode           = 'discover';  // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
@@ -386,17 +386,26 @@
     searchResults.parentNode.insertBefore(area, searchResults);
   }
 
-  /* ---- Sidebar toggle (mobile) ---- */
+  /* ---- Sidebar toggle ---- */
   function openSidebar() {
     channelsSidebar.classList.add('open');
     sidebarOverlay.hidden = false;
     navChannelsBtn.setAttribute('aria-expanded', 'true');
+    // On desktop, add body class to offset content and save preference
+    if (window.innerWidth >= 768) {
+      document.body.classList.add('sidebar-open');
+      try { localStorage.setItem('bsky_sidebar_open', 'true'); } catch {}
+    }
   }
 
   function closeSidebar() {
     channelsSidebar.classList.remove('open');
     sidebarOverlay.hidden = true;
     navChannelsBtn.setAttribute('aria-expanded', 'false');
+    if (window.innerWidth >= 768) {
+      document.body.classList.remove('sidebar-open');
+      try { localStorage.setItem('bsky_sidebar_open', 'false'); } catch {}
+    }
   }
 
   navChannelsBtn.addEventListener('click', () => {
@@ -643,6 +652,13 @@
     renderChannelsSidebar();
     checkChannelUnreads(); // async, runs in background
 
+    // Restore sidebar open state on desktop (hidden by default for new users)
+    if (window.innerWidth >= 768) {
+      try {
+        if (localStorage.getItem('bsky_sidebar_open') === 'true') openSidebar();
+      } catch {}
+    }
+
     // Route to the view specified by the URL (deep-link / bookmark support)
     const p = urlParams instanceof URLSearchParams ? urlParams : new URLSearchParams();
     const urlView = p.get('view');
@@ -764,6 +780,12 @@
       window.tvStop?.();
     }
   }
+
+  // Logo / title click always returns to feed and refreshes
+  $('nav-home-btn').addEventListener('click', () => {
+    showView('feed', true);
+    loadFeed();
+  });
 
   navFeedBtn.addEventListener('click', () => {
     showView('feed');
@@ -1161,16 +1183,27 @@
         const bar = document.createElement('div');
         bar.className = 'feed-repost-bar';
         bar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+        // "Reposted by" prefix (plain text)
+        bar.appendChild(document.createTextNode('Reposted by\u00a0'));
+        // Reposter avatar + name as a clickable button
+        const authorBtn = document.createElement('button');
+        authorBtn.className = 'repost-author-link';
+        authorBtn.setAttribute('aria-label', `View profile of ${by.displayName || by.handle || 'reposter'}`);
         if (by.avatar) {
           const avatar = document.createElement('img');
           avatar.src       = by.avatar;
           avatar.alt       = '';
           avatar.className = 'feed-repost-avatar';
-          bar.appendChild(avatar);
+          authorBtn.appendChild(avatar);
         }
-        const label = document.createElement('span');
-        label.textContent = `Reposted by ${by.displayName || by.handle || 'someone'}`;
-        bar.appendChild(label);
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = by.displayName || by.handle || 'someone';
+        authorBtn.appendChild(nameSpan);
+        authorBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (by.handle) openProfile(by.handle);
+        });
+        bar.appendChild(authorBtn);
         wrapper.appendChild(bar);
       }
 
@@ -2031,7 +2064,11 @@
     card.dataset.cid = post.cid;
 
     // Header
-    const ts = record.createdAt ? formatTimestamp(record.createdAt) : '';
+    const ts   = record.createdAt ? formatTimestamp(record.createdAt) : '';
+    const rkey = (post.uri || '').split('/').pop();
+    const bskyUrl = author.handle && rkey
+      ? `https://bsky.app/profile/${encodeURIComponent(author.handle)}/post/${encodeURIComponent(rkey)}`
+      : '';
     card.innerHTML = `
       <div class="post-header">
         <img src="${escHtml(author.avatar || '')}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}">
@@ -2039,7 +2076,9 @@
           <div class="post-display-name">${escHtml(author.displayName || author.handle || '')}</div>
           <div class="post-handle">@${escHtml(author.handle || '')}</div>
         </div>
-        <time class="post-timestamp" datetime="${escHtml(record.createdAt || '')}">${ts}</time>
+        ${bskyUrl
+          ? `<a class="post-timestamp" href="${escHtml(bskyUrl)}" target="_blank" rel="noopener" title="View on Bluesky"><time datetime="${escHtml(record.createdAt || '')}">${ts}</time></a>`
+          : `<time class="post-timestamp" datetime="${escHtml(record.createdAt || '')}">${ts}</time>`}
       </div>
       <p class="post-text">${renderPostText(record.text || '', record.facets)}</p>
     `;
@@ -2053,6 +2092,23 @@
         });
       });
     }
+
+    // Clicking a @mention span opens that user's profile (M33)
+    card.querySelectorAll('[data-mention-did]').forEach((mention) => {
+      mention.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const did = mention.dataset.mentionDid;
+        if (did) openProfile(did);
+      });
+      mention.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          const did = mention.dataset.mentionDid;
+          if (did) openProfile(did);
+        }
+      });
+    });
 
     // Embedded media — images, video, external links, and quoted posts
     const embedType = embed.$type;
@@ -2173,32 +2229,51 @@
       openThread(targetUri, targetCid, author.handle);
     });
 
-    // Like button
+    // Like button — optimistic UI update with rollback on error
     actions.querySelector('.like-action-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
-      const btn     = e.currentTarget;
-      const uri     = btn.dataset.uri;
-      const cid     = btn.dataset.cid;
-      const likeUri = btn.dataset.likeUri;
-      const countEl = btn.querySelector('.action-count');
-      const isLiked = btn.classList.contains('liked');
+      const btn      = e.currentTarget;
+      const uri      = btn.dataset.uri;
+      const cid      = btn.dataset.cid;
+      const likeUri  = btn.dataset.likeUri;
+      const countEl  = btn.querySelector('.action-count');
+      const svgEl    = btn.querySelector('svg');
+      const isLiked  = btn.classList.contains('liked');
+      // Snapshot for rollback
+      const prevLikeUri = likeUri;
+      const prevCount   = countEl.textContent;
 
+      // Optimistic update
       btn.disabled = true;
+      if (isLiked) {
+        btn.classList.remove('liked');
+        btn.dataset.likeUri = '';
+        countEl.textContent = formatCount(Math.max(0, parseFmtCount(prevCount) - 1));
+        svgEl.setAttribute('fill', 'none');
+      } else {
+        btn.classList.add('liked');
+        countEl.textContent = formatCount(parseFmtCount(prevCount) + 1);
+        svgEl.setAttribute('fill', 'currentColor');
+      }
+
       try {
         if (isLiked && likeUri) {
           await API.unlikePost(likeUri);
-          btn.classList.remove('liked');
-          btn.dataset.likeUri = '';
-          countEl.textContent = formatCount(Math.max(0, parseFmtCount(countEl.textContent) - 1));
-          btn.querySelector('svg').setAttribute('fill', 'none');
-        } else {
+        } else if (!isLiked) {
           const result = await API.likePost(uri, cid);
-          btn.classList.add('liked');
           btn.dataset.likeUri = result.uri || '';
-          countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
-          btn.querySelector('svg').setAttribute('fill', 'currentColor');
         }
       } catch (err) {
+        // Roll back optimistic update
+        if (isLiked) {
+          btn.classList.add('liked');
+          svgEl.setAttribute('fill', 'currentColor');
+        } else {
+          btn.classList.remove('liked');
+          svgEl.setAttribute('fill', 'none');
+        }
+        btn.dataset.likeUri = prevLikeUri;
+        countEl.textContent = prevCount;
         console.error('Like error:', err.message);
       } finally {
         btn.disabled = false;
@@ -3233,7 +3308,8 @@
         const tag = escHtml(feature.tag || segText.replace(/^#/, ''));
         html += `<a href="#" class="hashtag-link" data-hashtag="${tag}">${escHtml(segText)}</a>`;
       } else if (feature.$type === 'app.bsky.richtext.facet#mention') {
-        html += `<span class="mention-text">${escHtml(segText)}</span>`;
+        const did = escHtml(feature.did || '');
+        html += `<span class="mention-text mention-link" role="button" tabindex="0" data-mention-did="${did}">${escHtml(segText)}</span>`;
       } else {
         html += escHtml(segText);
       }
