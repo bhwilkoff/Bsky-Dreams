@@ -549,3 +549,74 @@
 - **Revisit if:** The user decides to fund specific API keys, or an open/free
   alternative emerges (e.g., if BlueSky labelers provide standardized bias/AI labels).
 
+---
+
+## Discover Feed — `whats-hot` URI, Tab-Based Toggle
+
+- **Date:** 2026-02-24
+- **Decision:** The "Discover" tab on the home feed uses BlueSky's official What's Hot
+  feed generator at
+  `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot` via
+  `app.bsky.feed.getFeed`. The home feed header is a two-tab toggle (Following /
+  Discover) rather than a dropdown or separate nav entry.
+- **Rationale:** `whats-hot` is the canonical AT URI for BlueSky's curated discovery
+  feed as documented in the official BlueSky API docs and used by bsky.app itself. The
+  rkey `discover` does not exist and returns a "Could not locate record" error. A tab
+  bar is the lightest-weight toggle pattern and consistent with how other social clients
+  (Twitter/X, Mastodon Elk) handle algorithm switching. Adding a separate nav entry would
+  clutter the nav bar.
+- **Alternatives considered:** A dropdown/select on the feed header (less discoverable
+  on mobile); a separate "Discover" nav tab (adds nav clutter); using a third-party feed
+  generator URI (unnecessary dependency when the official one exists).
+- **Trade-offs:** The `whats-hot` feed is curated by BlueSky and its content policy
+  cannot be influenced by the app. If BlueSky changes the feed URI or deprecates the
+  generator, the URI constant in `app.js` must be updated manually.
+- **Revisit if:** BlueSky publishes a more personalized discovery endpoint, or if a
+  user-configurable "feed picker" (selecting from pinned feeds in their AT Protocol
+  repo) is implemented.
+
+---
+
+## Elastic Overscroll Suppression — `overscroll-behavior: none` on `.view`
+
+- **Date:** 2026-02-24
+- **Decision:** Added `overscroll-behavior: none` to the `.view` CSS rule (the
+  `overflow-y: auto` scroll container used by all views).
+- **Rationale:** `body` already had `overscroll-behavior: none` to suppress the
+  browser pull-to-reload gesture. However, `.view` is the *actual* scroll container
+  for the thread, profile, notifications, and feed pages. Inner scroll containers are
+  subject to their own overscroll behavior, independent of `body`. Without the property
+  on `.view`, iOS Safari and Chrome on Android both exhibited elastic rubber-banding
+  when scrolling to the edge of content in those views.
+- **Alternatives considered:** Setting `overscroll-behavior: contain` (allows inner
+  scroll without propagating to the body — rejected because `.view` IS the outermost
+  scroll container and `contain` still allows the bounce within the element itself).
+- **Trade-offs:** Suppresses the bounce effect entirely; this is intentional. The app
+  implements its own pull-to-refresh gesture, making the native bounce unnecessary and
+  confusing.
+- **Revisit if:** A native-feel bounce is desired for any specific view.
+
+---
+
+## Bsky Dreams TV — Two-Slot Slide System + Dual-Feed Seeding
+
+- **Date:** 2026-02-24
+- **Decision:** TV uses two `position: absolute` video containers (`tv-slide-a`,
+  `tv-slide-b`) that swap roles on each transition, enabling simultaneous outgoing and
+  incoming CSS `translateY` animations. The TV queue is seeded from custom topic search
+  using `Promise.allSettled()` across a hashtag search and a text search in parallel.
+- **Rationale:** A single `<video>` element cannot transition out while a new one
+  transitions in. The two-slot pattern (used by TikTok, YouTube Shorts, Instagram Reels)
+  is the standard approach. `Promise.allSettled()` for dual search ensures hashtag results
+  (high video density) are combined with text results (broader coverage) without either
+  search failure blocking the other.
+- **Alternatives considered:** Single video element with a CSS fade transition (no
+  directional slide possible); three slots with a recycled queue (more complex, no
+  benefit at queue sizes we use); single search only (was the prior implementation —
+  returned no results for most custom topics).
+- **Trade-offs:** Two HLS instances (`tvHlsArr[0]`, `tvHlsArr[1]`) exist simultaneously;
+  the off-screen slot's instance is kept alive (paused) to enable instant back-navigation.
+  Memory cost is acceptable for video on a mobile device.
+- **Revisit if:** Memory pressure on low-end devices causes crashes; at that point destroy
+  the off-screen Hls instance immediately after the transition.
+

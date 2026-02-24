@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), and UX improvements (default home view, pull-to-refresh).
+Milestones 1–12, 19, 21 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation), and home feed Discover tab with elastic overscroll fix.
 
 ## Completed Milestones
 
@@ -219,7 +219,7 @@ Items marked **[RESEARCH]** need API/cost investigation before work begins.
   `com.atproto.moderation.createReport` with appropriate `$type` for post vs. account.
 - **Confirmation**: Floating success banner for 3 seconds after submit.
 
-### UX Improvements (this session) ✅
+### UX Improvements ✅
 - **Default home view**: App opens to the Following feed instead of Search.
   `enterApp()` fallback changed to `showView('feed'); loadFeed()`. History seed
   updated to `?view=feed`.
@@ -227,6 +227,44 @@ Items marked **[RESEARCH]** need API/cost investigation before work begins.
   `#ptr-indicator` element hidden above scroll area (`margin-top: -52px`). Touch
   handlers on `viewFeed` detect downward pull at `scrollTop === 0`, reveal and
   animate the indicator, trigger `loadFeed()` on release past 64px threshold.
+
+### Bsky Dreams TV Enhancements ✅
+- **TikTok-style redesign**: Auto-hiding overlay (3-second timer; any touch/click
+  resets it). Post metadata (avatar, name, text) in a left column; icon-only
+  controls (mute, stop) in the right column. Author name/handle tappable to open
+  their profile via `openProfile()`.
+- **Two-slot slide animation**: `#tv-slide-a` and `#tv-slide-b` containers sit
+  `position: absolute; inset: 0` with their own `<video>` elements. On advance or
+  back, `slideTransition(direction, cb)` snaps the incoming slide off-screen (no
+  transition), forces a reflow, then animates both slides simultaneously at 320ms
+  cubic-bezier. `tvSliding` flag prevents overlapping transitions.
+- **Back navigation**: Swipe-down or scroll-up decrements `tvIndex` and calls
+  `playAt(tvIndex - 1, 'down')`, restoring the previous video.
+- **Dual topic search**: For custom-topic queries, `Promise.allSettled()` fires
+  both a hashtag search (`#topic`) and a plain-text search (`topic`) in parallel.
+  Results are merged with an inline dedup `Set`. Fixes the bug where custom
+  searches found no videos because text results rarely included video posts.
+- **Watch history**: Seen video URIs stored in `localStorage` under `bsky_tv_seen`
+  (max 1,000, FIFO eviction). `markSeen(uri)` called before `showOverlay()`.
+  `fetchMore()` skips seen URIs alongside video/adult checks. "Clear watch history
+  (N seen)" button shown at the TV setup screen bottom.
+- **Adult content filter**: Toggle on the setup screen; `isAdultPost()` helper
+  checks `post.labels` for `sexual` / `nudity` label values.
+
+### Home Feed: Discover Tab + Overscroll Fix ✅
+- **Discover tab**: Home feed header replaced with a "Following | Discover" tab
+  bar (`role="tablist"`). "Discover" calls `API.getFeed(DISCOVER_FEED_URI)` using
+  BlueSky's What's Hot generator
+  (`at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot`).
+  "Following" calls `API.getTimeline()`. `setFeedMode()` swaps active-tab styling
+  and `aria-selected`. `loadFeed()` branches on `feedMode` state variable. Feed
+  cursor resets on tab switch.
+- **API addition**: `API.getFeed(feedUri, limit, cursor)` added to `js/api.js`,
+  wrapping `app.bsky.feed.getFeed`, and exported.
+- **Overscroll fix**: Added `overscroll-behavior: none` to `.view` in
+  `styles.css`. `body` already had it, but `.view` is the actual scroll container
+  for thread, profile, notifications, and feed pages — the elastic rubber-banding
+  was occurring inside those inner containers.
 
 ---
 
@@ -524,6 +562,263 @@ and accuracy before implementation can be scoped:
 
 ---
 
+### Milestone 28: Discover Feed as Default
+
+**Goal:** Open the home feed to the Discover tab by default; Following remains one tap away.
+
+- Change `feedMode` initial value from `'following'` to `'discover'` in `app.js`.
+- Call `setFeedMode('discover')` inside `enterApp()` before `loadFeed()`.
+- Update the "Following" tab label to be clearly secondary (no other visual change needed;
+  the active-tab underline already communicates which is selected).
+- **Rationale:** New and returning users benefit from a curated discovery feed on first
+  load; Following is always reachable via one tap.
+
+---
+
+### Milestone 29: GIF Playback in Timeline
+
+**Goal:** Animated GIFs play correctly in feeds and threads rather than appearing as
+static images.
+
+- **Direct BlueSky uploads**: Posts with `app.bsky.embed.images` where the blob MIME
+  type is `image/gif` — detect and render as `<img src="...">` with no `object-fit`
+  crop so the animation runs. The AT Protocol CDN serves GIF blobs at their original
+  URL; animation is suppressed only if the app renders them inside a CSS-cropped grid
+  cell that forces a repaint.
+- **Embedded Tenor / Giphy GIFs**: These appear as `app.bsky.embed.external` link
+  cards with hostnames like `tenor.com`, `c.tenor.com`, `media.giphy.com`, or
+  `giphy.com`. Detect these hostnames and render the GIF URL as an `<img>` inline
+  rather than a plain link card. Tenor media URLs end in `.gif` or `.mp4`; prefer
+  the `.gif` URL for animated display.
+- **Detection helper**: `isGifEmbed(embed)` — checks image MIME or external URL
+  hostname/extension.
+- **No autoplay policy issues**: `<img>` elements are not subject to browser autoplay
+  rules; GIFs animate automatically without user gesture.
+
+---
+
+### Milestone 30: Quote Post Interface
+
+**Goal:** Tapping "Repost" offers a choice between a plain repost and a quote post,
+mirroring the native BlueSky client behavior.
+
+- **Repost button action sheet**: Replace the immediate repost toggle with a small
+  popup/bottom sheet offering two options: "Repost" (existing behavior) and
+  "Quote Post." On desktop, a small dropdown; on mobile, a bottom sheet.
+- **Quote post compose modal**: Selecting "Quote Post" opens a modal with a full
+  compose textarea (character counter, image attach), and a read-only quoted-post
+  preview card pinned at the bottom.
+- **API embed**: On submit, `API.createPost()` with
+  `embed: { $type: 'app.bsky.embed.record', record: { uri, cid } }`.
+  If images are also attached, use `app.bsky.embed.recordWithMedia` instead.
+- **Unrepost behavior unchanged**: The "Repost" option in the sheet still toggles
+  unrepost if the post is already reposted (check `data-repost-uri`).
+
+---
+
+### Milestone 31: Reposter Name as Profile Link
+
+**Goal:** The "Reposted by X" attribution bar is tappable and opens the reposter's profile.
+
+- The repost bar is currently rendered as static text with an avatar `<img>`.
+- Wrap the reposter's avatar and display name in a `<button class="author-link">` (or
+  `<span role="button">`) with a click handler that calls `openProfile(reposter.handle)`.
+- Ensure `stopPropagation()` so the click doesn't also open the post's thread.
+- Apply consistent `cursor: pointer` and hover styling matching other `author-link`
+  elements throughout the app.
+
+---
+
+### Milestone 32: iOS Safari PWA Session Persistence
+
+**Goal:** Users who add Bsky Dreams to their iOS home screen should stay logged in
+across app launches, matching the expected behavior of a native app.
+
+- **Root cause investigation**: Safari standalone PWA mode uses a separate, persistent
+  localStorage context (not session-scoped). The session likely expires because:
+  1. `accessJwt` has a ~2-hour TTL.
+  2. On `visibilitychange` or cold launch, the app may not be proactively refreshing
+     the token before it expires.
+- **Token refresh hardening**: In `auth.js`, on every `visibilitychange` event
+  (`document.hidden === false`), check the age of the stored `accessJwt` (decode the
+  JWT payload's `exp` field client-side). If expiry is within 15 minutes, proactively
+  call `com.atproto.server.refreshSession` using the stored `refreshJwt` and write the
+  new tokens back to localStorage.
+- **Graceful expiry message**: If both tokens are expired, show a friendly "Your session
+  expired — please sign in again" message instead of a silent blank screen.
+- **Web App Manifest**: Verify `index.html` includes `<meta name="apple-mobile-web-app-capable" content="yes">` and a `<link rel="manifest">` with `"display": "standalone"` so iOS
+  treats the icon as a full-screen web app rather than a Safari shortcut.
+- **`refreshJwt` storage audit**: Confirm `bsky_session` in localStorage stores both
+  `accessJwt` and `refreshJwt` (and not just the access token).
+
+---
+
+### Milestone 33: Mention Links in Posts
+
+**Goal:** @mention spans in rendered post text open the mentioned user's profile when
+tapped or clicked.
+
+- `renderRichText()` already detects `app.bsky.richtext.facet#mention` facets and
+  applies a CSS class for styling — but the click handler that calls `openProfile()`
+  is missing or not wired.
+- Add a `click` event listener to each mention `<span>` that calls
+  `openProfile(facet.features[0].did)`. The DID is available directly in the mention
+  facet; no handle-resolution step needed (existing `openProfile` already accepts DIDs).
+- Add `cursor: pointer` and `role="button"` / `tabindex="0"` for accessibility.
+- Add `stopPropagation()` so the click doesn't also open the post's thread view.
+
+---
+
+### Milestone 34: Pull-to-Refresh Resistance + Scroll-to-Top Button
+
+**Goal:** PTR is harder to trigger accidentally while scrolling; a scroll-to-top button
+provides an easy way to reach the top without over-scrolling.
+
+- **Increased PTR resistance**: Require `scrollTop === 0` AND pull distance > 96px
+  (up from 64px) AND the pull must be held for 400ms before the indicator locks into
+  the "release to refresh" state. This prevents accidental triggers when the user flicks
+  back to the top of a long feed.
+- **Scroll-to-top overlay button**: A small circular arrow-up button, `position: fixed`
+  at bottom-left (above the sidebar on desktop). Appears only after the user has scrolled
+  more than 300px in the current view. Clicking it calls
+  `viewFeed.scrollTo({ top: 0, behavior: 'smooth' })` (or the active view's container).
+  Fades in/out with a CSS `opacity` transition. Works on all views (feed, thread, profile,
+  notifications), not just the home feed. Once at the top, the button hides — the user
+  can now pull to refresh normally.
+
+---
+
+### Milestone 35: Inline Reply from Home Feed
+
+**Goal:** Tapping "Reply" on a home-feed post expands an inline compose box in the feed
+itself, so users can reply without navigating away to the thread view.
+
+- Reuse the existing `expandInlineReply(postCard, post)` mechanism from the thread view.
+- The `reply.refs` passed to `API.createPost()` should point to the tapped post
+  as both `parent` and (if no `item.reply` context) `root`; if the post is itself a
+  reply, use `item.reply.root` as `root`.
+- After successful posting, close the inline box and show a brief "Replied ✓" state
+  on the Reply button without navigating or reloading the feed.
+- Opening the full thread remains available via tapping the post card body (existing behavior).
+- **Rationale**: Conversations are the engine of community. Frictionless in-feed replies
+  lower the barrier to engagement and are more likely to produce meaningful exchanges
+  than requiring full thread navigation.
+
+---
+
+### Milestone 36: Bsky Dreams TV — Enhancements
+
+**Goal:** Make TV more reliable, richer in content, and more interactive.
+
+- **Filter GIFs and very short clips**: After `loadVideoInSlot()`, listen to the
+  `canplay` event and check `video.duration`. Skip (call `advanceToNext()`) if
+  `duration < 5` seconds or if the source URL ends in `.gif`.
+- **Fix inconsistent autoplay**: Likely cause is that `hls.loadSource()` and `video.play()`
+  race with media segment availability. Fix: defer `video.play()` until the HLS
+  `MANIFEST_PARSED` event, and add a `canplay` listener as a fallback. Ensure
+  `hls.startLoad()` is called explicitly after attaching media.
+- **Dual-feed queue**: Seed the TV queue from both `API.getTimeline()` and
+  `API.getFeed(DISCOVER_FEED_URI)` in parallel. Deduplicate by post URI first, then
+  by the embedded video's CID (catches reposts of the same video by different accounts).
+  Topic/hashtag queue mode unchanged.
+- **2× speed hold**: On `pointerdown` inside the video wrap, set
+  `video.playbackRate = 2`. On `pointerup` or `pointercancel`, restore to `1`. All
+  modern browsers including Safari on iOS 10+ support `HTMLMediaElement.playbackRate`.
+- **Pause button**: Add a pause/resume control to the left-side icon column (between
+  the mute and stop buttons). Toggles `video.paused ? video.play() : video.pause()`.
+  Icon switches between ▶ and ⏸.
+
+---
+
+### Milestone 37: Image Browser ("Bsky Dreams Gallery")
+
+**Goal:** A dedicated browsing view for images from both Following and Discover feeds,
+styled like early Instagram — image-first, scrollable, interactive.
+
+- **Entry**: New nav tab (camera or grid icon) or accessible via a toggle from the home
+  feed header.
+- **Data source**: Pull from both `API.getTimeline()` and `API.getFeed(DISCOVER_FEED_URI)`
+  in parallel. Filter to posts containing `app.bsky.embed.images` or
+  `app.bsky.embed.recordWithMedia` with image media only (exclude video, exclude GIF
+  images detected by MIME or URL extension).
+- **Deduplication**: Skip reposts of the same post URI; skip posts where an image blob
+  CID has already appeared (catches cross-account reposts of the same image). Filter out
+  posts already marked in `bsky_feed_seen` if M40 is implemented.
+- **Layout**: Vertical scrolling feed. Each card shows the image grid (full-width for
+  single images, 2×2 for multiple), a slim author strip below (avatar + handle + like/repost
+  counts). No post text visible by default — tap the card body to expand the caption.
+- **Interaction**: Tap image → lightbox carousel (existing `openLightbox()`). Like and
+  Repost buttons below each image strip.
+- **Pagination**: Infinite scroll — fetch more on reaching the bottom.
+
+---
+
+### Milestone 38: Minor Interface Polish
+
+**Goal:** Fix several small but frequent annoyances identified during daily use.
+
+- **PTR indicator clipping on desktop**: The `#ptr-indicator` uses `margin-top: -52px`
+  to hide above the scroll area, but on desktop the top bar does not fully clip it.
+  Add `overflow: hidden` to `.view-inner` (or specifically to the feed view container)
+  so the indicator is truly invisible until actively pulled.
+- **Channels sidebar hidden by default**: Change the initial sidebar state to collapsed
+  on all screen sizes. The sidebar toggle button (hamburger/channels icon in the nav bar)
+  opens it. On desktop (≥768px), remember the last open/closed state in localStorage
+  under `bsky_sidebar_open`. Most first-time users will have no channels, so showing an
+  empty sidebar wastes horizontal space.
+- **Logo click refreshes homepage**: Add a click listener to the Bsky Dreams title/logo
+  element in the nav bar that calls `showView('feed')` and `loadFeed()`.
+- **Timestamp as external link**: The relative-time badge ("3h", "2d") on each post card
+  is currently plain text. Wrap it in an `<a href="https://bsky.app/profile/{handle}/post/{rkey}" target="_blank" rel="noopener">` so tapping it opens the original post on bsky.app.
+  Derive the rkey from the AT URI (`uri.split('/').pop()`).
+- **Like button race condition**: The like button currently toggles the UI state
+  optimistically before the API call resolves. If the API call fails, the UI is out of
+  sync. Fix: disable the button during the in-flight request and roll back the UI state
+  (count + filled/outline icon) on error. This also prevents the double-tap issue where
+  a slow network causes the user to tap twice.
+
+---
+
+### Milestone 39: Feed Content Filters ("Advanced" Toggle on Home Feed)
+
+**Goal:** Let users temporarily suppress broad topic categories from their feeds without
+leaving the app or adjusting BlueSky's account-level preferences.
+
+- **UI**: "Advanced ▾" toggle below the Following/Discover tab bar, mirroring the
+  existing toggle on the search page. Expands a filter panel.
+- **Filter categories** (checkboxes): Politics, Sports, Current Events, Entertainment,
+  Other (free-text keyword list).
+- **Implementation**: Client-side keyword matching. A static bundled file
+  `/js/filter-words.json` holds arrays of keywords per category. After `renderFeedItems()`,
+  scan each rendered post's text against enabled category word lists; hide matching posts
+  with `display: none` and increment a "N posts filtered" counter shown in the panel.
+  Posts are fetched in full — filtering is purely presentational.
+- **Ephemeral by default**: Filter state is session-only unless the user explicitly saves
+  it (a "Remember my filters" checkbox writes to localStorage under `bsky_feed_filters`).
+- **Caveat note in UI**: Label the filters "Approximate — keyword matching may miss or
+  misidentify some posts."
+
+---
+
+### Milestone 40: Seen-Posts Deduplication for Home Feeds
+
+**Goal:** Posts the user has already scrolled past are not served again in subsequent
+feed loads, mirroring the TV watch-history mechanism applied to the text feed.
+
+- **Storage**: `bsky_feed_seen` in localStorage. Key: post URI. Value: `{ seenAt,
+  likeCount, repostCount }` at time of first view. Cap: 5,000 entries (FIFO eviction).
+- **Marking**: After each `renderFeedItems()` call, iterate rendered items and call
+  `markFeedSeen(uri, likeCount, repostCount)`.
+- **Filtering**: Before rendering, skip posts whose URI is in `bsky_feed_seen` unless
+  their current like+repost count exceeds the stored count by ≥ 50 interactions —
+  "gone viral since you saw it" posts resurface automatically.
+- **"Show anyway" escape hatch**: At the bottom of the feed (above "Load more"), if any
+  posts were hidden, show a subtle "N posts filtered (show anyway)" link that sets a
+  session flag to bypass the filter for the current view.
+- **Scope**: Applies to both Following and Discover modes.
+
+---
+
 ## Open Questions
 
 1. **Token refresh**: `withAuth` retries once on 401. If the refresh token is
@@ -553,6 +848,26 @@ None currently.
 
 Priority order for implementation (roughly):
 
-1. **Milestone 22 — Analytics Dashboard** (engagement metrics + post frequency heatmap)
-2. **Milestone 13 — Horizontal Event Timeline Scrubber** (chronological topic view)
-3. **Milestone 14 — Network Constellation Visualization** (D3.js force-directed graph)
+### High priority — bug fixes and small UX (tackle first, each under 1 hour)
+1. **M31 — Reposter name as profile link** (one-line DOM change + click handler)
+2. **M33 — Mention links in posts** (wire missing click handler in renderRichText)
+3. **M38 — Minor interface polish** (PTR clipping, sidebar default, logo click, timestamp link, like race condition)
+4. **M28 — Discover feed as default** (change one line; `feedMode = 'discover'`)
+
+### Medium priority — feature enhancements
+5. **M34 — PTR resistance + scroll-to-top button**
+6. **M35 — Inline reply from home feed**
+7. **M30 — Quote post interface**
+8. **M29 — GIF playback in timeline**
+9. **M32 — iOS Safari PWA session persistence**
+
+### Larger features
+10. **M36 — Bsky Dreams TV enhancements** (autoplay fix, dual-feed queue, 2× hold, pause)
+11. **M37 — Image browser / Gallery**
+12. **M39 — Feed content filters**
+13. **M40 — Seen-posts deduplication**
+
+### Existing pipeline (deprioritized relative to above)
+14. **M22 — Analytics Dashboard**
+15. **M13 — Horizontal Event Timeline Scrubber**
+16. **M14 — Network Constellation Visualization**
