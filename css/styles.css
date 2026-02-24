@@ -292,7 +292,7 @@ button {
 #app-screen {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  height: 100dvh;
 }
 
 /* ---- Top Bar ---- */
@@ -438,6 +438,7 @@ button {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: none;
+  min-height: 0; /* required for overflow-y: auto to scroll in Chrome/Firefox flex layouts */
 }
 
 .view-inner {
