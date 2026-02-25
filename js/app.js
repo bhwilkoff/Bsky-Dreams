@@ -3202,15 +3202,16 @@
   /* ================================================================
      GIF EMBED (M29)
   ================================================================ */
-  /** Return true if an external embed is an animated GIF from Tenor or Giphy. */
+  /** Return true if an external embed is an animated GIF from Tenor, Giphy, or Klipy. */
   function isGifExternalEmbed(external) {
     if (!external?.uri) return false;
     try {
       const url  = new URL(external.uri);
       const host = url.hostname;
       if (
-        host === 'tenor.com' || host.endsWith('.tenor.com') ||
-        host === 'giphy.com' || host.endsWith('.giphy.com')
+        host === 'tenor.com'   || host.endsWith('.tenor.com') ||
+        host === 'giphy.com'   || host.endsWith('.giphy.com') ||
+        host === 'klipy.com'   || host.endsWith('.klipy.com')
       ) return true;
       // Direct .gif URL from any host
       if (url.pathname.toLowerCase().endsWith('.gif')) return true;
@@ -3223,8 +3224,8 @@
     const wrap = document.createElement('div');
     wrap.className = 'post-gif-wrap';
     let src = external.uri;
-    // Tenor media URLs sometimes end in .mp4 — swap to .gif for animated display
-    if (src.includes('tenor.com') && src.endsWith('.mp4')) {
+    // Tenor/Klipy media URLs sometimes end in .mp4 — swap to .gif for animated display
+    if ((src.includes('tenor.com') || src.includes('klipy.com')) && src.endsWith('.mp4')) {
       src = src.replace(/\.mp4$/, '.gif');
     }
     const img = document.createElement('img');
@@ -3982,9 +3983,11 @@
   const composeReplyGate     = $('compose-reply-gate');
   const composeQuoteGate     = $('compose-quote-gate');
   const composeLinkWrap      = $('compose-link-preview-wrap');
-  const composeTenorKeyLink  = $('compose-tenor-key-link');
+  const composeKlipyKeyLink  = $('compose-klipy-key-link');
 
-  const TENOR_KEY_STORAGE = 'bsky_tenor_api_key';
+  // Klipy GIF API — key in URL path: https://api.klipy.com/api/v1/{key}/gifs/search
+  const KLIPY_KEY_STORAGE  = 'bsky_klipy_api_key';
+  const DEFAULT_KLIPY_KEY  = 'g1rqkiKBPyzWEydf5K3syROxIGAFxusrnd6yD5Dj2TT8C8U3k9dtTD7qlClmHdNz';
   let composeLinkEmbed    = null;  // { uri, title, description } or null
   let linkPreviewTimer    = null;
 
@@ -4002,23 +4005,25 @@
     composeGifPanel.hidden = true;
   });
 
-  // Tenor API key prompt
-  composeTenorKeyLink.addEventListener('click', () => {
-    const existing = localStorage.getItem(TENOR_KEY_STORAGE) || '';
-    const key = prompt('Enter your free Tenor API key (get one at tenor.com/developer):', existing);
-    if (key !== null) localStorage.setItem(TENOR_KEY_STORAGE, key.trim());
+  // Klipy API key override (optional — default key is baked in)
+  composeKlipyKeyLink.addEventListener('click', () => {
+    const existing = localStorage.getItem(KLIPY_KEY_STORAGE) || '';
+    const key = prompt('Override the Klipy API key (leave blank to use the built-in key):', existing);
+    if (key !== null) {
+      if (key.trim()) {
+        localStorage.setItem(KLIPY_KEY_STORAGE, key.trim());
+      } else {
+        localStorage.removeItem(KLIPY_KEY_STORAGE);
+      }
+    }
   });
 
-  // GIF search
-  async function searchTenorGifs(q) {
-    const key = (localStorage.getItem(TENOR_KEY_STORAGE) || '').trim();
-    if (!key) {
-      composeGifGrid.innerHTML = '<p class="compose-gif-empty">Set your Tenor API key first — click "settings" in the footer below.</p>';
-      return;
-    }
+  // GIF search via Klipy — API key is a path segment, not a query param
+  async function searchKlipyGifs(q) {
+    const key = (localStorage.getItem(KLIPY_KEY_STORAGE) || DEFAULT_KLIPY_KEY).trim();
     composeGifGrid.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
     try {
-      const res  = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}&limit=16&media_filter=tinygif,gif`);
+      const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(key)}/gifs/search?q=${encodeURIComponent(q)}&limit=16`);
       const data = await res.json();
       if (!data.results?.length) {
         composeGifGrid.innerHTML = '<p class="compose-gif-empty">No results. Try a different search.</p>';
@@ -4044,7 +4049,7 @@
 
   composeGifSearchBtn.addEventListener('click', () => {
     const q = composeGifInput.value.trim();
-    if (q) searchTenorGifs(q);
+    if (q) searchKlipyGifs(q);
   });
   composeGifInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); composeGifSearchBtn.click(); }
