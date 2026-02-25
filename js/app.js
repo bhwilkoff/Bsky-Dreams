@@ -4047,52 +4047,8 @@
   });
 
   /**
-   * Compress a GIF blob by drawing its first frame to a canvas and encoding as WebP.
-   * Iterates quality then dimensions, matching the pattern used by resizeImageFile.
-   */
-  function compressGifFrame(blob, maxBytes) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const objUrl = URL.createObjectURL(blob);
-      img.onload = () => {
-        URL.revokeObjectURL(objUrl);
-        const canvas = document.createElement('canvas');
-        const ctx    = canvas.getContext('2d');
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-
-        const tryEncode = (width, height, quality) => {
-          canvas.width  = width;
-          canvas.height = height;
-          ctx.clearRect(0, 0, width, height);
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob((out) => {
-            if (!out) { reject(new Error('GIF compression failed.')); return; }
-            if (out.size <= maxBytes) {
-              resolve(new File([out], 'animation.webp', { type: 'image/webp' }));
-            } else if (quality > 0.35) {
-              tryEncode(width, height, quality - 0.1);
-            } else {
-              const scale = Math.sqrt(maxBytes / out.size) * 0.9;
-              tryEncode(
-                Math.max(64, Math.round(width  * scale)),
-                Math.max(64, Math.round(height * scale)),
-                0.80
-              );
-            }
-          }, 'image/webp', quality);
-        };
-
-        tryEncode(w, h, 0.85);
-      };
-      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Could not decode GIF.')); };
-      img.src = objUrl;
-    });
-  }
-
-  /**
-   * Download the best-fitting GIF from a prioritised URL list (largest → smallest).
-   * Uses the first variant that fits under 950 KB; falls back to canvas compression.
+   * Download the best-fitting GIF from a prioritised URL list (hd → regular → xs).
+   * Uses the first variant that fits under 950 KB. Shows an error if none fit.
    * @param {string[]} gifUrls  Priority-ordered array of GIF URLs
    * @param {string}   alt
    */
@@ -4100,33 +4056,20 @@
     const MAX_BYTES = 950_000;
     composeGifGrid.innerHTML = '<p class="compose-gif-empty">Loading…</p>';
     try {
-      let file = null;
-      let chosenUrl = gifUrls[0];
-
-      // Try each variant in order; stop at the first one that fits
       for (const url of gifUrls) {
         const res  = await fetch(url);
         const blob = await res.blob();
         if (blob.size <= MAX_BYTES) {
-          file      = new File([blob], 'animation.gif', { type: 'image/gif' });
-          chosenUrl = url;
-          break;
-        }
-        // Keep going; remember the last (smallest) blob for the compression fallback
-        if (url === gifUrls[gifUrls.length - 1]) {
-          // All variants too large — compress the smallest one as a static WebP frame
-          composeGifGrid.innerHTML = '<p class="compose-gif-empty">Compressing…</p>';
-          file      = await compressGifFrame(blob, MAX_BYTES);
-          chosenUrl = url;
+          composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+          composeImages = [{ file: new File([blob], 'animation.gif', { type: 'image/gif' }), previewUrl: url, alt }];
+          refreshComposePreview();
+          composeGifPanel.hidden = true;
+          composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
+          composeGifInput.value = '';
+          return;
         }
       }
-
-      composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
-      composeImages = [{ file, previewUrl: chosenUrl, alt }];
-      refreshComposePreview();
-      composeGifPanel.hidden = true;
-      composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
-      composeGifInput.value = '';
+      composeGifGrid.innerHTML = '<p class="compose-gif-empty">This GIF is too large to post. Try a different one.</p>';
     } catch (err) {
       composeGifGrid.innerHTML = `<p class="compose-gif-empty">Could not load GIF: ${escHtml(err.message)}</p>`;
     }
