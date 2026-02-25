@@ -211,14 +211,15 @@ const API = (() => {
       };
     } else if (externalEmbed) {
       // M41: external link card embed (app.bsky.embed.external)
-      record.embed = {
-        $type:    'app.bsky.embed.external',
-        external: {
-          uri:         externalEmbed.uri,
-          title:       externalEmbed.title       || '',
-          description: externalEmbed.description || '',
-        },
+      const external = {
+        uri:         externalEmbed.uri,
+        title:       externalEmbed.title       || '',
+        description: externalEmbed.description || '',
       };
+      // Optional static thumbnail blob (used for GIF embeds so native clients
+      // show an image card instead of a bare text link)
+      if (externalEmbed.thumb) external.thumb = externalEmbed.thumb;
+      record.embed = { $type: 'app.bsky.embed.external', external };
     }
 
     return authPost('com.atproto.repo.createRecord', {

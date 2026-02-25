@@ -4017,16 +4017,16 @@
       }
       composeGifGrid.innerHTML = '';
       items.forEach((item) => {
-        const thumbUrl = item.file?.xs?.gif?.url || item.file?.xs?.jpg?.url;
+        const thumbUrl = item.file?.xs?.jpg?.url || item.file?.xs?.gif?.url;
         // Best available animated URL — no upload needed, so size is not a constraint
         const gifUrl = item.file?.hd?.gif?.url || item.file?.gif?.url || item.file?.xs?.gif?.url;
-        if (!thumbUrl || !gifUrl) return;
+        if (!gifUrl) return;
         const img = document.createElement('img');
-        img.src       = thumbUrl;
+        img.src       = thumbUrl || gifUrl;
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => selectGif(gifUrl, item.title || ''));
+        img.addEventListener('click', () => selectGif(gifUrl, thumbUrl, item.title || ''));
         composeGifGrid.appendChild(img);
       });
     } catch (err) {
@@ -4050,16 +4050,20 @@
    * integration) is to store the CDN URL as app.bsky.embed.external so the GIF
    * is served directly from Klipy — no upload, no re-encoding, animation intact.
    *
-   * @param {string} gifUrl  Direct Klipy animated GIF URL
-   * @param {string} alt     GIF title / alt text
+   * @param {string}      gifUrl   Direct Klipy animated GIF URL
+   * @param {string|null} thumbUrl Static xs.jpg thumbnail URL (uploaded as blob at post time
+   *                               so native Bluesky shows an image card instead of a text link)
+   * @param {string}      alt      GIF title / alt text
    */
-  function selectGif(gifUrl, alt) {
+  function selectGif(gifUrl, thumbUrl, alt) {
     // Clear any existing images or link preview — a GIF embed is mutually exclusive
     composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
     composeImages = [];
     refreshComposePreview();
 
-    composeLinkEmbed = { uri: gifUrl, title: alt, description: '' };
+    // _thumbUrl is a private hint used by the submit handler to upload a static
+    // preview blob — it is not sent to the AT Protocol API directly.
+    composeLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
 
     // Show an animated preview in the link-preview slot with a dismiss button
     composeLinkWrap.innerHTML = `
@@ -4167,6 +4171,23 @@
 
       // M41: external embed only when no images are attached
       const linkEmbed = uploadedImages.length === 0 ? composeLinkEmbed : null;
+
+      // If the external embed is a GIF, upload the static xs.jpg thumbnail so
+      // native Bluesky renders an image card rather than a bare text link.
+      // (Native Bluesky will animate it automatically once klipy.com is on their
+      // allowlist; until then, the thumb makes the card visually useful.)
+      if (linkEmbed?._thumbUrl) {
+        try {
+          btn.textContent = 'Uploading GIF preview…';
+          const thumbRes  = await fetch(linkEmbed._thumbUrl);
+          const thumbBlob = await thumbRes.blob();
+          const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
+          linkEmbed.thumb = await API.uploadBlob(thumbFile);
+        } catch {
+          // Non-fatal — post without thumbnail if the upload fails
+        }
+      }
+
       const result = await API.createPost(text, null, uploadedImages, null, linkEmbed);
 
       // M41: apply thread gate and quote gate records if non-default
