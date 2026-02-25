@@ -4018,19 +4018,15 @@
       composeGifGrid.innerHTML = '';
       items.forEach((item) => {
         const thumbUrl = item.file?.xs?.gif?.url || item.file?.xs?.jpg?.url;
-        // Build a priority list of GIF URLs: try smaller variants first to stay under 950 KB
-        const gifUrls = [
-          item.file?.hd?.gif?.url,
-          item.file?.gif?.url,
-          item.file?.xs?.gif?.url,
-        ].filter(Boolean);
-        if (!thumbUrl || !gifUrls.length) return;
+        // Best available animated URL — no upload needed, so size is not a constraint
+        const gifUrl = item.file?.hd?.gif?.url || item.file?.gif?.url || item.file?.xs?.gif?.url;
+        if (!thumbUrl || !gifUrl) return;
         const img = document.createElement('img');
         img.src       = thumbUrl;
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => selectGif(gifUrls, item.title || ''));
+        img.addEventListener('click', () => selectGif(gifUrl, item.title || ''));
         composeGifGrid.appendChild(img);
       });
     } catch (err) {
@@ -4047,32 +4043,37 @@
   });
 
   /**
-   * Download the best-fitting GIF from a prioritised URL list (hd → regular → xs).
-   * Uses the first variant that fits under 950 KB. Shows an error if none fit.
-   * @param {string[]} gifUrls  Priority-ordered array of GIF URLs
-   * @param {string}   alt
+   * Attach a Klipy GIF to the compose form as an external embed.
+   *
+   * BlueSky's CDN transcodes every uploaded image blob to JPEG, stripping GIF
+   * animation. The correct approach (matching the official app's Tenor/Giphy
+   * integration) is to store the CDN URL as app.bsky.embed.external so the GIF
+   * is served directly from Klipy — no upload, no re-encoding, animation intact.
+   *
+   * @param {string} gifUrl  Direct Klipy animated GIF URL
+   * @param {string} alt     GIF title / alt text
    */
-  async function selectGif(gifUrls, alt) {
-    const MAX_BYTES = 950_000;
-    composeGifGrid.innerHTML = '<p class="compose-gif-empty">Loading…</p>';
-    try {
-      for (const url of gifUrls) {
-        const res  = await fetch(url);
-        const blob = await res.blob();
-        if (blob.size <= MAX_BYTES) {
-          composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
-          composeImages = [{ file: new File([blob], 'animation.gif', { type: 'image/gif' }), previewUrl: url, alt }];
-          refreshComposePreview();
-          composeGifPanel.hidden = true;
-          composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
-          composeGifInput.value = '';
-          return;
-        }
-      }
-      composeGifGrid.innerHTML = '<p class="compose-gif-empty">This GIF is too large to post. Try a different one.</p>';
-    } catch (err) {
-      composeGifGrid.innerHTML = `<p class="compose-gif-empty">Could not load GIF: ${escHtml(err.message)}</p>`;
-    }
+  function selectGif(gifUrl, alt) {
+    // Clear any existing images or link preview — a GIF embed is mutually exclusive
+    composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+    composeImages = [];
+    refreshComposePreview();
+
+    composeLinkEmbed = { uri: gifUrl, title: alt, description: '' };
+
+    // Show an animated preview in the link-preview slot with a dismiss button
+    composeLinkWrap.innerHTML = `
+      <div class="compose-link-preview compose-gif-preview">
+        <img class="compose-gif-preview-img" src="${escHtml(gifUrl)}" alt="${escHtml(alt)}">
+        <button type="button" class="compose-link-preview-dismiss" aria-label="Remove GIF">✕</button>
+      </div>
+    `;
+    composeLinkWrap.querySelector('.compose-link-preview-dismiss')
+      .addEventListener('click', clearLinkPreview);
+
+    composeGifPanel.hidden = true;
+    composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
+    composeGifInput.value = '';
   }
 
   // Link preview helpers
