@@ -971,6 +971,361 @@ feed loads, mirroring the TV watch-history mechanism applied to the text feed.
 
 ---
 
+### Milestone 41: Rich Media Cards + Link Previews + GIF Picker + Post Interaction Settings in Compose
+
+**Goal:** Whenever a URL is pasted or typed into any compose surface (new post, reply,
+quote post), automatically fetch OpenGraph metadata and render an editable rich preview
+card below the textarea. Users can pick which thumbnail to use and edit the card title
+and description before posting. A GIF picker toolbar button enables inline GIF attachment.
+A post-settings gear lets users configure thread-gate and quote-gate options.
+
+- **URL detection**: `input` / `paste` event on every compose textarea. Debounced 800ms.
+  Detect URLs via regex (`/https?:\/\/[^\s]+/g`). Ignore URLs already resolved for this
+  compose session.
+- **OG fetch**: Use a CORS-friendly proxy (e.g., `https://api.allorigins.win/get?url=…`) to
+  fetch the page HTML and parse `<meta property="og:title">`, `<meta property="og:description">`,
+  `<meta property="og:image">`. Fall back to `<title>` and `<meta name="description">` if OG
+  tags are absent.
+- **Preview card**: Below the textarea, a dismissible card shows:
+  - Thumbnail image (first valid OG image)
+  - Title — editable `<input>` (pre-filled from OG)
+  - Description — editable single-line `<input>` (pre-filled from OG)
+  - Hostname in muted text
+  - "✕" remove button that clears the card
+- **Image picker**: If the OG page exposes multiple image candidates (og:image, twitter:image,
+  article thumbnail), show a small horizontal strip below the card. Clicking an option sets it
+  as the active thumbnail.
+- **Custom thumbnail**: "Upload image" button on the card lets the user substitute their own
+  JPEG/PNG as the thumbnail, uploaded as a blob before posting.
+- **Embed format**: On submit, if a card is attached, `API.createPost()` includes
+  `app.bsky.embed.external` with `{ uri, title, description, thumb }`. If a custom or fetched
+  thumbnail blob is ready, upload it first and pass the blob ref as `thumb`.
+- **GIF toolbar button**: "GIF" button in the compose toolbar opens an inline search panel
+  using the Tenor API (free tier; API key stored in app settings, configurable from a gear
+  modal). Returns a grid of animated previews. Selecting a GIF downloads the `.gif` blob and
+  attaches it as `app.bsky.embed.images` (single image, GIF MIME type).
+  *Note: Tenor API key required — prompt user to enter key in settings on first use.*
+- **Interaction settings (⚙ gear icon)**:
+  - **Thread gate** (who can reply): Everyone / Mentioned users only / Followed users only.
+    Posted immediately after the post as an `app.bsky.feed.threadgate` record.
+  - **Quote gate** (who can quote): Everyone / Nobody.
+    Posted as an `app.bsky.feed.postgate` record (AT Protocol `com.atproto.repo.putRecord`).
+  - Settings apply per-post; not persisted as a default (can be added as a preference later).
+- **Applies to**: Main compose modal, inline reply compose boxes, quote post modal.
+
+---
+
+### Milestone 42: Video Upload in All Post Types
+
+**Goal:** Users can attach a video file to any post type (new post, reply, quote post) with
+automatic format conversion, compression, duration enforcement (3 minutes max), file size
+management (100 MB cap with compression), and daily limit tracking (25 videos/day per
+BlueSky's limits).
+
+- **Entry**: "Video" attachment button (film icon) in compose toolbars alongside the image
+  button. Video and image attachments are mutually exclusive — selecting video clears images
+  and vice versa. One video per post maximum.
+- **File picker**: Accepts `video/*` MIME types. On selection, show a preview thumbnail (frame
+  captured at 0.5 s via `canvas.drawImage`) and the filename.
+- **Duration check**: Load the file into a hidden `<video>` element and read `video.duration`
+  after `loadedmetadata`. If > 180 s (3 minutes), reject with an inline error and prompt to
+  pick a different file.
+- **File size check**: If `file.size > 100 * 1024 * 1024` (100 MB), trigger compression.
+  Otherwise proceed directly to upload.
+- **Format conversion**: If the file is not `video/mp4`, attempt conversion using the
+  browser's MediaRecorder API (works for WebM/OGG sources on Chrome). For unsupported
+  formats (.avi, .mkv, .mov), use FFmpeg.wasm served locally as `/js/ffmpeg.min.js`.
+  *Note: FFmpeg.wasm requires `SharedArrayBuffer`, which needs cross-origin isolation headers
+  (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`).
+  GitHub Pages does not support custom response headers — investigate a Service Worker–based
+  workaround or limit conversion to formats MediaRecorder can handle.*
+- **Compression**: Re-encode with progressively lower bitrates until output is ≤ 100 MB.
+  Show a progress bar during conversion; "Cancel" button aborts.
+- **Upload**: `API.uploadBlob(videoFile, 'video/mp4')`. AT Protocol video blob, returned CID
+  embedded as `app.bsky.embed.video` with a `thumb` blob ref (the frame captured above) and
+  optional `alt` text field.
+- **Daily limit tracking**: `bsky_video_daily` in localStorage: `{ date, count }`. On each
+  upload attempt, check `date === today` and `count >= 25`. If limit reached, show error:
+  "Daily video limit reached (25/25). Try again tomorrow." Increment `count` on each
+  successful upload.
+- **Alt text**: A text input below the video preview accepts alt text (accessibility), passed
+  as the `alt` field of `app.bsky.embed.video`.
+- **Applies to**: Main compose modal, inline reply compose boxes, quote post modal.
+
+---
+
+### Milestone 43: Sidebar Navigation Redesign
+
+**Goal:** Move all navigation out of the top header bar into a persistent left sidebar on
+desktop. The sidebar is always visible on desktop — no toggle required. On mobile it remains
+a slide-in drawer triggered by a hamburger button in a minimal top bar. Channels appear at
+the very bottom of the sidebar as individual named links (no "Channels" section heading).
+New features are inserted above the channel list.
+
+- **Desktop sidebar (≥768px)**: `position: fixed; left: 0; top: 0; height: 100vh;
+  width: var(--sidebar-width, 240px)`. Always open — no toggle button. Main content offset
+  via `padding-left: var(--sidebar-width)` on `.view` and `.top-bar-inner` (or remove
+  `.top-bar-inner` entirely on desktop).
+- **Mobile sidebar (<768px)**: Slide-in drawer (same as current), triggered by a hamburger
+  button in a minimal top bar that shows only the Bsky Dreams logo and the hamburger. Overlay
+  dims the rest of the page; tap-outside or any navigation item closes it.
+- **Sidebar contents** (top to bottom):
+  1. Bsky Dreams logo / wordmark — click navigates to home feed
+  2. Own avatar + display name + handle — click opens own profile
+  3. **Home** — feed icon
+  4. **Post** — compose icon (opens compose modal)
+  5. **TV** — television icon
+  6. **Notifications** — bell icon + unread count badge
+  7. **Search** — magnifying glass icon (click focuses an inline search input or navigates
+     to search view)
+  8. *(new navigation features inserted here above the separator)*
+  9. *Separator line*
+  10. Saved channel entries — each shows only the channel name as a clickable link.
+      No "Channels" heading, no section label. If no channels saved, this section is empty.
+      Clicking opens the search view pre-populated with that channel's query.
+- **Top bar on desktop**: Simplified or removed entirely. Replace with a slim breadcrumb bar
+  (current view title + back button where applicable) that does not contain navigation buttons.
+- **Active state**: The sidebar item matching the current view has a left accent border and
+  bold label. CSS: `.sidebar-nav-item.active { border-left: 3px solid var(--accent); font-weight: 600; }`.
+- **Sidebar width**: `--sidebar-width: 240px`. Update all existing `padding-left` references
+  to use this variable.
+- **Remove desktop toggle**: Delete the `bsky_sidebar_open` localStorage persistence and the
+  `body.sidebar-open` toggle class for desktop. Sidebar is always present on desktop.
+  Mobile open/closed state is not persisted (always starts closed on mobile).
+- **Existing nav button references**: `#nav-home-btn`, `#nav-post-btn`, `#nav-tv-btn`,
+  `#nav-notif-btn`, `#nav-search-btn`, `#channels-toggle-btn` are moved from the top-bar
+  `<nav>` to the sidebar. Top-bar `<nav>` retains only the logo and (on mobile) hamburger.
+
+---
+
+### Milestone 44: Scroll-Based Read Indicator
+
+**Goal:** A post is only marked as "seen" (for M40 deduplication) when the user has
+actually scrolled past it — not merely when it was fetched and rendered. A subtle visual
+indicator on the card communicates which posts have been read.
+
+- **IntersectionObserver**: After `renderFeedItems()`, create one shared observer with
+  `threshold: 0` and `rootMargin: "0px 0px -80% 0px"`. Observe all `.post-card` elements
+  in the feed. A post counts as "read" when `entry.isIntersecting === false` AND
+  `entry.boundingClientRect.top < 0` (card has scrolled fully above the 80% viewport line).
+- **Marking**: On that intersection event, call the existing `markFeedPostSeen(uri, likeCount,
+  repostCount)`. No changes to storage schema (M40 implementation unchanged).
+- **Remove eager marking**: Delete the current `markFeedPostSeen()` call that runs
+  immediately after `renderFeedItems()` for all rendered posts. Scroll-based marking
+  replaces it entirely.
+- **Visual indicator**: When `markFeedPostSeen()` is called via the observer, add class
+  `.post-seen` to the card. CSS: `opacity: 0.85; border-left: 3px solid var(--color-seen, #888)`.
+  Subtle — acknowledges the post has been read without being distracting.
+- **Scope**: Observer active on home feed (Following and Discover). Optionally extended to
+  profile and thread views for the visual indicator, though dedup filtering only applies to
+  the home feed.
+- **Performance**: One shared `IntersectionObserver` instance, not one per card. Disconnect
+  the observer in `showView()` when leaving the feed view; re-create on next `loadFeed()`.
+- **"Show read posts" toggle**: Add to the M39 "Advanced" filter panel — a checkbox that
+  applies `display: none` to `.post-seen` cards. Off by default.
+
+---
+
+### Milestone 45: Scroll-to-Top Button — Left-Side Repositioning
+
+**Goal:** Move the scroll-to-top button out of the center of the content column to a left
+position aligned with the post-card avatar gutter, so it never overlaps readable text as
+the user scrolls through a feed.
+
+- **Positioning**: `position: fixed; bottom: 80px;`
+  - Mobile: `left: 8px` — sits in the ~48px avatar column at the left of each post card,
+    overlapping only avatar images and never text.
+  - Desktop (sidebar present): `left: calc(var(--sidebar-width, 240px) + 8px)` — flush
+    against the sidebar's right edge, again in the avatar column zone.
+- **Size**: 36 × 36px circular button (slightly smaller than current). Semi-transparent
+  background `rgba(var(--bg-rgb), 0.85)` with `backdrop-filter: blur(4px)` and a subtle
+  `box-shadow`. Fully opaque on hover/focus.
+- **Remove centering**: Delete the existing CSS that centers the button (`left: 50%`,
+  `transform: translateX(-50%)`, `max-width` constraints). Replace with the left-anchored
+  rules above.
+- **Behavior unchanged**: Appears after scrolling ≥ 300px in the active view, smooth-scrolls
+  to the top on click, hides when already at the top. Works across all views (feed, thread,
+  profile, notifications).
+
+---
+
+### Milestone 46: Deep Thread Overflow Fix — Sub-Thread Navigation at Depth 5+
+
+**Goal:** Threads indented to depth 5 and beyond cause horizontal scroll overflow, break
+the `overscroll-behavior: none` containment, and display the report button outside post
+card boundaries. Reduce the "Continue this thread →" cutoff to depth 5 and fix the CSS
+overflow and report button containment issues.
+
+- **Depth cutoff**: Change the `renderThread` recursion limit from depth ≥ 8 to depth ≥ 5.
+  At depth 5 and beyond, render a "Continue this thread →" link button instead of the
+  indented reply group.
+- **Sub-thread navigation**: Clicking "Continue this thread →" calls `openThread(replyUri)`
+  with a `history.pushState` so the Back button returns to the parent thread. The sub-thread
+  view renders that reply node as the root, showing all its children from depth 0.
+- **Breadcrumb back link**: When a thread is opened via "Continue this thread →", show a
+  small "← Back to parent thread" button at the top of `view-thread` that calls
+  `history.back()`. Detect this state via a `fromContinue: true` flag in `history.state`.
+- **CSS overflow containment**:
+  - Add `overflow-x: hidden` to `.reply-group` and `#view-thread .view-inner`.
+  - Add `max-width: 100%` to `.post-card` within `.reply-group` to prevent cards from
+    expanding beyond their container.
+  - These rules fix the horizontal scroll bleed caused by deeply nested border-left offsets.
+- **Report button containment**: Change `.post-options-btn` (the ⋯ report/options button)
+  from any absolute positioning that extends outside the card to
+  `position: absolute; top: 8px; right: 8px` within `position: relative` on `.post-card`.
+  Ensure `.post-card { overflow: visible }` is not set — use `overflow: hidden` if needed
+  to clip child elements.
+- **Rationale**: Depth 5 at ~12px left indent per level = ~60px indent on a 375px screen,
+  leaving ~315px for content — already tight. Depth 6+ causes visible horizontal overflow.
+  The sub-thread pattern matches Reddit's "Continue this thread" and Twitter's "Show more
+  replies" UX conventions.
+
+---
+
+### Milestone 47: Pull-to-Refresh on Search + Profile Views
+
+**Goal:** Extend the existing pull-to-refresh gesture from the home feed to the search
+results page and individual profile pages, enabling real-time monitoring of live searches
+and live-posting accounts.
+
+- **Search view PTR**: Attach `touchstart` / `touchmove` / `touchend` handlers to
+  `#view-search` (or its inner scroll container `#search-results`). Same logic as the home
+  feed PTR IIFE: detect `scrollTop === 0`, track `touchY` delta, reveal `#ptr-indicator`
+  on pull, trigger a re-run of `triggerSearch(lastQuery, lastFilter)` on release past
+  threshold. `lastQuery` and `lastFilter` are stored state variables in `app.js`.
+- **Profile view PTR**: Attach touch handlers to `#view-profile`. On trigger, call
+  `loadProfileFeed(profileActor, false)` (non-append, full refresh). `profileActor` is
+  the existing `profileActor` state variable.
+- **PTR indicator**: Reuse the existing `#ptr-indicator` element. Position it at the top
+  of the active scroll container dynamically by using the same CSS approach (`margin-top:
+  -52px` hidden above fold). No new HTML needed.
+- **Thresholds**: Same as home feed — 96px drag distance held for 400ms
+  (`PTR_THRESHOLD = 96`, `PTR_HOLD_MS = 400`).
+- **Channel context**: If the current search was triggered by clicking a saved channel,
+  PTR re-runs that channel's query and updates the channel's `lastSeenAt` timestamp.
+- **Scope**: Applies to `#view-search` (post and people results) and `#view-profile`
+  (author feed). Does not apply to thread view (thread PTR would re-fetch the same thread
+  — low value compared to feed/search).
+
+---
+
+### Milestone 48: "Load More" Pagination on Search Results
+
+**Goal:** Append additional search results at the bottom of the search page using cursor-
+based pagination. Users no longer need to scroll to the top and re-search to see more
+content — they can continue reading and load more below.
+
+- **`searchCursor` state variable**: Add `let searchCursor = null` alongside existing search
+  state in `app.js`. Set to `null` on any new query; updated to the cursor value returned
+  by `searchPosts()` / `searchActors()` after each page fetch.
+- **API change**: `API.searchPosts(query, filter, limit, cursor)` — add optional `cursor`
+  parameter to the existing API call. Pass `cursor` to `app.bsky.feed.searchPosts` as
+  `cursor` in the query params. `API.searchActors` similarly.
+- **"Load more" button**: `renderSearchResults()` appends a `<button id="search-load-more">`
+  at the bottom of the results list when `searchCursor` is non-null. Clicking it:
+  1. Sets button text to "Loading…" and disables it.
+  2. Calls `searchPosts(lastQuery, lastFilter, 25, searchCursor)`.
+  3. Appends new cards below existing results.
+  4. Updates `searchCursor` to the new cursor value.
+  5. Removes the button if the new cursor is null (no more results).
+- **People search**: Same treatment for actor search results — `searchActors` also returns
+  a cursor. "Load more" appended to people results section.
+- **Cursor reset**: `searchCursor = null` at the start of any new search (not "load more").
+- **No scroll-to-top required**: Results are appended in-place.
+
+---
+
+### Milestone 49: Advanced Search — Media Type Filters
+
+**Goal:** Add media-type filter chips to the search page's "Advanced" panel so users can
+search specifically for posts containing images, videos, or external links. Useful for
+finding visual content or verifying claims from a specific source.
+
+- **New filter chips**: Add a "Media type" row to the `#advanced-options` panel (below the
+  existing sort/filter controls):
+  - "Has image" (image icon)
+  - "Has video" (video icon)
+  - "Has link" (link icon)
+  Multiple chips can be active simultaneously (OR logic: show posts matching any selected type).
+- **State**: `searchMediaFilters = new Set()` — stores active media filter keys
+  (`'image'`, `'video'`, `'link'`). Persists across "load more" pagination calls; resets on
+  new search queries.
+- **Client-side filtering**: After `searchPosts()` returns, filter the `posts` array:
+  - `'image'`: `post.embed?.$type` includes `'images'` or `post.embed?.media?.$type`
+    includes `'images'`
+  - `'video'`: `post.embed?.$type` includes `'video'` or `post.embed?.media?.$type`
+    includes `'video'`
+  - `'link'`: `post.embed?.$type` includes `'external'` or `post.record?.facets` contains
+    a link facet
+- **Caveat notice**: Show a small muted note in the panel: "Filters apply to fetched
+  results — use 'Load more' (M48) to find additional matches."
+- **"Load more" interaction** (M48 + M49 combined): When both features are active, continue
+  appending filtered results across pages. If a full page fetch yields 0 matching posts,
+  auto-fetch the next page silently (up to 3 auto-fetches) before showing "No more matches."
+- **No server-side support**: `app.bsky.feed.searchPosts` does not currently expose a media
+  filter parameter. This is purely client-side.
+
+---
+
+### Milestone 50: Infinite Scroll for Thread Replies
+
+**Goal:** When viewing a thread, scrolling to the bottom of visible replies automatically
+loads more — without requiring the user to manually tap the "N more replies" button.
+
+- **Existing "show N more replies" mechanism**: `renderThread()` currently renders up to 5
+  visible replies and inserts a `<button class="show-more-replies">N more replies</button>`
+  when a node has additional children. The button's click handler reveals the remaining DOM
+  nodes already in memory.
+- **IntersectionObserver approach**: After `renderThread()`, attach a shared observer
+  (threshold: 0, rootMargin: `"0px 0px 200px 0px"`) to every `.show-more-replies` button.
+  When a button enters the 200px-before-viewport trigger zone, fire the same handler that
+  the tap currently triggers (reveal the next batch of reply cards). This replaces the
+  manual tap.
+- **Loading state**: While revealing (or re-fetching if needed), replace the button with a
+  subtle inline spinner. Remove spinner when done; remove button entirely if no more replies.
+- **"Continue this thread →" buttons**: These navigate to a sub-thread (M46) — user intent
+  must be explicit. Do NOT auto-trigger on scroll. Keep them tap-only.
+- **Thread depth fetch**: The current `getPostThread` call uses a fixed depth. If a thread
+  node's children list is truncated by the API, the "show N more replies" button triggers a
+  second `getPostThread` call anchored at that reply node. The observer fires this call when
+  the button approaches the viewport.
+- **Performance**: One shared observer, disconnected in `showView()` cleanup when leaving the
+  thread view.
+
+---
+
+### Milestone 51: Bsky Dreams Post Links + Quote Post Success Banner
+
+**Goal:** After creating any post or quote post, the success banner links to the new post
+on Bsky Dreams (not bsky.app). Quote posts show the same "View post →" blue success banner
+as regular posts.
+
+- **Post URI after creation**: `API.createPost()` returns `{ uri, cid }`. Parse
+  `rkey = uri.split('/').pop()`. Build the Bsky Dreams deep-link:
+  ```
+  window.location.origin + window.location.pathname
+    + '?view=post&uri=' + encodeURIComponent(uri)
+    + '&handle=' + ownProfile.handle
+  ```
+- **Success banner update (regular post)**: Replace the current "Posted!" text with:
+  "Posted! [View post →]" where "View post →" is a tappable link. Clicking it calls
+  `openThread(uri, ownProfile.handle)` to open the thread in-app (no new tab). The banner
+  auto-dismisses after 4 seconds; clicking the link also dismisses it.
+- **Quote post success banner**: The quote post modal currently closes silently on success.
+  Add a `#quote-success-banner` element (or reuse `#compose-success-banner`) that appears
+  on successful quote post submission with the same "Quote posted! [View post →]" pattern
+  and in-app navigation to the new thread.
+- **Banner styling**: Same blue accent banner as the existing compose success banner.
+  `opacity` transition in/out. Auto-dismiss at 4 s. Manual ✕ close button.
+- **Quote post modal cleanup**: On successful submission, close the modal, clear the
+  textarea and quoted-post preview, then show the success banner outside the modal (in the
+  main page context so it's visible after the modal closes).
+- **No external link**: The banner link opens the thread in-app via `openThread()`, not in
+  a new tab. This keeps the user in the Bsky Dreams context and takes advantage of the
+  existing deep-link routing from M19.
+
+---
+
 ## Open Questions
 
 1. **Token refresh**: `withAuth` retries once on 401. If the refresh token is
@@ -1000,12 +1355,27 @@ None currently.
 
 Priority order for implementation (roughly):
 
-### High priority — feature enhancements (next up)
-1. **M37 — Image browser / Gallery** (dedicated image feed, dedup, lightbox reuse)
-2. **M39 — Feed content filters** (keyword filter panel, ephemeral by default)
-3. **M22 — Analytics Dashboard** (engagement over time, top posts, Chart.js)
+### High priority — UX fixes and polish (next up)
+1. **M46 — Deep thread overflow fix** (depth 5+ sub-thread navigation, overflow-x containment, report button clipping)
+2. **M43 — Sidebar navigation redesign** (persistent desktop sidebar, move all nav items, channels at bottom)
+3. **M45 — Scroll-to-top button repositioning** (left-side, avatar gutter, no text overlap)
+4. **M44 — Scroll-based read indicator** (IntersectionObserver, remove eager marking, visual .post-seen)
+5. **M51 — Bsky Dreams post links + quote success banner** (in-app links after post creation)
+
+### Medium priority — compose and posting improvements
+6. **M41 — Rich media cards + GIF picker + interaction settings in compose** (OG preview, editable card, Tenor GIF, thread/quote gate)
+7. **M42 — Video upload in all post types** (duration limit, compression, daily limit tracking)
+8. **M48 — "Load more" on search results** (cursor-based pagination, append in place)
+9. **M47 — Pull-to-refresh on search + profile views** (extend PTR to search and profile)
+10. **M50 — Infinite scroll thread replies** (IntersectionObserver on "show more replies")
+
+### Medium priority — search and discovery
+11. **M49 — Advanced search media filters** (has image / video / link chips, client-side filter)
+12. **M37 — Image browser / Gallery** (dedicated image feed, dedup, lightbox reuse)
+13. **M39 — Feed content filters** (keyword filter panel, ephemeral by default)
 
 ### Larger features
-4. **M13 — Horizontal Event Timeline Scrubber**
-5. **M14 — Network Constellation Visualization**
-6. **M16 — Direct Messages** (chat.bsky.convo.* API)
+14. **M22 — Analytics Dashboard** (engagement over time, top posts, Chart.js)
+15. **M13 — Horizontal Event Timeline Scrubber**
+16. **M14 — Network Constellation Visualization**
+17. **M16 — Direct Messages** (chat.bsky.convo.* API)
