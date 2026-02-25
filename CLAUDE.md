@@ -60,6 +60,14 @@ No build step required. The app runs as a static file.
 - Semantic HTML throughout — use `<article>`, `<section>`, `<nav>`, `<button>` appropriately
 - No inline styles — all styling via CSS classes
 - Error states must be user-visible (not just console logs)
+- **Navigation**: All nav items live inside `#channels-sidebar`. On desktop (≥768px) the
+  sidebar is always open; on mobile it is a slide-in drawer. Do not add nav items to the
+  top bar.
+- **Compose**: Link preview, GIF picker, and post-settings panels are toggled by toolbar
+  buttons inside the compose form. State lives in `composeLinkEmbed`, `composeImages`, and
+  the gate `<select>` elements. Clean up on every successful post and on `showView('compose')`.
+- **IntersectionObserver cleanup**: Any `IntersectionObserver` created for a view must be
+  disconnected in `showView()` when leaving that view to prevent memory leaks.
 
 ## Important Constraints
 

@@ -1156,12 +1156,16 @@ a.post-timestamp:hover {
   padding-left: 16px;       /* extra room for the collapse button */
   border-left: 2px solid var(--thread-line-color, var(--color-border));
   border-bottom-left-radius: 3px;
+  overflow-x: hidden;       /* M46: prevent deep nesting from causing horizontal scroll */
+  max-width: 100%;          /* M46: ensure groups don't expand beyond container */
 }
 
 /* Post cards inside a reply group inherit the depth color as their left border */
 .reply-group-body > .post-card {
   border-left-color: var(--thread-line-color, var(--color-border));
   border-left-width: 2px;
+  max-width: 100%;    /* M46: keep cards within their container width */
+  overflow-x: hidden; /* M46: prevent inner content causing horizontal bleed */
 }
 
 /* Cycle through 8 depth colors */
@@ -2486,6 +2490,12 @@ a.post-timestamp:hover {
   background: #000;
 }
 
+@media (min-width: 768px) {
+  .tv-player {
+    height: 100dvh; /* top bar is hidden on desktop */
+  }
+}
+
 .tv-video-wrap {
   position: relative;
   flex: 1;
@@ -2682,11 +2692,11 @@ a.post-timestamp:hover {
   }
 }
 
-/* ---- Sidebar panel ---- */
+/* ---- Sidebar panel (M43: persistent desktop nav, drawer mobile) ---- */
 .channels-sidebar {
   position: fixed;
-  left: calc(-1 * var(--sidebar-width)); /* hidden off-screen left — avoids transform compositing issues */
-  top: var(--top-bar-height);
+  left: calc(-1 * var(--sidebar-width)); /* hidden off-screen on mobile */
+  top: 0;
   bottom: 0;
   width: var(--sidebar-width);
   background: var(--color-surface);
@@ -2705,16 +2715,49 @@ a.post-timestamp:hover {
 }
 
 @media (min-width: 768px) {
-  /* Sidebar is hidden by default on desktop too; opened via toggle button.
-     body.sidebar-open is added by JS when the user opens it. */
-  body.sidebar-open .view {
+  /* Desktop: sidebar always open — no toggle, no body class needed */
+  .channels-sidebar {
+    left: 0;
+    top: 0;
+    transition: none;
+  }
+
+  /* Shift all content right to make room for sidebar */
+  .view {
     padding-left: var(--sidebar-width);
   }
 
-  body.sidebar-open .top-bar-inner {
+  .top-bar-inner {
     max-width: none;
     padding-left: calc(var(--sidebar-width) + var(--space-md));
     padding-right: var(--space-md);
+  }
+
+  /* Hamburger hidden on desktop (sidebar is always open) */
+  .sidebar-hamburger {
+    display: none !important;
+  }
+
+  /* Mobile-only logo in top bar hidden on desktop (logo is in sidebar) */
+  .mobile-logo {
+    display: none !important;
+  }
+
+  /* Profile avatar in top bar hidden on desktop (own profile is in sidebar) */
+  #nav-profile-btn {
+    display: none !important;
+  }
+
+  /* Top bar itself can be very slim on desktop */
+  .top-bar {
+    height: 0;
+    min-height: 0;
+    border-bottom: none;
+    overflow: hidden;
+  }
+
+  .view {
+    padding-top: 0;
   }
 }
 
@@ -2742,7 +2785,7 @@ a.post-timestamp:hover {
   }
 }
 
-/* ---- Sidebar header (title + close button) ---- */
+/* ---- Sidebar header (logo + close button) ---- */
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -2750,15 +2793,31 @@ a.post-timestamp:hover {
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
-  height: 44px;
+  min-height: 52px;
 }
 
-.sidebar-heading {
-  font-size: 0.75rem;
+/* Logo button in sidebar */
+.sidebar-logo-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 1rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  padding: 4px 2px;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-logo-btn:hover {
+  color: var(--color-accent);
+}
+
+.sidebar-logo-btn .nav-logo-mark {
+  font-size: 1.2rem;
 }
 
 .sidebar-close-btn {
@@ -2773,6 +2832,7 @@ a.post-timestamp:hover {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .sidebar-close-btn:hover {
@@ -2781,10 +2841,155 @@ a.post-timestamp:hover {
 }
 
 @media (min-width: 768px) {
-  /* Close button not needed on desktop */
   .sidebar-close-btn {
     display: none;
   }
+}
+
+/* ---- Sidebar own-profile section (M43) ---- */
+.sidebar-own-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.12s;
+}
+
+.sidebar-own-profile:hover {
+  background: var(--color-surface-alt);
+}
+
+.sidebar-own-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.sidebar-own-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-own-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-own-handle {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Sidebar nav items (M43) ---- */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-xs);
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px var(--space-sm);
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text);
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--color-surface-alt);
+}
+
+.sidebar-nav-item.active {
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.sidebar-notif-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Notification badge inside sidebar nav */
+.sidebar-notif-wrap .notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+}
+
+/* ---- Sidebar channels separator + footer (M43) ---- */
+.sidebar-channels-sep {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-xs) var(--space-md);
+  flex-shrink: 0;
+}
+
+.sidebar-channels-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xs) 0;
+  min-height: 0;
+}
+
+.sidebar-footer {
+  padding: var(--space-xs);
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-sign-out-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px var(--space-sm);
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sidebar-sign-out-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
 }
 
 /* ---- Channel list ---- */
@@ -2945,45 +3150,8 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
-   M34 — Scroll-to-top button
+   M34 — Scroll-to-top button (positioning now in M45 section below)
 ================================================================ */
-.scroll-to-top-btn {
-  position: fixed;
-  bottom: 80px;         /* above the PTR / nav bar area */
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 150;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-elevated);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  opacity: 1;
-  transition: opacity 0.2s, background 0.15s;
-}
-
-.scroll-to-top-btn:hover {
-  background: var(--color-surface-alt);
-  color: var(--color-text);
-}
-
-.scroll-to-top-btn[hidden] {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .scroll-to-top-btn {
-    left: auto;
-    right: calc(50% - 340px);  /* right of the content column */
-    transform: none;
-  }
-}
 
 /* ================================================================
    M30 — Repost action sheet (dropdown above repost button)
@@ -3090,4 +3258,337 @@ a.post-timestamp:hover {
 
 .action-btn.replied svg {
   stroke: var(--color-accent);
+}
+
+/* ================================================================
+   M46 — Deep thread overflow fix + sub-thread breadcrumb
+================================================================ */
+#view-thread .view-inner {
+  overflow-x: hidden; /* prevent deeply nested reply groups from causing horizontal scroll */
+}
+
+/* Breadcrumb back-link shown when thread opened via "Continue this thread →" */
+.thread-continue-crumb {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.thread-continue-crumb:hover {
+  color: var(--color-accent);
+}
+
+/* ================================================================
+   M44 — Scroll-based read indicator
+================================================================ */
+.post-card.post-seen {
+  opacity: 0.82;
+  border-left: 3px solid var(--color-seen, #aab0bc);
+}
+
+/* ================================================================
+   M45 — Scroll-to-top button: left gutter positioning
+================================================================ */
+.scroll-to-top-btn {
+  position: fixed;
+  bottom: 80px;
+  left: 8px;            /* avatar-gutter zone — never overlaps text */
+  transform: none;      /* override the translateX(-50%) centering */
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: var(--shadow-elevated);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.2s, background 0.15s;
+}
+
+.scroll-to-top-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.scroll-to-top-btn[hidden] {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  /* On desktop sidebar is always open, so always offset the button */
+  .scroll-to-top-btn {
+    left: calc(var(--sidebar-width, 240px) + 8px);
+  }
+}
+
+/* ================================================================
+   M41 / M17 — Compose link preview card
+================================================================ */
+.compose-link-preview {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: var(--space-sm);
+  background: var(--color-surface-alt);
+  position: relative;
+}
+
+.compose-link-preview-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compose-link-preview-thumb {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.compose-link-preview-body {
+  padding: var(--space-sm) var(--space-md);
+}
+
+.compose-link-preview-host {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.compose-link-preview-input {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  font-family: inherit;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.compose-link-preview-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.compose-link-preview-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.compose-thumb-strip {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md) var(--space-sm);
+  overflow-x: auto;
+}
+
+.compose-thumb-option {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+.compose-thumb-option.selected {
+  border-color: var(--color-accent);
+}
+
+.compose-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+/* GIF search panel */
+.compose-gif-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-sm);
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.compose-gif-search-row {
+  display: flex;
+  padding: var(--space-sm);
+  gap: var(--space-sm);
+}
+
+.compose-gif-input {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--color-surface);
+}
+
+.compose-gif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 0 var(--space-sm) var(--space-sm);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.compose-gif-item {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+}
+
+.compose-gif-item:hover {
+  border-color: var(--color-accent);
+}
+
+.compose-gif-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* Post settings gear panel */
+.compose-settings-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-alt);
+}
+
+.compose-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) 0;
+  font-size: 0.875rem;
+}
+
+.compose-settings-label {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.compose-settings-select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* ================================================================
+   M48 — Search load more button
+================================================================ */
+.search-load-more {
+  text-align: center;
+  padding: var(--space-md) 0;
+}
+
+/* ================================================================
+   M49 — Advanced search media filters
+================================================================ */
+.adv-media-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  align-items: center;
+  margin-top: var(--space-xs);
+}
+
+.adv-media-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-right: var(--space-xs);
+}
+
+.adv-media-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: 0.8125rem;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.adv-media-chip.active {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.adv-media-note {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: 2px;
+}
+
+/* ================================================================
+   M51 — Compose success banner with view-post link
+================================================================ */
+.compose-view-post-link {
+  margin-left: var(--space-sm);
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 0;
+}
+
+/* ================================================================
+   M43 — Sidebar navigation redesign CSS variables
+================================================================ */
+:root {
+  --sidebar-width: 240px;
 }

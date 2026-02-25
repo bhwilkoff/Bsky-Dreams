@@ -103,14 +103,17 @@
 
   const scrollToTopBtn   = $('scroll-to-top-btn');  // M34 scroll-to-top
 
-  const quoteModal       = $('quote-modal');          // M30 quote post
-  const quoteModalClose  = $('quote-modal-close');
-  const quoteModalCancel = $('quote-modal-cancel');
-  const quoteModalSubmit = $('quote-modal-submit');
-  const quoteModalText   = $('quote-modal-text');
-  const quoteModalCount  = $('quote-modal-count');
-  const quoteModalError  = $('quote-modal-error');
+  const quoteModal        = $('quote-modal');          // M30 quote post
+  const quoteModalClose   = $('quote-modal-close');
+  const quoteModalCancel  = $('quote-modal-cancel');
+  const quoteModalSubmit  = $('quote-modal-submit');
+  const quoteModalText    = $('quote-modal-text');
+  const quoteModalCount   = $('quote-modal-count');
+  const quoteModalError   = $('quote-modal-error');
   const quoteModalPreview = $('quote-modal-preview');
+  const quoteSuccessBanner = $('quote-success-banner'); // M51
+  const quotePostLink      = $('quote-post-link');      // M51
+  const quoteSuccessClose  = $('quote-success-close'); // M51
 
   const imageLightbox    = $('image-lightbox');
   const lightboxImg      = $('lightbox-img');
@@ -150,6 +153,11 @@
   let notifCursor        = null; // pagination cursor for notifications
   let notifLoaded        = false;
   let composeImages      = [];   // array of { file, previewUrl, altInput } for pending uploads
+  let searchCursor       = null; // M48: pagination cursor for search results
+  let lastSearchQuery    = '';   // M48: last query so "load more" knows what to append
+  let lastSearchSort     = 'top'; // M48: last sort so "load more" preserves it
+  let lastSearchOpts     = {};   // M48: last advanced opts for "load more"
+  let searchMediaFilters = new Set(); // M49: active media-type filter keys
 
   // M40 — Seen-posts deduplication
   const FEED_SEEN_KEY = 'bsky_feed_seen';
@@ -413,26 +421,19 @@
     searchResults.parentNode.insertBefore(area, searchResults);
   }
 
-  /* ---- Sidebar toggle ---- */
+  /* ---- M43: Sidebar toggle (mobile-only drawer; desktop sidebar always open) ---- */
   function openSidebar() {
+    if (window.innerWidth >= 768) return; // desktop: always open, no toggle needed
     channelsSidebar.classList.add('open');
     sidebarOverlay.hidden = false;
     navChannelsBtn.setAttribute('aria-expanded', 'true');
-    // On desktop, add body class to offset content and save preference
-    if (window.innerWidth >= 768) {
-      document.body.classList.add('sidebar-open');
-      try { localStorage.setItem('bsky_sidebar_open', 'true'); } catch {}
-    }
   }
 
   function closeSidebar() {
+    if (window.innerWidth >= 768) return; // desktop: never close
     channelsSidebar.classList.remove('open');
     sidebarOverlay.hidden = true;
     navChannelsBtn.setAttribute('aria-expanded', 'false');
-    if (window.innerWidth >= 768) {
-      document.body.classList.remove('sidebar-open');
-      try { localStorage.setItem('bsky_sidebar_open', 'false'); } catch {}
-    }
   }
 
   navChannelsBtn.addEventListener('click', () => {
@@ -440,6 +441,41 @@
   });
   sidebarCloseBtn.addEventListener('click', closeSidebar);
   sidebarOverlay.addEventListener('click',  closeSidebar);
+
+  /* ---- M43: Sidebar own-profile section ---- */
+  const sidebarOwnProfile  = $('sidebar-own-profile');
+  const sidebarOwnAvatar   = $('sidebar-own-avatar');
+  const sidebarOwnName     = $('sidebar-own-name');
+  const sidebarOwnHandle   = $('sidebar-own-handle');
+  const sidebarSignOutBtn  = $('sidebar-sign-out-btn');
+
+  function updateSidebarProfile(profile) {
+    if (!profile) { sidebarOwnProfile.hidden = true; return; }
+    sidebarOwnAvatar.src    = profile.avatar || '';
+    sidebarOwnAvatar.alt    = profile.displayName || profile.handle || '';
+    sidebarOwnName.textContent   = profile.displayName || profile.handle || '';
+    sidebarOwnHandle.textContent = `@${profile.handle || ''}`;
+    sidebarOwnProfile.hidden = false;
+  }
+
+  sidebarOwnProfile.addEventListener('click', () => {
+    if (ownProfile) {
+      closeSidebar();
+      openProfile(ownProfile.handle);
+    }
+  });
+
+  sidebarSignOutBtn.addEventListener('click', () => {
+    AUTH.clearSession();
+    appScreen.hidden  = true;
+    authScreen.hidden = false;
+    sidebarOwnProfile.hidden = true;
+    ownProfile = null;
+    feedLoaded = false;
+    notifLoaded = false;
+    notifBadge.hidden = true;
+    closeSidebar();
+  });
 
   /* ================================================================
      LOADING HELPERS
@@ -815,12 +851,8 @@
     checkChannelUnreads();    // async background unread check
     loadPrefsFromCloud();     // M20: merge cloud prefs with localStorage
 
-    // Restore sidebar open state on desktop (hidden by default for new users)
-    if (window.innerWidth >= 768) {
-      try {
-        if (localStorage.getItem('bsky_sidebar_open') === 'true') openSidebar();
-      } catch {}
-    }
+    // M43: populate sidebar own-profile section
+    updateSidebarProfile(ownProfile);
 
     // Route to the view specified by the URL (deep-link / bookmark support)
     const p = urlParams instanceof URLSearchParams ? urlParams : new URLSearchParams();
@@ -903,6 +935,9 @@
       btn.setAttribute('aria-current', n === name ? 'page' : 'false');
     });
 
+    // M43: close mobile sidebar drawer on any navigation
+    closeSidebar();
+
     // Remove any stale "Save as channel" button when leaving search view
     if (name !== 'search') {
       document.querySelector('.save-channel-area')?.remove();
@@ -915,6 +950,17 @@
       hideError(composeError);
       composeSuccess.hidden = true;
       clearComposeImages();
+      // M41: clear link preview and toggle panels
+      const lpWrap = $('compose-link-preview-wrap');
+      if (lpWrap) lpWrap.innerHTML = '';
+      const gifP  = $('compose-gif-panel');
+      const setP  = $('compose-settings-panel');
+      const rgEl  = $('compose-reply-gate');
+      const qgEl  = $('compose-quote-gate');
+      if (gifP)  gifP.hidden  = true;
+      if (setP)  setP.hidden  = true;
+      if (rgEl)  rgEl.value   = 'everyone';
+      if (qgEl)  qgEl.value   = 'everyone';
     }
 
     if (!fromHistory) {
@@ -941,6 +987,12 @@
     // Pause TV playback when leaving the TV view
     if (name !== 'tv') {
       window.tvStop?.();
+    }
+
+    // M44: disconnect feed seen observer when leaving the feed view
+    if (name !== 'feed' && feedSeenObserver) {
+      feedSeenObserver.disconnect();
+      feedSeenObserver = null;
     }
 
     // Hide scroll-to-top button on view switch (M34)
@@ -1019,7 +1071,7 @@
     clearComposeImages();
     searchResults.innerHTML = '<div class="feed-empty"><p>Search for posts, people, or topics on BlueSky.</p></div>';
     threadContent.innerHTML = '';
-    closeSidebar();
+    updateSidebarProfile(null); // M43: clear sidebar profile
     // Clear save-channel button if any
     document.querySelector('.save-channel-area')?.remove();
   });
@@ -1051,6 +1103,20 @@
     advToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
 
+  // M49: media filter chip toggle
+  document.querySelectorAll('.adv-media-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const key = chip.dataset.media;
+      if (searchMediaFilters.has(key)) {
+        searchMediaFilters.delete(key);
+        chip.classList.remove('active');
+      } else {
+        searchMediaFilters.add(key);
+        chip.classList.add('active');
+      }
+    });
+  });
+
   // Trigger a post search programmatically (used by hashtag clicks)
   function triggerSearch(query) {
     searchInput.value = query;
@@ -1061,6 +1127,69 @@
     activeFilter = 'posts';
     showView('search');
     searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
+  /* ---- M49: Apply client-side media type filter to post array ---- */
+  function applyMediaFilter(posts) {
+    if (!searchMediaFilters.size) return posts;
+    return posts.filter((post) => {
+      const embed = post.embed;
+      if (!embed) return false;
+      const t = embed.$type || '';
+      if (searchMediaFilters.has('image')  && (t.includes('images') || (embed.media?.$type || '').includes('images'))) return true;
+      if (searchMediaFilters.has('video')  && (t.includes('video')  || (embed.media?.$type || '').includes('video')))  return true;
+      if (searchMediaFilters.has('link')   && (t.includes('external') || (post.record?.facets || []).some(
+        (f) => f.features?.[0]?.$type === 'app.bsky.richtext.facet#link'))) return true;
+      return false;
+    });
+  }
+
+  /* ---- M48: Append a "Load more" button below search results ---- */
+  function appendSearchLoadMore(type) {
+    const existing = document.querySelector('.search-load-more');
+    if (existing) existing.remove();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'search-load-more';
+
+    const btn = document.createElement('button');
+    btn.className   = 'btn btn-ghost';
+    btn.textContent = 'Load more';
+
+    btn.addEventListener('click', async () => {
+      btn.disabled    = true;
+      btn.textContent = 'Loading…';
+      try {
+        if (type === 'actors') {
+          const data   = await API.searchActors(lastSearchQuery, 25, searchCursor);
+          const actors = data.actors || [];
+          searchCursor  = data.cursor || null;
+          // Append actor cards directly without wiping the container
+          actors.forEach((actor) => {
+            const tmpContainer = document.createElement('div');
+            // Build card outside of searchResults so we don't wipe
+            lastSearchResults = [...(lastSearchResults || []), actor];
+          });
+          renderActorResultsAppend(actors);
+        } else {
+          const data = await API.searchPosts(lastSearchQuery, lastSearchSort, 25, searchCursor, lastSearchOpts);
+          let posts  = data.posts || [];
+          searchCursor = data.cursor || null;
+          posts = applyMediaFilter(posts);
+          lastSearchResults = [...(lastSearchResults || []), ...posts];
+          renderPostFeed(posts, searchResults, true);
+        }
+        wrap.remove();
+        if (searchCursor) appendSearchLoadMore(type);
+      } catch (err) {
+        btn.disabled    = false;
+        btn.textContent = 'Load more';
+        console.error('Search load more error:', err.message);
+      }
+    });
+
+    wrap.appendChild(btn);
+    searchResults.after(wrap);
   }
 
   searchForm.addEventListener('submit', async (e) => {
@@ -1091,13 +1220,21 @@
         }
       }
 
+      // M48+M49: reset cursor and media filters on new search
+      searchCursor = null;
+      lastSearchQuery = q;
+      document.querySelector('.search-load-more')?.remove();
+
       if (activeFilter === 'users') {
         const data = await API.searchActors(q);
         lastSearchResults = data.actors || [];
         lastSearchType    = 'actors';
+        searchCursor      = data.cursor || null;
         renderActorResults(lastSearchResults);
+        if (searchCursor) appendSearchLoadMore('actors');
       } else {
         const sort = activeFilter === 'latest' ? 'latest' : 'top';
+        lastSearchSort = sort;
 
         // Collect advanced filter values
         const since = advSinceEl.value ? new Date(advSinceEl.value).toISOString() : undefined;
@@ -1110,11 +1247,17 @@
           since,
           until,
         };
+        lastSearchOpts = opts;
 
         const data = await API.searchPosts(q, sort, 25, undefined, opts);
-        lastSearchResults = data.posts || [];
+        let posts = data.posts || [];
+        searchCursor = data.cursor || null;
+        // M49: apply client-side media filter
+        posts = applyMediaFilter(posts);
+        lastSearchResults = posts;
         lastSearchType    = 'posts';
-        renderPostFeed(lastSearchResults, searchResults);
+        renderPostFeed(posts, searchResults);
+        if (searchCursor) appendSearchLoadMore('posts');
       }
 
       // Show "Save as channel" button above results
@@ -1218,6 +1361,57 @@
     });
   }
 
+  /* ---- M48: Append actor result cards without wiping the container ---- */
+  function renderActorResultsAppend(actors) {
+    actors.forEach((actor) => {
+      const card = document.createElement('article');
+      card.className = 'post-card post-card-clickable';
+      card.style.cursor = 'default';
+
+      const followUri   = actor.viewer?.following || '';
+      const isFollowing = !!followUri;
+      const isSelf      = ownProfile && actor.did === ownProfile.did;
+
+      const header = document.createElement('div');
+      header.className = 'actor-card-header';
+
+      const av = document.createElement('img');
+      av.src = actor.avatar || ''; av.alt = ''; av.className = 'post-avatar'; av.loading = 'lazy';
+      header.appendChild(av);
+
+      const meta = document.createElement('div');
+      meta.className = 'post-meta';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'post-display-name'; nameEl.textContent = actor.displayName || actor.handle;
+      const handleEl = document.createElement('div');
+      handleEl.className = 'post-handle'; handleEl.textContent = `@${actor.handle}`;
+      meta.appendChild(nameEl); meta.appendChild(handleEl);
+      header.appendChild(meta);
+
+      if (!isSelf) {
+        const followBtn = document.createElement('button');
+        followBtn.className = isFollowing ? 'follow-btn following' : 'follow-btn';
+        followBtn.textContent = isFollowing ? 'Following' : 'Follow';
+        followBtn.dataset.did = actor.did; followBtn.dataset.followUri = followUri;
+        followBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const btn = e.currentTarget; const curUri = btn.dataset.followUri; const nowFollow = btn.classList.contains('following');
+          btn.disabled = true;
+          try {
+            if (nowFollow && curUri) { await API.unfollowActor(curUri); btn.classList.remove('following'); btn.textContent = 'Follow'; btn.dataset.followUri = ''; }
+            else { const r = await API.followActor(actor.did); btn.classList.add('following'); btn.textContent = 'Following'; btn.dataset.followUri = r.uri || ''; }
+          } catch (err) { console.error('Follow error:', err.message); }
+          finally { btn.disabled = false; }
+        });
+        header.appendChild(followBtn);
+      }
+      card.appendChild(header);
+      if (actor.description) { const bio = document.createElement('p'); bio.className = 'post-text'; bio.textContent = actor.description; card.appendChild(bio); }
+      card.addEventListener('click', () => openProfile(actor.handle));
+      searchResults.appendChild(card);
+    });
+  }
+
   /* ================================================================
      HOME / FOLLOWING FEED
   ================================================================ */
@@ -1273,11 +1467,11 @@
         renderFeedItems(displayItems, feedResults, append);
       }
 
-      // M40: mark rendered posts as seen + show filtered hint
-      displayItems.forEach((item) => {
-        if (item.post) markFeedPostSeen(item.post.uri, item.post.likeCount, item.post.repostCount);
-      });
+      // M40+M44: show filtered hint; seen-marking is now scroll-based (IntersectionObserver below)
       if (seenCount > 0) showFeedSeenHint(seenCount);
+
+      // M44: attach IntersectionObserver for scroll-based seen tracking
+      attachFeedSeenObserver(feedResults);
 
       // Show "Load more" only if there's a next page
       feedLoadMore.hidden = !feedCursor;
@@ -1288,6 +1482,38 @@
     } finally {
       hideLoading();
     }
+  }
+
+  /* ---- M44: Scroll-based read indicator (IntersectionObserver) ---- */
+  let feedSeenObserver = null;
+
+  function attachFeedSeenObserver(container) {
+    // Disconnect any previous observer before attaching a new one
+    if (feedSeenObserver) { feedSeenObserver.disconnect(); feedSeenObserver = null; }
+
+    feedSeenObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        // Mark as seen when the card has fully scrolled above the 80% viewport line
+        if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+          const card = entry.target;
+          const uri  = card.dataset.uri;
+          if (!uri || card.classList.contains('post-seen')) return;
+          const likeCount   = parseInt(card.querySelector('.like-action-btn .action-count')?.textContent || '0', 10);
+          const repostCount = parseInt(card.querySelector('.repost-action-btn .action-count')?.textContent || '0', 10);
+          markFeedPostSeen(uri, likeCount, repostCount);
+          card.classList.add('post-seen');
+          feedSeenObserver.unobserve(card); // each card only needs to be marked once
+        }
+      });
+    }, {
+      root: null,
+      rootMargin: '0px 0px -80% 0px', // card must be in top 20% of viewport to trigger
+      threshold: 0,
+    });
+
+    container.querySelectorAll('.post-card[data-uri]').forEach((card) => {
+      if (!card.classList.contains('post-seen')) feedSeenObserver.observe(card);
+    });
   }
 
   /* ---- Pull-to-refresh on the home feed ---- */
@@ -1362,6 +1588,65 @@
   feedTabDiscover.addEventListener('click', () => {
     if (feedMode !== 'discover') { setFeedMode('discover'); loadFeed(); }
   });
+
+  /* ---- M47: Pull-to-refresh on Search + Profile views ---- */
+  (() => {
+    const PTR_THRESHOLD = 96;
+    const PTR_HOLD_MS   = 400;
+    const PTR_HEIGHT    = 52;
+
+    function makePTR(scrollEl, triggerFn) {
+      let ptrStartY = 0, ptrDragging = false, ptrActive = false, ptrHoldTimer = null, ptrReadyToRelease = false;
+
+      scrollEl.addEventListener('touchstart', (e) => {
+        if (scrollEl.scrollTop === 0 && !ptrActive) {
+          ptrStartY = e.touches[0].clientY; ptrDragging = true; ptrReadyToRelease = false;
+        }
+      }, { passive: true });
+
+      scrollEl.addEventListener('touchmove', (e) => {
+        if (!ptrDragging) return;
+        const dy = Math.max(0, e.touches[0].clientY - ptrStartY);
+        if (dy <= 0) return;
+        const pull = Math.min(dy * 0.5, PTR_HEIGHT);
+        ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
+        if (dy >= PTR_THRESHOLD) {
+          if (!ptrHoldTimer && !ptrReadyToRelease) {
+            ptrHoldTimer = setTimeout(() => { ptrReadyToRelease = true; ptrIndicator.dataset.state = 'release'; }, PTR_HOLD_MS);
+          }
+        } else {
+          clearTimeout(ptrHoldTimer); ptrHoldTimer = null; ptrReadyToRelease = false;
+          ptrIndicator.dataset.state = 'pull';
+        }
+      }, { passive: true });
+
+      scrollEl.addEventListener('touchend', async () => {
+        if (!ptrDragging) return;
+        ptrDragging = false; clearTimeout(ptrHoldTimer); ptrHoldTimer = null;
+        if (ptrReadyToRelease) {
+          ptrReadyToRelease = false; ptrActive = true;
+          ptrIndicator.style.marginTop = '0px'; ptrIndicator.dataset.state = 'loading';
+          await triggerFn();
+          ptrActive = false;
+        }
+        ptrIndicator.style.marginTop = ''; delete ptrIndicator.dataset.state;
+      });
+    }
+
+    // Search view PTR: re-run the last search from scratch
+    makePTR(viewSearch, () => {
+      const q = searchInput.value.trim();
+      if (q) {
+        searchCursor = null;
+        searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    // Profile view PTR: full profile feed refresh
+    makePTR(viewProfile, () => {
+      if (profileActor) loadProfileFeed(profileActor, false);
+    });
+  })();
 
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
@@ -1796,10 +2081,10 @@
    * Render an array of post objects into a container element.
    * Each card is clickable to open the thread view.
    */
-  function renderPostFeed(posts, container) {
-    container.innerHTML = '';
+  function renderPostFeed(posts, container, append = false) {
+    if (!append) container.innerHTML = '';
     const filtered = posts.filter((p) => !hasAdultContent(p));
-    if (!filtered.length) {
+    if (!filtered.length && !append) {
       container.innerHTML = '<div class="feed-empty"><p>No results found.</p></div>';
       return;
     }
@@ -2465,20 +2750,34 @@
     quoteModalError.hidden = true;
 
     try {
-      await API.createPost(text, null, [], { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid });
+      const result = await API.createPost(text, null, [], { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid });
       closeQuoteModal();
-      // Brief success banner
-      const banner = document.createElement('div');
-      banner.className   = 'report-success-banner'; // reuse existing success banner style
-      banner.textContent = 'Quote post published!';
-      document.body.appendChild(banner);
-      setTimeout(() => banner.remove(), 3000);
+      // M51: show in-app success banner with link to new post
+      if (result?.uri && ownProfile) {
+        quoteSuccessBanner.hidden = false;
+        let qTimer = setTimeout(() => { quoteSuccessBanner.hidden = true; }, 4000);
+        quotePostLink.onclick = (e) => {
+          e.preventDefault();
+          clearTimeout(qTimer);
+          quoteSuccessBanner.hidden = true;
+          openThread(result.uri, result.cid || '', ownProfile.handle);
+        };
+      } else {
+        // Fallback if no result.uri
+        quoteSuccessBanner.hidden = false;
+        setTimeout(() => { quoteSuccessBanner.hidden = true; }, 3000);
+      }
     } catch (err) {
       showError(quoteModalError, err.message || 'Failed to post quote.');
       quoteModalSubmit.disabled    = false;
       quoteModalSubmit.textContent = 'Quote Post';
     }
   });
+
+  // M51: dismiss quote success banner
+  if (quoteSuccessClose) {
+    quoteSuccessClose.addEventListener('click', () => { quoteSuccessBanner.hidden = true; });
+  }
 
   /**
    * Build a single post card DOM element.
@@ -3141,12 +3440,22 @@
         rootCid:      cid,
         authorHandle: handle,
       };
+      // M46: show "← Back to parent thread" breadcrumb when opened via "Continue this thread →"
+      const existingCrumb = threadContent.querySelector('.thread-continue-crumb');
+      if (existingCrumb) existingCrumb.remove();
+      if (opts.fromContinue) {
+        const crumb = document.createElement('button');
+        crumb.className   = 'btn btn-ghost thread-continue-crumb';
+        crumb.textContent = '← Back to parent thread';
+        crumb.addEventListener('click', () => history.back());
+        threadContent.prepend(crumb);
+      }
       // Switch to thread view without adding a second history entry;
       // push the thread state ourselves so Back/Forward knows the URI.
       showView('thread', true);
       if (!opts.fromHistory) {
         const threadUrl = `?view=post&uri=${encodeURIComponent(uri)}&handle=${encodeURIComponent(handle || '')}`;
-        history.pushState({ view: 'thread', uri, cid, handle }, '', threadUrl);
+        history.pushState({ view: 'thread', uri, cid, handle, fromContinue: !!opts.fromContinue }, '', threadUrl);
       }
     } catch (err) {
       threadContent.innerHTML = `<div class="feed-empty"><p>Could not load thread: ${escHtml(err.message)}</p></div>`;
@@ -3194,14 +3503,14 @@
       );
       if (!replies.length) return;
 
-      // Max depth: beyond 8 levels show a "Continue this thread →" link
-      if (depth >= 7) {
+      // M46: reduced depth cutoff from 8→5 to prevent horizontal overflow on narrow screens
+      if (depth >= 4) {
         const best = replies[0];
         const continueBtn = document.createElement('button');
-        continueBtn.className   = 'collapse-toggle';
+        continueBtn.className   = 'collapse-toggle continue-thread-btn';
         continueBtn.textContent = 'Continue this thread →';
         continueBtn.addEventListener('click', () => {
-          openThread(best.post.uri, best.post.cid, best.post.author.handle);
+          openThread(best.post.uri, best.post.cid, best.post.author.handle, { fromContinue: true });
         });
         container.appendChild(continueBtn);
         return;
@@ -3258,14 +3567,20 @@
       if (replies.length > MAX_VISIBLE) {
         const remaining = replies.length - MAX_VISIBLE;
         const toggle = document.createElement('button');
-        toggle.className   = 'collapse-toggle';
+        toggle.className   = 'collapse-toggle show-more-replies';
         toggle.textContent = `Show ${remaining} more repl${remaining === 1 ? 'y' : 'ies'}`;
-        toggle.addEventListener('click', () => {
+        const revealReplies = () => {
           replies.slice(MAX_VISIBLE).forEach((reply) => {
             renderThread(reply, authorHandle, body, false, depth + 1);
           });
           toggle.remove();
-        });
+        };
+        toggle.addEventListener('click', revealReplies);
+        // M50: auto-reveal when the toggle button nears the viewport (200px pre-trigger)
+        const showMoreObserver = new IntersectionObserver((entries, obs) => {
+          if (entries[0].isIntersecting) { obs.disconnect(); revealReplies(); }
+        }, { rootMargin: '0px 0px 200px 0px', threshold: 0 });
+        showMoreObserver.observe(toggle);
         body.appendChild(toggle);
       }
 
@@ -3655,10 +3970,166 @@
   });
 
   /* ================================================================
+     M41 — COMPOSE: LINK PREVIEW, GIF PICKER, POST SETTINGS
+  ================================================================ */
+  const composeGifBtn        = $('compose-gif-btn');
+  const composeGifPanel      = $('compose-gif-panel');
+  const composeGifInput      = $('compose-gif-input');
+  const composeGifGrid       = $('compose-gif-grid');
+  const composeGifSearchBtn  = $('compose-gif-search-btn');
+  const composeSettingsBtn   = $('compose-settings-btn');
+  const composeSettingsPanel = $('compose-settings-panel');
+  const composeReplyGate     = $('compose-reply-gate');
+  const composeQuoteGate     = $('compose-quote-gate');
+  const composeLinkWrap      = $('compose-link-preview-wrap');
+  const composeTenorKeyLink  = $('compose-tenor-key-link');
+
+  const TENOR_KEY_STORAGE = 'bsky_tenor_api_key';
+  let composeLinkEmbed    = null;  // { uri, title, description } or null
+  let linkPreviewTimer    = null;
+
+  // GIF panel toggle
+  composeGifBtn.addEventListener('click', () => {
+    const willOpen = composeGifPanel.hidden;
+    composeGifPanel.hidden     = !willOpen;
+    composeSettingsPanel.hidden = true;
+    if (willOpen) composeGifInput.focus();
+  });
+
+  // Settings panel toggle
+  composeSettingsBtn.addEventListener('click', () => {
+    composeSettingsPanel.hidden = !composeSettingsPanel.hidden;
+    composeGifPanel.hidden = true;
+  });
+
+  // Tenor API key prompt
+  composeTenorKeyLink.addEventListener('click', () => {
+    const existing = localStorage.getItem(TENOR_KEY_STORAGE) || '';
+    const key = prompt('Enter your free Tenor API key (get one at tenor.com/developer):', existing);
+    if (key !== null) localStorage.setItem(TENOR_KEY_STORAGE, key.trim());
+  });
+
+  // GIF search
+  async function searchTenorGifs(q) {
+    const key = (localStorage.getItem(TENOR_KEY_STORAGE) || '').trim();
+    if (!key) {
+      composeGifGrid.innerHTML = '<p class="compose-gif-empty">Set your Tenor API key first — click "settings" in the footer below.</p>';
+      return;
+    }
+    composeGifGrid.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
+    try {
+      const res  = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}&limit=16&media_filter=tinygif,gif`);
+      const data = await res.json();
+      if (!data.results?.length) {
+        composeGifGrid.innerHTML = '<p class="compose-gif-empty">No results. Try a different search.</p>';
+        return;
+      }
+      composeGifGrid.innerHTML = '';
+      data.results.forEach((item) => {
+        const fmt = item.media_formats?.tinygif || item.media_formats?.gif;
+        if (!fmt) return;
+        const fullUrl = (item.media_formats?.gif || item.media_formats?.tinygif)?.url || fmt.url;
+        const img = document.createElement('img');
+        img.src       = fmt.url;
+        img.alt       = item.content_description || '';
+        img.className = 'compose-gif-item';
+        img.loading   = 'lazy';
+        img.addEventListener('click', () => selectGif(fullUrl, item.content_description || ''));
+        composeGifGrid.appendChild(img);
+      });
+    } catch (err) {
+      composeGifGrid.innerHTML = `<p class="compose-gif-empty">Search failed: ${escHtml(err.message)}</p>`;
+    }
+  }
+
+  composeGifSearchBtn.addEventListener('click', () => {
+    const q = composeGifInput.value.trim();
+    if (q) searchTenorGifs(q);
+  });
+  composeGifInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); composeGifSearchBtn.click(); }
+  });
+
+  async function selectGif(url, alt) {
+    composeGifGrid.innerHTML = '<p class="compose-gif-empty">Loading…</p>';
+    try {
+      const res  = await fetch(url);
+      const blob = await res.blob();
+      const file = new File([blob], 'animation.gif', { type: 'image/gif' });
+      composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+      composeImages = [{ file, previewUrl: url, alt }];
+      refreshComposePreview();
+      composeGifPanel.hidden = true;
+      composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
+      composeGifInput.value = '';
+    } catch (err) {
+      composeGifGrid.innerHTML = `<p class="compose-gif-empty">Could not load GIF: ${escHtml(err.message)}</p>`;
+    }
+  }
+
+  // Link preview helpers
+  function clearLinkPreview() {
+    composeLinkEmbed = null;
+    composeLinkWrap.innerHTML = '';
+  }
+
+  async function fetchLinkPreview(url) {
+    if (composeLinkEmbed) return;
+    try {
+      const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      if (!data.contents) return;
+      const parser = new DOMParser();
+      const doc    = parser.parseFromString(data.contents, 'text/html');
+      const getOg  = (name) =>
+        doc.querySelector(`meta[property="${name}"]`)?.content ||
+        doc.querySelector(`meta[name="${name}"]`)?.content || '';
+      const title    = (getOg('og:title')       || doc.title || '').trim();
+      const desc     = (getOg('og:description') || getOg('description') || '').trim();
+      const thumb    = getOg('og:image')        || getOg('twitter:image') || '';
+      const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+      composeLinkEmbed = { uri: url, title, description: desc, thumb };
+      renderLinkPreviewCard(hostname);
+    } catch {
+      // Silently ignore — link preview is best-effort
+    }
+  }
+
+  function renderLinkPreviewCard(hostname) {
+    const { title, description, thumb } = composeLinkEmbed;
+    composeLinkWrap.innerHTML = `
+      <div class="compose-link-preview">
+        ${thumb ? `<img class="compose-link-preview-thumb" src="${escHtml(thumb)}" alt="" loading="lazy">` : ''}
+        <div class="compose-link-preview-body">
+          <input class="compose-link-preview-input compose-link-preview-title"
+                 value="${escHtml(title)}" placeholder="Title" maxlength="300" aria-label="Link title">
+          <input class="compose-link-preview-input compose-link-preview-desc"
+                 value="${escHtml(description)}" placeholder="Description (optional)" maxlength="500" aria-label="Link description">
+          <span class="compose-link-preview-host">${escHtml(hostname)}</span>
+        </div>
+        <button type="button" class="compose-link-preview-dismiss" aria-label="Remove link preview">✕</button>
+      </div>
+    `;
+    composeLinkWrap.querySelector('.compose-link-preview-title').addEventListener('input', (e) => {
+      composeLinkEmbed.title = e.target.value;
+    });
+    composeLinkWrap.querySelector('.compose-link-preview-desc').addEventListener('input', (e) => {
+      composeLinkEmbed.description = e.target.value;
+    });
+    composeLinkWrap.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearLinkPreview);
+  }
+
+  /* ================================================================
      COMPOSE — SUBMIT
   ================================================================ */
   composeText.addEventListener('input', () => {
     updateCharCount(composeText, composeCount);
+    // M41: debounced link preview detection
+    clearTimeout(linkPreviewTimer);
+    if (composeLinkEmbed) return;
+    const matches = composeText.value.match(/https?:\/\/[^\s]+/g);
+    if (!matches) return;
+    linkPreviewTimer = setTimeout(() => fetchLinkPreview(matches[0]), 800);
   });
 
   composeForm.addEventListener('submit', async (e) => {
@@ -3685,17 +4156,60 @@
         );
       }
 
-      const result = await API.createPost(text, null, uploadedImages);
+      // M41: external embed only when no images are attached
+      const linkEmbed = uploadedImages.length === 0 ? composeLinkEmbed : null;
+      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed);
+
+      // M41: apply thread gate and quote gate records if non-default
+      const replyGateVal = composeReplyGate.value;
+      const quoteGateVal = composeQuoteGate.value;
+      if (result.uri && (replyGateVal !== 'everyone' || quoteGateVal === 'nobody')) {
+        const session  = AUTH.getSession();
+        const postRkey = result.uri.split('/').pop();
+        if (replyGateVal !== 'everyone') {
+          const allow = replyGateVal === 'mentioned'
+            ? [{ $type: 'app.bsky.feed.threadgate#mentionRule' }]
+            : [{ $type: 'app.bsky.feed.threadgate#followingRule' }];
+          await API.putRecord(session.did, 'app.bsky.feed.threadgate', postRkey, {
+            $type:     'app.bsky.feed.threadgate',
+            post:      result.uri,
+            allow,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        if (quoteGateVal === 'nobody') {
+          await API.putRecord(session.did, 'app.bsky.feed.postgate', postRkey, {
+            $type:                 'app.bsky.feed.postgate',
+            post:                  result.uri,
+            detachedEmbeddingUris: [],
+            embeddingRules:        [{ $type: 'app.bsky.feed.postgate#disableRule' }],
+            createdAt:             new Date().toISOString(),
+          });
+        }
+      }
+
       composeForm.reset();
       composeCount.textContent = '300';
       clearComposeImages();
+      clearLinkPreview();
+      composeGifPanel.hidden      = true;
+      composeSettingsPanel.hidden = true;
+      composeReplyGate.value = 'everyone';
+      composeQuoteGate.value = 'everyone';
       composeSuccess.hidden = false;
 
-      // Build a shareable bsky.app link from the AT URI
+      // M51: wire "View post →" button to open the new post in-app
       if (result.uri && ownProfile) {
-        const rkey = result.uri.split('/').pop();
         const postLink = $('compose-post-link');
-        postLink.href = `https://bsky.app/profile/${ownProfile.handle}/post/${rkey}`;
+        const newUri   = result.uri;
+        postLink.onclick = (e) => {
+          e.preventDefault();
+          composeSuccess.hidden = true;
+          openThread(newUri, result.cid || '', ownProfile.handle);
+        };
+        // Auto-dismiss after 4 seconds
+        const timer = setTimeout(() => { composeSuccess.hidden = true; }, 4000);
+        postLink.addEventListener('click', () => clearTimeout(timer), { once: true });
       }
     } catch (err) {
       showError(composeError, err.message || 'Failed to post.');
