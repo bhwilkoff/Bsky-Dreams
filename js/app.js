@@ -4018,28 +4018,30 @@
     }
   });
 
-  // GIF search via Klipy — API key is a path segment, not a query param
+  // GIF search via Klipy
+  // Response: { result: true, data: { data: [ { title, file: { xs: { jpg: { url } }, hd: { gif: { url } }, gif: { url } } } ] } }
   async function searchKlipyGifs(q) {
     const key = (localStorage.getItem(KLIPY_KEY_STORAGE) || DEFAULT_KLIPY_KEY).trim();
     composeGifGrid.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
     try {
-      const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(key)}/gifs/search?q=${encodeURIComponent(q)}&limit=16`);
+      const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(key)}/gifs/search?q=${encodeURIComponent(q)}&per_page=16`);
       const data = await res.json();
-      if (!data.results?.length) {
+      const items = data?.data?.data;
+      if (!items?.length) {
         composeGifGrid.innerHTML = '<p class="compose-gif-empty">No results. Try a different search.</p>';
         return;
       }
       composeGifGrid.innerHTML = '';
-      data.results.forEach((item) => {
-        const fmt = item.media_formats?.tinygif || item.media_formats?.gif;
-        if (!fmt) return;
-        const fullUrl = (item.media_formats?.gif || item.media_formats?.tinygif)?.url || fmt.url;
+      items.forEach((item) => {
+        const thumbUrl = item.file?.xs?.gif?.url || item.file?.xs?.jpg?.url;
+        const fullUrl  = item.file?.hd?.gif?.url || item.file?.gif?.url || thumbUrl;
+        if (!thumbUrl) return;
         const img = document.createElement('img');
-        img.src       = fmt.url;
-        img.alt       = item.content_description || '';
+        img.src       = thumbUrl;
+        img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => selectGif(fullUrl, item.content_description || ''));
+        img.addEventListener('click', () => selectGif(fullUrl, item.title || ''));
         composeGifGrid.appendChild(img);
       });
     } catch (err) {
