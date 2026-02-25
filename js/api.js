@@ -188,7 +188,7 @@ const API = (() => {
    * @param {Array}       images   - optional array of { blob, alt } objects
    *                                 where blob is the result of uploadBlob()
    */
-  async function createPost(text, replyRef = null, images = [], embedRef = null) {
+  async function createPost(text, replyRef = null, images = [], embedRef = null, externalEmbed = null) {
     const session = AUTH.getSession();
     if (!session) throw new Error('Not authenticated.');
 
@@ -208,6 +208,16 @@ const API = (() => {
       record.embed = {
         $type:  'app.bsky.embed.record',
         record: { uri: embedRef.uri, cid: embedRef.cid },
+      };
+    } else if (externalEmbed) {
+      // M41: external link card embed (app.bsky.embed.external)
+      record.embed = {
+        $type:    'app.bsky.embed.external',
+        external: {
+          uri:         externalEmbed.uri,
+          title:       externalEmbed.title       || '',
+          description: externalEmbed.description || '',
+        },
       };
     }
 

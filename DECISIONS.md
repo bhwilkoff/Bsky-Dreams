@@ -859,3 +859,116 @@
 - **Revisit if:** Memory pressure on low-end devices becomes an issue; at that point
   destroy the off-screen HLS instance after each transition.
 
+
+---
+
+## Sidebar Navigation Redesign — Always-Open Desktop, Drawer Mobile (M43)
+
+- **Date:** 2026-02-25
+- **Decision:** The existing `#channels-sidebar` element was expanded to contain all
+  navigation (logo, own-profile, nav items, channels, sign-out). On desktop (≥768px) the
+  sidebar is always visible (`left: 0`, no class required, no toggle). The top bar shrinks
+  to zero height on desktop. On mobile the sidebar is a slide-in drawer triggered by a
+  hamburger in the top bar.
+- **Rationale:** Moving all navigation into a persistent sidebar matches standard
+  desktop app patterns (Slack, Discord, Gmail). The always-open approach eliminates the
+  confusing `body.sidebar-open` toggle that M38 introduced, which required persisting
+  state in localStorage and caused content-layout jitter. Mobile drawer behavior is
+  preserved because full-width sidebars are impractical on small screens.
+- **Alternatives considered:** Keeping the horizontal top-bar nav on desktop (original
+  design — limited space for new entries); always-open with a toggle-collapse button
+  (adds persistent icon-only "mini mode" complexity not justified at current scale).
+- **Trade-offs:** The top bar disappears entirely on desktop, so breadcrumb context (e.g.,
+  current view name) is visible only via sidebar active state. Profile dropdown moves to
+  the sidebar own-profile button rather than a popover from the top bar. `closeSidebar`
+  no-ops on desktop — no accidental closure.
+- **Revisit if:** A breadcrumb or view-title bar becomes necessary for deeper navigation;
+  at that point restore a slim header bar above the content area.
+
+---
+
+## OG Link Preview via allorigins.win Proxy (M41)
+
+- **Date:** 2026-02-25
+- **Decision:** When a URL is pasted/typed in any compose surface, OpenGraph metadata is
+  fetched via `https://api.allorigins.win/get?url=…` (a free, open CORS proxy) and parsed
+  with the browser's DOMParser. Title and description are rendered as editable inputs in
+  a dismissible preview card. The embed is sent as `app.bsky.embed.external` without a
+  thumbnail blob (thumbnail URL is shown in the preview card for visual reference only).
+- **Rationale:** Direct `fetch()` of third-party pages is blocked by CORS in browsers.
+  `allorigins.win` is the lightest zero-cost proxy that returns the raw HTML response.
+  Skipping the thumbnail blob upload avoids an extra API call per post and keeps the
+  compose flow fast; the AT Protocol spec allows `app.bsky.embed.external` without a
+  `thumb` field.
+- **Alternatives considered:** Cloudflare Worker proxy (adds infrastructure); server-side
+  OG fetch (no server available — static Pages deployment); thumbnail blob upload (adds
+  latency and a second upload step).
+- **Trade-offs:** `allorigins.win` is a third-party service with no SLA. If it is down,
+  link preview silently fails (the compose flow is unaffected). The external embed appears
+  in BlueSky feeds without a thumbnail image, which is less visually rich than the native
+  client's cards.
+- **Revisit if:** `allorigins.win` becomes unreliable or rate-limits requests; at that
+  point self-host a Cloudflare Worker proxy.
+
+---
+
+## GIF Picker — Tenor API v2, User-Supplied Key (M41)
+
+- **Date:** 2026-02-25
+- **Decision:** GIF search uses the Tenor API v2 (`tenor.googleapis.com/v2/search`). The
+  API key is entered by the user via a `prompt()` dialog and stored in `localStorage`
+  under `bsky_tenor_api_key`. Selected GIFs are fetched as blobs and attached as
+  `app.bsky.embed.images` (single image, `image/gif` MIME).
+- **Rationale:** Tenor has a free tier (no cost for the user) but requires an API key.
+  Storing the key client-side in localStorage is consistent with the existing app-password
+  storage pattern. Attaching as an image blob follows the existing `uploadBlob` path with
+  no additional API surface needed.
+- **Alternatives considered:** Giphy (different API, similar key requirement); hardcoding
+  a shared API key (violates Tenor's TOS and creates rate-limit risk); no GIF support.
+- **Trade-offs:** Users must supply their own Tenor API key — an extra setup step.
+  GIF blobs can be large (multi-MB); the existing `API.uploadBlob` has no size guard
+  for GIFs (unlike images which go through `resizeImageFile`).
+- **Revisit if:** Tenor changes its free-tier terms or the API endpoint; or if a
+  bundled key arrangement becomes available.
+
+---
+
+## Thread Gate and Post Gate via putRecord (M41)
+
+- **Date:** 2026-02-25
+- **Decision:** After a successful `createPost`, if the user has selected non-default
+  reply or quote restrictions, `API.putRecord` is called to create:
+  - `app.bsky.feed.threadgate` (reply restriction) with `allow` array containing
+    `#mentionRule` or `#followingRule`
+  - `app.bsky.feed.postgate` (quote restriction) with `embeddingRules` containing
+    `#disableRule`
+  The rkey for both records matches the post's rkey (last segment of the AT URI).
+- **Rationale:** AT Protocol requires threadgate and postgate to be separate records
+  stored in the repo after the post itself is created. `putRecord` with the same rkey
+  as the post is the prescribed approach.
+- **Trade-offs:** Two extra API calls after each restricted post. If either call fails,
+  the post is published without the intended restriction. Silent failure is acceptable
+  given how rarely non-default restrictions are set; a retry UI would add disproportionate
+  complexity.
+- **Revisit if:** AT Protocol introduces a transactional post+gate creation endpoint.
+
+---
+
+## Scroll-Based Seen Marking — IntersectionObserver at -80% rootMargin (M44)
+
+- **Date:** 2026-02-25
+- **Decision:** A shared `IntersectionObserver` with `rootMargin: "0px 0px -80% 0px"`
+  and `threshold: 0` marks a post as "seen" when its top edge exits the top 20% of
+  the viewport (i.e., the post has been scrolled fully past). The observer is created
+  after each `renderFeedItems()` call and disconnected when leaving the feed view.
+- **Rationale:** The previous "mark all rendered posts as seen immediately" approach
+  was too aggressive — posts near the bottom of the first render batch were marked seen
+  before the user ever scrolled to them. The -80% rootMargin means only posts that have
+  been actively scrolled past are counted, matching the intuitive definition of "read."
+- **Alternatives considered:** -100% rootMargin (fires when card is completely above
+  viewport — equivalent but less forgiving on slow scrolls); explicit scroll-position
+  tracking per card (complex, not needed given IntersectionObserver's reliability).
+- **Trade-offs:** Very fast scrollers may skip posts without triggering the observer.
+  This is acceptable — rapid scroll-past is not reading.
+- **Revisit if:** Users report that seen-post filtering is too aggressive (posts being
+  filtered that they have not actually read).

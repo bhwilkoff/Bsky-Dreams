@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation, pause button, 2× speed hold, dual-feed queue, short-clip filter), home feed Discover tab with elastic overscroll fix, M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish), M20 (cross-device prefs sync via AT Protocol repo), M29 (GIF playback in timeline), M30 (quote post interface), M32 (iOS Safari PWA session persistence), M34 (PTR resistance + scroll-to-top button), M35 (inline reply from home feed), M40 (seen-posts deduplication).
+Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40–51 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation, pause button, 2× speed hold, dual-feed queue, short-clip filter), home feed Discover tab with elastic overscroll fix, M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish), M20 (cross-device prefs sync via AT Protocol repo), M29 (GIF playback in timeline), M30 (quote post interface), M32 (iOS Safari PWA session persistence), M34 (PTR resistance + scroll-to-top button), M35 (inline reply from home feed), M40 (seen-posts deduplication), M41 (link preview + GIF picker + post settings in compose), M43 (sidebar nav redesign), M44 (scroll-based read indicator), M45 (scroll-to-top left gutter), M46 (deep thread overflow fix), M47 (PTR on search + profile), M48 (load more on search), M49 (advanced search media filters), M50 (infinite scroll thread replies), M51 (post success banner with in-app link).
 
 ## Completed Milestones
 
@@ -335,6 +335,89 @@ Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40 are complete, plus
   results: "N posts filtered (show anyway)". Clicking sets `feedSeenBypass = true` and
   re-runs `loadFeed()` with the bypass active.
 - **Scope**: Applies to both Following and Discover modes on the home feed.
+
+### Milestone 41: Rich Media Cards + GIF Picker + Post Settings in Compose ✅
+- **Link preview**: Debounced URL detection (800ms) on compose textarea. OG metadata
+  fetched via `https://api.allorigins.win/get?url=…` CORS proxy. Preview card rendered
+  with editable title/description inputs and a remove button. Embed sent as
+  `app.bsky.embed.external` when no images are attached.
+- **GIF picker**: "GIF" toolbar button toggles a search panel. Tenor API v2 searched with
+  user-supplied API key (stored in `bsky_tenor_api_key` localStorage). Selecting a GIF
+  downloads the blob, creates a File, and adds it as a single image attachment.
+- **Post settings**: Gear icon toggles a settings panel with reply-gate and quote-gate
+  selects. On post success, `app.bsky.feed.threadgate` and/or `app.bsky.feed.postgate`
+  records are created via `API.putRecord` if non-default values are set.
+- **`API.createPost` extended**: Added `externalEmbed` 5th parameter for
+  `app.bsky.embed.external` support.
+
+### Milestone 43: Sidebar Navigation Redesign ✅
+- **Desktop**: `#channels-sidebar` is always open (`left: 0`, no toggle). Main content
+  offset via `padding-left: var(--sidebar-width)` on `.view` and `.top-bar-inner`. Top
+  bar collapses to `height: 0` on desktop — invisible. Hamburger and profile avatar
+  buttons hidden on desktop.
+- **Mobile**: Sidebar starts off-screen. Hamburger in top bar opens it as a slide-in
+  drawer. Overlay closes it.
+- **Sidebar contents**: Logo button (`nav-home-btn`) at top, own-profile section
+  (avatar + name + handle, populated after login, taps to open own profile), nav items
+  (Home, Post, TV, Notifications, Search), separator, channel links (no heading), sign-out
+  footer button.
+- **Active state**: `.sidebar-nav-item.active` has left accent border + accent background.
+  `showView()` continues to toggle `.active` on nav items by existing ID-based DOM refs.
+- **Own profile in sidebar**: `updateSidebarProfile(profile)` populates avatar, display
+  name, and handle. Called after login and reset on sign-out.
+- **Sign-out**: `#sidebar-sign-out-btn` shares the same sign-out flow as the top-bar
+  profile dropdown.
+
+### Milestone 44: Scroll-Based Read Indicator ✅
+- **IntersectionObserver**: One shared `feedSeenObserver` created after each
+  `renderFeedItems()` call. Threshold: 0, rootMargin: `0px 0px -80% 0px`. A post is
+  marked "seen" when it scrolls fully above the bottom 20% of the viewport.
+- **Marking**: `markFeedPostSeen(uri, likeCount, repostCount)` called on intersection;
+  `.post-seen` class added to card. Observer disconnected in `showView()` when leaving feed.
+- **Removed eager marking**: The previous call to `markFeedPostSeen` immediately after
+  `renderFeedItems()` was removed.
+- **Visual indicator**: `.post-card.post-seen { opacity: 0.82; border-left: 3px solid #aab0bc; }`.
+
+### Milestone 45: Scroll-to-Top Button Left-Side Repositioning ✅
+- Fixed position: `left: 8px` on mobile (avatar gutter). On desktop:
+  `left: calc(var(--sidebar-width, 240px) + 8px)` — flush with sidebar right edge.
+- 36×36px circular button with `backdrop-filter: blur(4px)`.
+- Removed the old centered positioning from M34.
+
+### Milestone 46: Deep Thread Overflow Fix ✅
+- Depth cutoff changed from `depth >= 7` to `depth >= 4` (renders max 5 nesting levels).
+- "Continue this thread →" buttons call `openThread` with `fromContinue: true`; a
+  breadcrumb "← Back to parent thread" button is prepended to the thread view.
+- CSS: `overflow-x: hidden` on `.reply-group` and `#view-thread .view-inner`;
+  `max-width: 100%` on `.reply-group-body > .post-card`.
+
+### Milestone 47: Pull-to-Refresh on Search + Profile Views ✅
+- `makePTR(scrollEl, triggerFn)` generic factory added. Applied to `#view-search`
+  (re-dispatches the search form submit) and `#view-profile` (calls `loadProfileFeed`).
+- Same threshold (96px, 400ms hold) as the home feed PTR.
+
+### Milestone 48: "Load More" on Search Results ✅
+- State variables: `searchCursor`, `lastSearchQuery`, `lastSearchSort`, `lastSearchOpts`.
+- `appendSearchLoadMore(type)` injects a "Load more" button at the bottom of search
+  results. Clicking appends the next page of post or actor results.
+- `renderPostFeed(posts, container, append)` extended with `append` parameter.
+
+### Milestone 49: Advanced Search Media Type Filters ✅
+- Media filter chips (Image / Video / Link) added to the advanced search panel.
+- `applyMediaFilter(posts)` client-side filter checks embed `$type` for `images`,
+  `video`, and `external` (link facets).
+- `searchMediaFilters = new Set()` state variable; chips toggle set membership.
+
+### Milestone 50: Infinite Scroll for Thread Replies ✅
+- Per-"show more replies" button `IntersectionObserver` (rootMargin: `0px 0px 200px 0px`).
+- When a button scrolls into the 200px pre-viewport zone, it auto-fires the reveal handler.
+- "Continue this thread →" buttons remain tap-only (not auto-triggered).
+
+### Milestone 51: Post Success Banner with In-App Link ✅
+- Compose success banner's "View post →" changed from an `<a href>` to a `<button>` that
+  calls `openThread()` in-app. Auto-dismisses after 4 seconds.
+- Quote post modal now shows a `#quote-success-banner` fixed banner after successful
+  submission with the same "View post →" in-app navigation.
 
 ---
 
@@ -1355,27 +1438,15 @@ None currently.
 
 Priority order for implementation (roughly):
 
-### High priority — UX fixes and polish (next up)
-1. **M46 — Deep thread overflow fix** (depth 5+ sub-thread navigation, overflow-x containment, report button clipping)
-2. **M43 — Sidebar navigation redesign** (persistent desktop sidebar, move all nav items, channels at bottom)
-3. **M45 — Scroll-to-top button repositioning** (left-side, avatar gutter, no text overlap)
-4. **M44 — Scroll-based read indicator** (IntersectionObserver, remove eager marking, visual .post-seen)
-5. **M51 — Bsky Dreams post links + quote success banner** (in-app links after post creation)
-
-### Medium priority — compose and posting improvements
-6. **M41 — Rich media cards + GIF picker + interaction settings in compose** (OG preview, editable card, Tenor GIF, thread/quote gate)
-7. **M42 — Video upload in all post types** (duration limit, compression, daily limit tracking)
-8. **M48 — "Load more" on search results** (cursor-based pagination, append in place)
-9. **M47 — Pull-to-refresh on search + profile views** (extend PTR to search and profile)
-10. **M50 — Infinite scroll thread replies** (IntersectionObserver on "show more replies")
+### Medium priority — posting improvements
+1. **M42 — Video upload in all post types** (duration limit, compression, daily limit tracking)
 
 ### Medium priority — search and discovery
-11. **M49 — Advanced search media filters** (has image / video / link chips, client-side filter)
-12. **M37 — Image browser / Gallery** (dedicated image feed, dedup, lightbox reuse)
-13. **M39 — Feed content filters** (keyword filter panel, ephemeral by default)
+2. **M37 — Image browser / Gallery** (dedicated image feed, dedup, lightbox reuse)
+3. **M39 — Feed content filters** (keyword filter panel, ephemeral by default)
 
 ### Larger features
-14. **M22 — Analytics Dashboard** (engagement over time, top posts, Chart.js)
-15. **M13 — Horizontal Event Timeline Scrubber**
-16. **M14 — Network Constellation Visualization**
-17. **M16 — Direct Messages** (chat.bsky.convo.* API)
+4. **M22 — Analytics Dashboard** (engagement over time, top posts, Chart.js)
+5. **M13 — Horizontal Event Timeline Scrubber**
+6. **M14 — Network Constellation Visualization**
+7. **M16 — Direct Messages** (chat.bsky.convo.* API)
