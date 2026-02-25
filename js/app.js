@@ -3983,11 +3983,9 @@
   const composeReplyGate     = $('compose-reply-gate');
   const composeQuoteGate     = $('compose-quote-gate');
   const composeLinkWrap      = $('compose-link-preview-wrap');
-  const composeKlipyKeyLink  = $('compose-klipy-key-link');
 
-  // Klipy GIF API — key in URL path: https://api.klipy.com/api/v1/{key}/gifs/search
-  const KLIPY_KEY_STORAGE  = 'bsky_klipy_api_key';
-  const DEFAULT_KLIPY_KEY  = 'g1rqkiKBPyzWEydf5K3syROxIGAFxusrnd6yD5Dj2TT8C8U3k9dtTD7qlClmHdNz';
+  // Klipy GIF API — key is a path segment: https://api.klipy.com/api/v1/{key}/gifs/search
+  const KLIPY_KEY = 'g1rqkiKBPyzWEydf5K3syROxIGAFxusrnd6yD5Dj2TT8C8U3k9dtTD7qlClmHdNz';
   let composeLinkEmbed    = null;  // { uri, title, description } or null
   let linkPreviewTimer    = null;
 
@@ -4005,26 +4003,12 @@
     composeGifPanel.hidden = true;
   });
 
-  // Klipy API key override (optional — default key is baked in)
-  composeKlipyKeyLink.addEventListener('click', () => {
-    const existing = localStorage.getItem(KLIPY_KEY_STORAGE) || '';
-    const key = prompt('Override the Klipy API key (leave blank to use the built-in key):', existing);
-    if (key !== null) {
-      if (key.trim()) {
-        localStorage.setItem(KLIPY_KEY_STORAGE, key.trim());
-      } else {
-        localStorage.removeItem(KLIPY_KEY_STORAGE);
-      }
-    }
-  });
-
   // GIF search via Klipy
-  // Response: { result: true, data: { data: [ { title, file: { xs: { jpg: { url } }, hd: { gif: { url } }, gif: { url } } } ] } }
+  // Response: { result: true, data: { data: [ { title, file: { xs, gif, hd } } ] } }
   async function searchKlipyGifs(q) {
-    const key = (localStorage.getItem(KLIPY_KEY_STORAGE) || DEFAULT_KLIPY_KEY).trim();
     composeGifGrid.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
     try {
-      const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(key)}/gifs/search?q=${encodeURIComponent(q)}&per_page=16`);
+      const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(KLIPY_KEY)}/gifs/search?q=${encodeURIComponent(q)}&per_page=16`);
       const data = await res.json();
       const items = data?.data?.data;
       if (!items?.length) {
@@ -4034,14 +4018,19 @@
       composeGifGrid.innerHTML = '';
       items.forEach((item) => {
         const thumbUrl = item.file?.xs?.gif?.url || item.file?.xs?.jpg?.url;
-        const fullUrl  = item.file?.hd?.gif?.url || item.file?.gif?.url || thumbUrl;
-        if (!thumbUrl) return;
+        // Build a priority list of GIF URLs: try smaller variants first to stay under 950 KB
+        const gifUrls = [
+          item.file?.hd?.gif?.url,
+          item.file?.gif?.url,
+          item.file?.xs?.gif?.url,
+        ].filter(Boolean);
+        if (!thumbUrl || !gifUrls.length) return;
         const img = document.createElement('img');
         img.src       = thumbUrl;
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => selectGif(fullUrl, item.title || ''));
+        img.addEventListener('click', () => selectGif(gifUrls, item.title || ''));
         composeGifGrid.appendChild(img);
       });
     } catch (err) {
@@ -4057,14 +4046,83 @@
     if (e.key === 'Enter') { e.preventDefault(); composeGifSearchBtn.click(); }
   });
 
-  async function selectGif(url, alt) {
+  /**
+   * Compress a GIF blob by drawing its first frame to a canvas and encoding as WebP.
+   * Iterates quality then dimensions, matching the pattern used by resizeImageFile.
+   */
+  function compressGifFrame(blob, maxBytes) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const canvas = document.createElement('canvas');
+        const ctx    = canvas.getContext('2d');
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+
+        const tryEncode = (width, height, quality) => {
+          canvas.width  = width;
+          canvas.height = height;
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((out) => {
+            if (!out) { reject(new Error('GIF compression failed.')); return; }
+            if (out.size <= maxBytes) {
+              resolve(new File([out], 'animation.webp', { type: 'image/webp' }));
+            } else if (quality > 0.35) {
+              tryEncode(width, height, quality - 0.1);
+            } else {
+              const scale = Math.sqrt(maxBytes / out.size) * 0.9;
+              tryEncode(
+                Math.max(64, Math.round(width  * scale)),
+                Math.max(64, Math.round(height * scale)),
+                0.80
+              );
+            }
+          }, 'image/webp', quality);
+        };
+
+        tryEncode(w, h, 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Could not decode GIF.')); };
+      img.src = objUrl;
+    });
+  }
+
+  /**
+   * Download the best-fitting GIF from a prioritised URL list (largest → smallest).
+   * Uses the first variant that fits under 950 KB; falls back to canvas compression.
+   * @param {string[]} gifUrls  Priority-ordered array of GIF URLs
+   * @param {string}   alt
+   */
+  async function selectGif(gifUrls, alt) {
+    const MAX_BYTES = 950_000;
     composeGifGrid.innerHTML = '<p class="compose-gif-empty">Loading…</p>';
     try {
-      const res  = await fetch(url);
-      const blob = await res.blob();
-      const file = new File([blob], 'animation.gif', { type: 'image/gif' });
+      let file = null;
+      let chosenUrl = gifUrls[0];
+
+      // Try each variant in order; stop at the first one that fits
+      for (const url of gifUrls) {
+        const res  = await fetch(url);
+        const blob = await res.blob();
+        if (blob.size <= MAX_BYTES) {
+          file      = new File([blob], 'animation.gif', { type: 'image/gif' });
+          chosenUrl = url;
+          break;
+        }
+        // Keep going; remember the last (smallest) blob for the compression fallback
+        if (url === gifUrls[gifUrls.length - 1]) {
+          // All variants too large — compress the smallest one as a static WebP frame
+          composeGifGrid.innerHTML = '<p class="compose-gif-empty">Compressing…</p>';
+          file      = await compressGifFrame(blob, MAX_BYTES);
+          chosenUrl = url;
+        }
+      }
+
       composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
-      composeImages = [{ file, previewUrl: url, alt }];
+      composeImages = [{ file, previewUrl: chosenUrl, alt }];
       refreshComposePreview();
       composeGifPanel.hidden = true;
       composeGifGrid.innerHTML = '<p class="compose-gif-empty">Type above to search for GIFs</p>';
