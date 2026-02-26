@@ -170,7 +170,6 @@
   const FEED_SEEN_MAX = 10000;           // increased cap for cross-interface coverage
   let feedSeenMap     = loadFeedSeen();  // Map<uri, { seenAt, likeCount, repostCount }>
   let feedSeenBypass  = false;           // session flag: "show anyway" escape hatch
-  let feedSeenSaveTimer = null;          // debounce handle for localStorage writes
 
   // M20 — Cross-device prefs sync
   const PREFS_COLLECTION = 'app.bsky-dreams.prefs';
@@ -577,12 +576,6 @@
     } catch {}
   }
 
-  /** Debounced save — batches writes from rapid back-to-back mark calls. */
-  function scheduleFeedSeenSave() {
-    clearTimeout(feedSeenSaveTimer);
-    feedSeenSaveTimer = setTimeout(saveFeedSeen, 500);
-  }
-
   /**
    * Mark a post as seen in the unified cross-interface registry.
    * Called immediately at render time in every interface (feed, gallery, TV).
@@ -594,7 +587,6 @@
       feedSeenMap.delete(feedSeenMap.keys().next().value); // evict oldest (FIFO)
     }
     feedSeenMap.set(uri, { seenAt: Date.now(), likeCount: likeCount || 0, repostCount: repostCount || 0 });
-    scheduleFeedSeenSave();
   }
 
   function isFeedPostSeen(uri, likeCount, repostCount) {
@@ -706,6 +698,13 @@
   }
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // Flush the in-memory seen-posts map to localStorage whenever the page is hidden
+  // (tab switch, app backgrounded, or mobile home-screen press). This ensures a
+  // hard refresh or cold launch always starts with a fully up-to-date seen list.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveFeedSeen();
+  });
 
   /* ================================================================
      ADULT CONTENT FILTER
@@ -1211,6 +1210,9 @@
         galleryFeed.appendChild(card);
         rendered++;
       }
+
+      // Persist seen-state synchronously after each gallery batch.
+      if (rendered > 0) saveFeedSeen();
 
       // If we rendered nothing but there's more to load, try another batch
       if (rendered === 0 && !galleryAllDone) {
@@ -2243,6 +2245,9 @@
 
     // M39: re-apply content filters after every feed render
     if (container === feedResults) applyFeedFilters();
+
+    // Persist seen-state synchronously so a hard refresh never loses the batch.
+    saveFeedSeen();
   }
 
   /* ================================================================
@@ -2691,9 +2696,9 @@
       tvSeen.add(uri);
       if (tvSeen.size > TV_SEEN_MAX) tvSeen.delete(tvSeen.values().next().value);
       saveSeen();
-      // Also mark in the unified cross-interface registry so this video is
-      // filtered from the home feed and gallery in future sessions.
+      // Also mark in the unified cross-interface registry and persist immediately.
       markFeedPostSeen(uri, post?.likeCount || 0, post?.repostCount || 0);
+      saveFeedSeen();
     }
 
     /* ---- Show overlay meta and start auto-hide timer (3 s) ---- */
@@ -3013,7 +3018,7 @@
       // Remove TV-watched URIs from the unified feed seen map so those
       // videos can resurface in the home feed and gallery after clearing history.
       tvSeen.forEach((uri) => feedSeenMap.delete(uri));
-      scheduleFeedSeenSave();
+      saveFeedSeen();
       tvSeen.clear();
       saveSeen();
       updateSeenBtn();
