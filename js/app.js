@@ -886,9 +886,10 @@
   // "View conversation" button — only visible when opened from gallery
   document.getElementById('lightbox-view-convo')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!lightboxPost) return;
+    const post = lightboxPost; // capture before closeLightbox() nulls it
+    if (!post) return;
     closeLightbox();
-    openThread(lightboxPost.uri, lightboxPost.cid || '', lightboxPost.author?.handle || '');
+    openThread(post.uri, post.cid || '', post.author?.handle || '');
   });
 
   imageLightbox.addEventListener('click', (e) => {
@@ -3271,7 +3272,8 @@
     quoteOpt.setAttribute('role', 'menuitem');
     quoteOpt.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Quote Post`;
 
-    repostOpt.addEventListener('click', async () => {
+    repostOpt.addEventListener('click', async (e) => {
+      e.stopPropagation(); // prevent click bubbling to card's openThread handler
       sheet.remove();
       btn.disabled = true;
       try {
@@ -3290,7 +3292,8 @@
       btn.disabled = false;
     });
 
-    quoteOpt.addEventListener('click', () => {
+    quoteOpt.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent click bubbling to card's openThread handler
       sheet.remove();
       openQuoteModal(post);
     });
