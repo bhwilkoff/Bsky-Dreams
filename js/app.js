@@ -727,11 +727,17 @@
   let lightboxImages  = [];   // [{ src, alt }, ...]
   let lightboxIndex   = 0;
   let lightboxTouchX  = null; // for swipe detection
+  let lightboxPost    = null; // post object when opened from gallery; null otherwise
 
-  function openLightbox(images, startIndex = 0) {
+  function openLightbox(images, startIndex = 0, post = null) {
     // Accept either an array of {src,alt} objects or a single {src,alt}
     lightboxImages = Array.isArray(images) ? images : [images];
     lightboxIndex  = Math.max(0, Math.min(startIndex, lightboxImages.length - 1));
+    lightboxPost   = post || null;
+
+    // Show/hide the "View conversation" button based on whether a post was provided
+    const viewConvoBtn = document.getElementById('lightbox-view-convo');
+    if (viewConvoBtn) viewConvoBtn.hidden = !lightboxPost;
 
     renderLightboxSlide();
     imageLightbox.hidden         = false;
@@ -777,12 +783,23 @@
     imageLightbox.hidden         = true;
     lightboxImg.src              = '';
     lightboxImages               = [];
+    lightboxPost                 = null;
     document.body.style.overflow = '';
+    const viewConvoBtn = document.getElementById('lightbox-view-convo');
+    if (viewConvoBtn) viewConvoBtn.hidden = true;
   }
 
   lightboxCloseBtn.addEventListener('click', closeLightbox);
   lightboxPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex - 1); });
   lightboxNextBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex + 1); });
+
+  // "View conversation" button — only visible when opened from gallery
+  document.getElementById('lightbox-view-convo')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!lightboxPost) return;
+    closeLightbox();
+    openThread(lightboxPost.uri, lightboxPost.cid || '', lightboxPost.author?.handle || '');
+  });
 
   imageLightbox.addEventListener('click', (e) => {
     if (e.target === imageLightbox) closeLightbox();
@@ -1023,7 +1040,7 @@
       img.style.cursor = 'pointer';
       img.addEventListener('click', (e) => {
         e.stopPropagation();
-        openLightbox(lightboxPayload, idx);
+        openLightbox(lightboxPayload, idx, post);
       });
     });
     card.appendChild(grid);
@@ -1052,16 +1069,45 @@
     meta.appendChild(handle);
     strip.appendChild(meta);
 
-    // Like / Repost counts
+    // Like / Repost / Reply counts
     const counts = document.createElement('div');
-    counts.className = 'gallery-counts';
+    counts.className = 'gallery-counts post-actions'; // post-actions enables repost action sheet positioning
 
     const likeCount   = post.likeCount   || 0;
     const repostCount = post.repostCount || 0;
+    const replyCount  = post.replyCount  || 0;
 
+    // Reply button — inline reply directly on the gallery card
+    const replyBtn = document.createElement('button');
+    replyBtn.className   = 'gallery-action-btn';
+    replyBtn.title       = 'Reply';
+    replyBtn.setAttribute('aria-label', 'Reply');
+    replyBtn.innerHTML   = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span class="action-count">${replyCount}</span>`;
+    replyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      expandInlineReply(card, post);
+    });
+
+    // Repost button — uses showRepostActionSheet (same as main feed)
+    const repostBtn = document.createElement('button');
+    repostBtn.className = 'gallery-action-btn repost-action-btn' + (post.viewer?.repost ? ' reposted' : '');
+    repostBtn.title     = 'Repost or Quote Post';
+    repostBtn.setAttribute('aria-label', 'Repost or Quote Post');
+    repostBtn.dataset.uri       = post.uri;
+    repostBtn.dataset.cid       = post.cid;
+    repostBtn.dataset.repostUri = post.viewer?.repost || '';
+    repostBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="${post.viewer?.repost ? 'var(--color-repost)' : 'currentColor'}" fill="none" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> <span class="action-count">${repostCount}</span>`;
+    repostBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showRepostActionSheet(repostBtn, post);
+    });
+
+    // Like button — optimistic update with rollback
     const likeBtn = document.createElement('button');
     likeBtn.className = 'gallery-action-btn';
-    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="${post.viewer?.like ? 'currentColor' : 'none'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> <span>${likeCount}</span>`;
+    likeBtn.title     = post.viewer?.like ? 'Unlike' : 'Like';
+    likeBtn.setAttribute('aria-label', post.viewer?.like ? 'Unlike' : 'Like');
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="${post.viewer?.like ? 'currentColor' : 'none'}" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> <span class="action-count">${likeCount}</span>`;
     likeBtn.dataset.uri    = post.uri;
     likeBtn.dataset.cid    = post.cid;
     likeBtn.dataset.likeUri = post.viewer?.like || '';
@@ -1072,7 +1118,7 @@
       btn.disabled = true;
       const liked      = !!btn.dataset.likeUri;
       const prevLikeUri = btn.dataset.likeUri;
-      const countSpan  = btn.querySelector('span');
+      const countSpan  = btn.querySelector('.action-count');
       const prevCount  = parseInt(countSpan.textContent, 10);
       // Optimistic
       if (liked) {
@@ -1100,50 +1146,9 @@
       }
     });
 
-    const repostBtn = document.createElement('button');
-    repostBtn.className = 'gallery-action-btn';
-    repostBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="${post.viewer?.repost ? 'var(--color-repost)' : 'currentColor'}" fill="none" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> <span>${repostCount}</span>`;
-    repostBtn.dataset.uri      = post.uri;
-    repostBtn.dataset.cid      = post.cid;
-    repostBtn.dataset.repostUri = post.viewer?.repost || '';
-    repostBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      if (btn.disabled) return;
-      btn.disabled = true;
-      const reposted     = !!btn.dataset.repostUri;
-      const prevRepostUri = btn.dataset.repostUri;
-      const countSpan    = btn.querySelector('span');
-      const prevCount    = parseInt(countSpan.textContent, 10);
-      const svg          = btn.querySelector('svg');
-      // Optimistic
-      if (reposted) {
-        btn.dataset.repostUri = '';
-        svg.setAttribute('stroke', 'currentColor');
-        countSpan.textContent = Math.max(0, prevCount - 1);
-      } else {
-        svg.setAttribute('stroke', 'var(--color-repost)');
-        countSpan.textContent = prevCount + 1;
-      }
-      try {
-        if (reposted) {
-          await API.unrepostPost(prevRepostUri);
-        } else {
-          const result = await API.repostPost(btn.dataset.uri, btn.dataset.cid);
-          btn.dataset.repostUri = result?.uri || '';
-        }
-      } catch {
-        // Rollback
-        btn.dataset.repostUri = prevRepostUri;
-        svg.setAttribute('stroke', reposted ? 'var(--color-repost)' : 'currentColor');
-        countSpan.textContent = prevCount;
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    counts.appendChild(likeBtn);
+    counts.appendChild(replyBtn);
     counts.appendChild(repostBtn);
+    counts.appendChild(likeBtn);
     strip.appendChild(counts);
     card.appendChild(strip);
 

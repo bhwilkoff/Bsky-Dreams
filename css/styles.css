@@ -2067,6 +2067,26 @@ a.post-timestamp:hover {
   transform: scale(1.3);
 }
 
+.lightbox-view-convo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--space-sm);
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.lightbox-view-convo-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
 /* Images in feed are clickable */
 .post-image-wrap {
   cursor: zoom-in;
