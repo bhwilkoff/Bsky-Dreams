@@ -159,11 +159,15 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 - **Like button rollback**: optimistic UI update; full rollback on API error; button disabled during in-flight request
 - **PTR indicator clipping**: `overflow: hidden` on `#view-feed .view-inner`
 
-### M40: Seen-Posts Deduplication ✅
-- `bsky_feed_seen` in localStorage: `Map<uri, { seenAt, likeCount, repostCount }>`, 5,000-entry FIFO cap
+### M40: Seen-Posts Deduplication ✅ (redesigned — unified cross-interface)
+- `bsky_feed_seen` in localStorage: `Map<uri, { seenAt, likeCount, repostCount }>`, 10,000-entry FIFO cap
+- **Posts are marked seen immediately at render time** (not on scroll) in ALL interfaces: home feed, gallery, and TV
+- Gallery and TV both write to and read from the same `feedSeenMap` — no interface isolation
+- TV "Clear history" also removes those URIs from `feedSeenMap` so they resurface everywhere
 - Posts filtered before render unless engagement grew by ≥ 50 interactions ("gone viral" threshold)
-- "N posts filtered (show anyway)" hint bar; bypass flag is session-only
-- Applies to both Following and Discover modes
+- "N posts already seen across all interfaces — show anyway" hint bar; bypass flag is session-only
+- M44 IntersectionObserver retained for visual `.post-seen` dimming only — dedup marking decoupled from scroll
+- Applies to home feed (Following + Discover), Gallery, and TV
 
 ### M41: Rich Compose — Link Preview + GIF Picker + Post Settings ✅
 - **Link preview**: debounced URL detection (800ms); OG metadata via `allorigins.win` CORS proxy; editable title/description inputs; `_thumbUrl` stored and uploaded as blob at submit; "Change" button to swap thumbnail
