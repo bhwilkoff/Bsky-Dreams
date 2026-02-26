@@ -1,0 +1,31 @@
+{
+  "politics": [
+    "congress", "senate", "parliament", "republican", "democrat", "gop",
+    "president", "election", "vote", "ballot", "political", "politician",
+    "legislation", "bill passed", "executive order", "supreme court",
+    "white house", "capitol", "liberal", "conservative", "left wing",
+    "right wing", "progressive", "maga", "trump", "biden", "harris",
+    "pelosi", "mcconnell", "policy", "filibuster", "gerrymandering",
+    "redistricting", "midterms", "primary election"
+  ],
+  "sports": [
+    "nfl", "nba", "mlb", "nhl", "mls", "ncaa", "football", "basketball",
+    "baseball", "hockey", "soccer", "tennis", "golf", "formula 1", "f1",
+    "olympics", "world cup", "super bowl", "championship", "playoffs",
+    "draft pick", "trade deadline", "roster", "quarterback", "touchdown",
+    "home run", "slam dunk", "hat trick", "goal line"
+  ],
+  "news": [
+    "breaking news", "just in", "developing story", "press conference",
+    "official statement", "government report", "war", "conflict",
+    "sanctions", "earthquake", "hurricane", "flooding", "wildfire",
+    "mass shooting", "terrorist", "protest", "riot", "strike",
+    "recession", "inflation", "interest rate", "gdp", "stock market crash"
+  ],
+  "entertainment": [
+    "oscars", "grammy", "emmys", "golden globe", "box office", "new album",
+    "music video", "tour dates", "celebrity", "reality tv", "streaming",
+    "netflix", "disney plus", "hbo", "marvel", "dc comics", "sequel",
+    "trailer released", "red carpet", "award show", "chart topping"
+  ]
+}

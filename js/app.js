@@ -159,6 +159,12 @@
   let lastSearchOpts     = {};   // M48: last advanced opts for "load more"
   let searchMediaFilters = new Set(); // M49: active media-type filter keys
 
+  // M42 — Video upload state
+  const VIDEO_DAILY_KEY   = 'bsky_video_daily';
+  const DAILY_VIDEO_LIMIT = 25;
+  let composeVideo = null; // { file, objectUrl, duration, aspectRatio } | null
+  let quoteVideo   = null; // same shape
+
   // M40 — Seen-posts deduplication
   const FEED_SEEN_KEY = 'bsky_feed_seen';
   const FEED_SEEN_MAX = 5000;
@@ -793,6 +799,460 @@
   }, { passive: true });
 
   /* ================================================================
+     M39 — FEED CONTENT FILTERS
+  ================================================================ */
+  const FEED_FILTERS_KEY = 'bsky_feed_filters';
+
+  // Filter state
+  let feedFilterWords  = {};          // loaded from filter-words.json
+  let activeFilterCats = new Set();   // 'politics' | 'sports' | 'news' | 'entertainment'
+  let customFilterKws  = [];          // user-supplied keywords
+  let feedFilterCount  = 0;           // posts hidden this session
+
+  // Load filter-words.json once
+  fetch('js/filter-words.json')
+    .then((r) => r.json())
+    .then((data) => { feedFilterWords = data; })
+    .catch(() => {}); // non-fatal
+
+  // Load remembered filters from localStorage
+  function loadFeedFilters() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(FEED_FILTERS_KEY) || 'null');
+      if (!stored) return;
+      activeFilterCats = new Set(stored.categories || []);
+      customFilterKws  = stored.custom || [];
+      // Sync checkboxes
+      ['politics', 'sports', 'news', 'entertainment'].forEach((cat) => {
+        const el = $(`filter-${cat}`);
+        if (el) el.checked = activeFilterCats.has(cat);
+      });
+      const customEl = $('feed-filter-custom');
+      if (customEl) customEl.value = customFilterKws.join(', ');
+    } catch {}
+  }
+
+  function saveFeedFilters() {
+    const rememberEl = $('feed-filter-remember');
+    if (!rememberEl?.checked) return;
+    localStorage.setItem(FEED_FILTERS_KEY, JSON.stringify({
+      categories: [...activeFilterCats],
+      custom:     customFilterKws,
+    }));
+  }
+
+  /**
+   * Apply filters to all rendered feed posts. Call after filter state changes.
+   */
+  function applyFeedFilters() {
+    const cards = feedResults?.querySelectorAll('.post-card') || [];
+    let hidden = 0;
+    cards.forEach((card) => {
+      const postText = (card.querySelector('.post-text')?.textContent || '').toLowerCase();
+      const matchesCat = [...activeFilterCats].some((cat) => {
+        const words = feedFilterWords[cat] || [];
+        return words.some((w) => postText.includes(w.toLowerCase()));
+      });
+      const matchesCustom = customFilterKws.some((kw) => kw && postText.includes(kw.toLowerCase()));
+      const shouldHide = matchesCat || matchesCustom;
+      card.style.display = shouldHide ? 'none' : '';
+      if (shouldHide) hidden++;
+    });
+    feedFilterCount = hidden;
+    updateFeedFilterCount();
+  }
+
+  function updateFeedFilterCount() {
+    const countEl = $('feed-filter-count');
+    if (!countEl) return;
+    if (feedFilterCount > 0) {
+      countEl.textContent = `${feedFilterCount} post${feedFilterCount !== 1 ? 's' : ''} filtered`;
+      countEl.hidden = false;
+    } else {
+      countEl.hidden = true;
+    }
+  }
+
+  // Wire up filter panel toggle
+  const feedFilterToggle = $('feed-filter-toggle');
+  const feedFilterPanel  = $('feed-filter-panel');
+
+  if (feedFilterToggle && feedFilterPanel) {
+    feedFilterToggle.addEventListener('click', () => {
+      const willOpen = feedFilterPanel.hidden;
+      feedFilterPanel.hidden = !willOpen;
+      feedFilterToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      feedFilterToggle.textContent = willOpen ? 'Filters ▴' : 'Filters ▾';
+    });
+  }
+
+  // Wire up category checkboxes
+  ['politics', 'sports', 'news', 'entertainment'].forEach((cat) => {
+    const el = $(`filter-${cat}`);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (el.checked) activeFilterCats.add(cat);
+      else activeFilterCats.delete(cat);
+      applyFeedFilters();
+      saveFeedFilters();
+    });
+  });
+
+  // Wire up custom keywords input (debounced)
+  const feedFilterCustomEl = $('feed-filter-custom');
+  if (feedFilterCustomEl) {
+    let customTimer = null;
+    feedFilterCustomEl.addEventListener('input', () => {
+      clearTimeout(customTimer);
+      customTimer = setTimeout(() => {
+        customFilterKws = feedFilterCustomEl.value
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        applyFeedFilters();
+        saveFeedFilters();
+      }, 400);
+    });
+  }
+
+  // Wire up "Remember my filters" checkbox
+  const feedFilterRemember = $('feed-filter-remember');
+  if (feedFilterRemember) {
+    feedFilterRemember.addEventListener('change', () => {
+      if (!feedFilterRemember.checked) {
+        localStorage.removeItem(FEED_FILTERS_KEY);
+      } else {
+        saveFeedFilters();
+      }
+    });
+  }
+
+  /* ================================================================
+     M37 — IMAGE GALLERY VIEW
+  ================================================================ */
+  const navGalleryBtn  = $('nav-gallery-btn');
+  const viewGallery    = $('view-gallery');
+  const galleryFeed    = $('gallery-feed');
+  const gallerySentinel = $('gallery-load-sentinel');
+  const galleryLoading = $('gallery-loading');
+  const galleryEmpty   = $('gallery-empty');
+
+  let galleryCursorTimeline = null;
+  let galleryCursorDiscover = null;
+  let galleryLoading_flag   = false;
+  let galleryAllDone        = false;
+  let gallerySeenUris       = new Set(); // dedup within session
+  let gallerySeenCids       = new Set(); // dedup by blob CID
+  let galleryScrollObserver = null;
+
+  /**
+   * Returns true when a post has at least one image embed
+   * (images or recordWithMedia with image media).
+   */
+  function postHasImages(post) {
+    const embed = post.embed || {};
+    const type  = embed.$type || '';
+    if (type === 'app.bsky.embed.images#view') return true;
+    if (type === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      return (media.$type || '') === 'app.bsky.embed.images#view';
+    }
+    return false;
+  }
+
+  /**
+   * Extract image view objects from a post embed.
+   * @returns {Array} array of { thumb, fullsize, alt } objects
+   */
+  function extractImages(post) {
+    const embed = post.embed || {};
+    const type  = embed.$type || '';
+    if (type === 'app.bsky.embed.images#view') {
+      return embed.images || [];
+    }
+    if (type === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      if ((media.$type || '') === 'app.bsky.embed.images#view') {
+        return media.images || [];
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Build a single gallery card for a post with images.
+   */
+  function buildGalleryCard(post) {
+    const author = post.author || {};
+    const images = extractImages(post);
+    if (!images.length) return null;
+
+    // Check for duplicate blob CIDs
+    const cids = images.map((img) => {
+      const src = img.fullsize || img.thumb || '';
+      // CID appears in AT Protocol CDN URLs as a path segment
+      const match = src.match(/\/([A-Za-z0-9]{46,})\//);
+      return match ? match[1] : src;
+    });
+    const allSeen = cids.every((c) => gallerySeenCids.has(c));
+    if (allSeen) return null;
+    cids.forEach((c) => gallerySeenCids.add(c));
+
+    const card = document.createElement('div');
+    card.className = 'gallery-card';
+    card.dataset.uri = post.uri;
+
+    // Image grid — reuse buildImageGrid for consistent sizing
+    const lightboxPayload = images.map((img) => ({
+      src: img.fullsize || img.thumb || '',
+      alt: img.alt || '',
+    }));
+    const grid = buildImageGrid(images);
+    // Make each image open lightbox at the right index
+    grid.querySelectorAll('img').forEach((img, idx) => {
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLightbox(lightboxPayload, idx);
+      });
+    });
+    card.appendChild(grid);
+
+    // Author strip
+    const strip = document.createElement('div');
+    strip.className = 'gallery-author-strip';
+
+    const avatar = document.createElement('img');
+    avatar.src       = author.avatar || '';
+    avatar.alt       = '';
+    avatar.className = 'gallery-author-avatar';
+    avatar.loading   = 'lazy';
+    strip.appendChild(avatar);
+
+    const meta = document.createElement('div');
+    meta.className = 'gallery-author-meta';
+    const nameBtn = document.createElement('button');
+    nameBtn.className   = 'gallery-author-name';
+    nameBtn.textContent = author.displayName || author.handle || '';
+    nameBtn.addEventListener('click', (e) => { e.stopPropagation(); openProfile(author.handle); });
+    const handle = document.createElement('span');
+    handle.className   = 'gallery-author-handle';
+    handle.textContent = `@${author.handle || ''}`;
+    meta.appendChild(nameBtn);
+    meta.appendChild(handle);
+    strip.appendChild(meta);
+
+    // Like / Repost counts
+    const counts = document.createElement('div');
+    counts.className = 'gallery-counts';
+
+    const likeCount   = post.likeCount   || 0;
+    const repostCount = post.repostCount || 0;
+
+    const likeBtn = document.createElement('button');
+    likeBtn.className = 'gallery-action-btn';
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="${post.viewer?.like ? 'currentColor' : 'none'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> <span>${likeCount}</span>`;
+    likeBtn.dataset.uri    = post.uri;
+    likeBtn.dataset.cid    = post.cid;
+    likeBtn.dataset.likeUri = post.viewer?.like || '';
+    likeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const liked      = !!btn.dataset.likeUri;
+      const prevLikeUri = btn.dataset.likeUri;
+      const countSpan  = btn.querySelector('span');
+      const prevCount  = parseInt(countSpan.textContent, 10);
+      // Optimistic
+      if (liked) {
+        btn.dataset.likeUri = '';
+        btn.querySelector('svg').setAttribute('fill', 'none');
+        countSpan.textContent = Math.max(0, prevCount - 1);
+      } else {
+        btn.querySelector('svg').setAttribute('fill', 'currentColor');
+        countSpan.textContent = prevCount + 1;
+      }
+      try {
+        if (liked) {
+          await API.unlikePost(prevLikeUri);
+        } else {
+          const result = await API.likePost(btn.dataset.uri, btn.dataset.cid);
+          btn.dataset.likeUri = result?.uri || '';
+        }
+      } catch {
+        // Rollback
+        btn.dataset.likeUri = prevLikeUri;
+        btn.querySelector('svg').setAttribute('fill', liked ? 'currentColor' : 'none');
+        countSpan.textContent = prevCount;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    const repostBtn = document.createElement('button');
+    repostBtn.className = 'gallery-action-btn';
+    repostBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="${post.viewer?.repost ? 'var(--color-repost)' : 'currentColor'}" fill="none" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> <span>${repostCount}</span>`;
+    repostBtn.dataset.uri      = post.uri;
+    repostBtn.dataset.cid      = post.cid;
+    repostBtn.dataset.repostUri = post.viewer?.repost || '';
+    repostBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const reposted     = !!btn.dataset.repostUri;
+      const prevRepostUri = btn.dataset.repostUri;
+      const countSpan    = btn.querySelector('span');
+      const prevCount    = parseInt(countSpan.textContent, 10);
+      const svg          = btn.querySelector('svg');
+      // Optimistic
+      if (reposted) {
+        btn.dataset.repostUri = '';
+        svg.setAttribute('stroke', 'currentColor');
+        countSpan.textContent = Math.max(0, prevCount - 1);
+      } else {
+        svg.setAttribute('stroke', 'var(--color-repost)');
+        countSpan.textContent = prevCount + 1;
+      }
+      try {
+        if (reposted) {
+          await API.unrepostPost(prevRepostUri);
+        } else {
+          const result = await API.repostPost(btn.dataset.uri, btn.dataset.cid);
+          btn.dataset.repostUri = result?.uri || '';
+        }
+      } catch {
+        // Rollback
+        btn.dataset.repostUri = prevRepostUri;
+        svg.setAttribute('stroke', reposted ? 'var(--color-repost)' : 'currentColor');
+        countSpan.textContent = prevCount;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    counts.appendChild(likeBtn);
+    counts.appendChild(repostBtn);
+    strip.appendChild(counts);
+    card.appendChild(strip);
+
+    // Clicking the card (not on an image or button) opens the thread
+    card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
+
+    return card;
+  }
+
+  /**
+   * Fetch one batch of images from both timeline and discover feeds,
+   * filter and render them.
+   */
+  async function loadGalleryBatch() {
+    if (galleryLoading_flag || galleryAllDone) return;
+    galleryLoading_flag = true;
+    galleryLoading.hidden = false;
+
+    try {
+      const [timelineRes, discoverRes] = await Promise.allSettled([
+        galleryCursorTimeline !== 'done' ? API.getTimeline(30, galleryCursorTimeline || undefined) : Promise.resolve(null),
+        galleryCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 30, galleryCursorDiscover || undefined) : Promise.resolve(null),
+      ]);
+
+      const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
+      const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
+
+      // Update cursors
+      if (timelineData) {
+        galleryCursorTimeline = timelineData.cursor || 'done';
+      } else {
+        galleryCursorTimeline = 'done';
+      }
+      if (discoverData) {
+        galleryCursorDiscover = discoverData.cursor || 'done';
+      } else {
+        galleryCursorDiscover = 'done';
+      }
+
+      if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done') {
+        galleryAllDone = true;
+      }
+
+      // Merge, dedup by URI, extract image posts
+      const allItems = [
+        ...(timelineData?.feed || []),
+        ...(discoverData?.feed || []),
+      ];
+
+      let rendered = 0;
+      for (const item of allItems) {
+        const post = item.post;
+        if (!post?.uri) continue;
+        if (gallerySeenUris.has(post.uri)) continue;
+        gallerySeenUris.add(post.uri);
+        // Skip posts already in the seen-posts dedup map (M40), unless bypass active
+        if (!feedSeenBypass && feedSeenMap.has(post.uri)) continue;
+        if (!postHasImages(post)) continue;
+        const card = buildGalleryCard(post);
+        if (!card) continue;
+        galleryFeed.appendChild(card);
+        rendered++;
+      }
+
+      // If we rendered nothing but there's more to load, try another batch
+      if (rendered === 0 && !galleryAllDone) {
+        galleryLoading_flag = false;
+        galleryLoading.hidden = true;
+        await loadGalleryBatch();
+        return;
+      }
+
+      galleryEmpty.hidden = galleryFeed.children.length > 0;
+    } catch (err) {
+      // silently log — gallery is non-critical
+      console.warn('Gallery load error:', err);
+    } finally {
+      galleryLoading_flag = false;
+      galleryLoading.hidden = true;
+    }
+  }
+
+  /** Reset gallery state and load fresh. */
+  function loadGallery() {
+    galleryCursorTimeline = null;
+    galleryCursorDiscover = null;
+    galleryLoading_flag   = false;
+    galleryAllDone        = false;
+    gallerySeenUris       = new Set();
+    gallerySeenCids       = new Set();
+    galleryFeed.innerHTML = '';
+    galleryEmpty.hidden   = true;
+    galleryLoading.hidden = true;
+    setupGalleryScrollObserver();
+    loadGalleryBatch();
+  }
+
+  /** Set up IntersectionObserver on the sentinel to trigger infinite scroll. */
+  function setupGalleryScrollObserver() {
+    if (galleryScrollObserver) galleryScrollObserver.disconnect();
+    galleryScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !galleryLoading_flag) {
+          loadGalleryBatch();
+        }
+      },
+      { rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (gallerySentinel) galleryScrollObserver.observe(gallerySentinel);
+  }
+
+  if (navGalleryBtn) {
+    navGalleryBtn.addEventListener('click', () => {
+      showView('gallery');
+      loadGallery();
+    });
+  }
+
+  /* ================================================================
      INIT — check stored session on page load
   ================================================================ */
   async function init() {
@@ -850,6 +1310,7 @@
     renderChannelsSidebar();
     checkChannelUnreads();    // async background unread check
     loadPrefsFromCloud();     // M20: merge cloud prefs with localStorage
+    loadFeedFilters();        // M39: restore persisted filter settings
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -869,6 +1330,9 @@
     } else if (urlView === 'feed') {
       showView('feed', true);
       loadFeed();
+    } else if (urlView === 'gallery') {
+      showView('gallery', true);
+      loadGallery();
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -916,6 +1380,7 @@
       profile:       viewProfile,
       notifications: viewNotifications,
       tv:            viewTv,
+      gallery:       viewGallery,
     };
     const navBtns = {
       feed:          navFeedBtn,
@@ -923,6 +1388,7 @@
       compose:       navComposeBtn,
       notifications: navNotifBtn,
       tv:            navTvBtn,
+      gallery:       navGalleryBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -950,6 +1416,7 @@
       hideError(composeError);
       composeSuccess.hidden = true;
       clearComposeImages();
+      clearComposeVideo();
       // M41: clear link preview and toggle panels
       const lpWrap = $('compose-link-preview-wrap');
       if (lpWrap) lpWrap.innerHTML = '';
@@ -980,6 +1447,8 @@
         url = '?view=compose';
       } else if (name === 'tv') {
         url = '?view=tv';
+      } else if (name === 'gallery') {
+        url = '?view=gallery';
       }
       history.pushState(state, '', url);
     }
@@ -993,6 +1462,12 @@
     if (name !== 'feed' && feedSeenObserver) {
       feedSeenObserver.disconnect();
       feedSeenObserver = null;
+    }
+
+    // M37: disconnect gallery scroll observer when leaving gallery view
+    if (name !== 'gallery' && galleryScrollObserver) {
+      galleryScrollObserver.disconnect();
+      galleryScrollObserver = null;
     }
 
     // Hide scroll-to-top button on view switch (M34)
@@ -1755,6 +2230,9 @@
       wrapper.appendChild(card);
       container.appendChild(wrapper);
     });
+
+    // M39: re-apply content filters after every feed render
+    if (container === feedResults) applyFeedFilters();
   }
 
   /* ================================================================
@@ -2716,6 +3194,7 @@
     quoteModalSubmit.textContent = 'Quote Post';
     // Clear any leftover compose state from a previous quote
     clearQuoteImages();
+    clearQuoteVideo();
     clearQuoteLinkPreview();
     clearTimeout(quoteLinkTimer);
     quoteGifPanel.hidden = true;
@@ -2838,6 +3317,7 @@
 
   function quoteSelectGif(gifUrl, thumbUrl, alt) {
     clearQuoteImages();
+    clearQuoteVideo();
     quoteLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
     quoteLinkWrap.innerHTML = `
       <div class="compose-link-preview compose-gif-preview">
@@ -2901,6 +3381,7 @@
     quoteModal.hidden = true;
     quoteModalPostRef = null;
     clearQuoteImages();
+    clearQuoteVideo();
     clearQuoteLinkPreview();
     clearTimeout(quoteLinkTimer);
     quoteGifPanel.hidden = true;
@@ -2929,7 +3410,7 @@
   quoteModalSubmit.addEventListener('click', async () => {
     if (!quoteModalPostRef) return;
     const text = quoteModalText.value.trim();
-    if (!text && quoteImages.length === 0) { quoteModalText.focus(); return; }
+    if (!text && quoteImages.length === 0 && !quoteVideo) { quoteModalText.focus(); return; }
 
     quoteModalSubmit.disabled    = true;
     quoteModalSubmit.textContent = 'Posting…';
@@ -2948,8 +3429,23 @@
         );
       }
 
-      // External embed only when no images are attached
-      const linkEmbed = uploadedImages.length === 0 ? quoteLinkEmbed : null;
+      // M42: upload video if attached (mutually exclusive with images)
+      let videoEmbed = null;
+      if (quoteVideo && uploadedImages.length === 0) {
+        quoteModalSubmit.textContent = 'Uploading video…';
+        const altText = $('quote-video-alt')?.value?.trim() || '';
+        const videoBlobRef = await API.uploadBlob(quoteVideo.file, quoteVideo.file.type || 'video/mp4');
+        videoEmbed = {
+          $type: 'app.bsky.embed.video',
+          video: videoBlobRef,
+          ...(altText ? { alt: altText } : {}),
+          ...(quoteVideo.aspectRatio ? { aspectRatio: quoteVideo.aspectRatio } : {}),
+        };
+        incrementVideoDailyCount();
+      }
+
+      // External embed only when no images or video are attached
+      const linkEmbed = uploadedImages.length === 0 && !videoEmbed ? quoteLinkEmbed : null;
 
       // Upload thumbnail for GIF / link previews
       if (linkEmbed?._thumbUrl) {
@@ -2962,8 +3458,9 @@
         } catch { /* non-fatal */ }
       }
 
+      quoteModalSubmit.textContent = 'Posting…';
       const embedRef = { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid };
-      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed);
+      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed, videoEmbed);
 
       // Apply gate records if non-default
       const replyGateVal = quoteReplyGate?.value || 'everyone';
@@ -4096,6 +4593,210 @@
     });
   }
 
+  /* ================================================================
+     M42 — VIDEO UPLOAD HELPERS
+  ================================================================ */
+
+  function getVideoDailyCount() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(VIDEO_DAILY_KEY) || 'null');
+      const today  = new Date().toISOString().slice(0, 10);
+      if (stored?.date === today) return stored.count || 0;
+    } catch {}
+    return 0;
+  }
+
+  function incrementVideoDailyCount() {
+    const today = new Date().toISOString().slice(0, 10);
+    const count = getVideoDailyCount() + 1;
+    localStorage.setItem(VIDEO_DAILY_KEY, JSON.stringify({ date: today, count }));
+  }
+
+  /** Clear compose video state and hide the preview element. */
+  function clearComposeVideo() {
+    if (composeVideo?.objectUrl) URL.revokeObjectURL(composeVideo.objectUrl);
+    composeVideo = null;
+    const wrap = $('compose-video-preview');
+    if (wrap) wrap.hidden = true;
+    const player = $('compose-video-player');
+    if (player) { player.pause(); player.src = ''; }
+    const videoBtnEl = $('compose-video-btn');
+    if (videoBtnEl) videoBtnEl.disabled = false;
+  }
+
+  /** Render the compose video preview given current composeVideo state. */
+  function renderComposeVideoPreview() {
+    const wrap   = $('compose-video-preview');
+    const player = $('compose-video-player');
+    const name   = $('compose-video-name');
+    const dur    = $('compose-video-dur');
+    const removeBtn = $('compose-video-remove');
+    if (!wrap || !player) return;
+
+    if (!composeVideo) { wrap.hidden = true; return; }
+
+    player.src  = composeVideo.objectUrl;
+    player.load();
+    if (name) name.textContent = composeVideo.file.name;
+    if (dur)  dur.textContent  = composeVideo.duration != null
+      ? `${Math.floor(composeVideo.duration)}s`
+      : '';
+    wrap.hidden = false;
+
+    if (removeBtn) {
+      removeBtn.onclick = () => {
+        clearComposeVideo();
+        composeImgBtn.disabled = false;
+      };
+    }
+  }
+
+  /** Clear quote modal video state and hide the preview element. */
+  function clearQuoteVideo() {
+    if (quoteVideo?.objectUrl) URL.revokeObjectURL(quoteVideo.objectUrl);
+    quoteVideo = null;
+    const wrap = $('quote-video-preview');
+    if (wrap) wrap.hidden = true;
+    const player = $('quote-video-player');
+    if (player) { player.pause(); player.src = ''; }
+    const videoBtnEl = $('quote-video-btn');
+    if (videoBtnEl) videoBtnEl.disabled = false;
+  }
+
+  /** Render the quote video preview given current quoteVideo state. */
+  function renderQuoteVideoPreview() {
+    const wrap   = $('quote-video-preview');
+    const player = $('quote-video-player');
+    const name   = $('quote-video-name');
+    const dur    = $('quote-video-dur');
+    const removeBtn = $('quote-video-remove');
+    if (!wrap || !player) return;
+
+    if (!quoteVideo) { wrap.hidden = true; return; }
+
+    player.src  = quoteVideo.objectUrl;
+    player.load();
+    if (name) name.textContent = quoteVideo.file.name;
+    if (dur)  dur.textContent  = quoteVideo.duration != null
+      ? `${Math.floor(quoteVideo.duration)}s`
+      : '';
+    wrap.hidden = false;
+
+    if (removeBtn) {
+      removeBtn.onclick = () => clearQuoteVideo();
+    }
+  }
+
+  /**
+   * Validate a chosen video file and populate the given state object.
+   * Returns an error string on failure, or null on success.
+   * @param {File} file
+   * @returns {Promise<{video: object, error: string|null}>}
+   */
+  async function validateAndLoadVideo(file) {
+    const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+    const MAX_SECS  = 180;              // 3 minutes
+
+    if (!file.type.startsWith('video/')) {
+      return { video: null, error: 'Please choose a video file.' };
+    }
+    if (file.size > MAX_BYTES) {
+      return { video: null, error: `Video is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 50 MB.` };
+    }
+    if (getVideoDailyCount() >= DAILY_VIDEO_LIMIT) {
+      return { video: null, error: `You have reached the daily video limit of ${DAILY_VIDEO_LIMIT} uploads. Try again tomorrow.` };
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const duration  = await new Promise((resolve) => {
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      vid.onloadedmetadata = () => {
+        URL.revokeObjectURL(vid.src);
+        resolve(vid.duration);
+      };
+      vid.onerror = () => { URL.revokeObjectURL(vid.src); resolve(null); };
+      vid.src = objectUrl;
+    });
+
+    if (duration != null && duration > MAX_SECS) {
+      URL.revokeObjectURL(objectUrl);
+      return { video: null, error: `Video is too long (${Math.floor(duration)}s). Maximum is 3 minutes (180s).` };
+    }
+
+    const aspectRatio = await new Promise((resolve) => {
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      vid.onloadedmetadata = () => {
+        const w = vid.videoWidth;
+        const h = vid.videoHeight;
+        resolve(w && h ? { width: w, height: h } : null);
+      };
+      vid.onerror = () => resolve(null);
+      vid.src = URL.createObjectURL(file);
+    });
+
+    return {
+      video: { file, objectUrl, duration, aspectRatio },
+      error: null,
+    };
+  }
+
+  /* ---- Compose video button + input handlers ---- */
+  const composeVideoBtn   = $('compose-video-btn');
+  const composeVideoInput = $('compose-video-input');
+
+  if (composeVideoBtn && composeVideoInput) {
+    composeVideoBtn.addEventListener('click', () => {
+      if (composeVideo) return; // already have one
+      composeVideoInput.value = '';
+      composeVideoInput.click();
+    });
+
+    composeVideoInput.addEventListener('change', async () => {
+      const file = composeVideoInput.files?.[0];
+      composeVideoInput.value = '';
+      if (!file) return;
+
+      const { video, error } = await validateAndLoadVideo(file);
+      if (error) { showError(composeError, error); return; }
+
+      // Video is mutually exclusive with images and link/GIF embeds
+      clearComposeImages();
+      clearLinkPreview();
+      composeVideo = video;
+      renderComposeVideoPreview();
+      composeImgBtn.disabled = true;
+    });
+  }
+
+  /* ---- Quote modal video button + input handlers ---- */
+  const quoteVideoBtn   = $('quote-video-btn');
+  const quoteVideoInput = $('quote-video-input');
+
+  if (quoteVideoBtn && quoteVideoInput) {
+    quoteVideoBtn.addEventListener('click', () => {
+      if (quoteVideo) return;
+      quoteVideoInput.value = '';
+      quoteVideoInput.click();
+    });
+
+    quoteVideoInput.addEventListener('change', async () => {
+      const file = quoteVideoInput.files?.[0];
+      quoteVideoInput.value = '';
+      if (!file) return;
+
+      const { video, error } = await validateAndLoadVideo(file);
+      if (error) { showError(quoteModalError, error); return; }
+
+      clearQuoteImages();
+      clearQuoteLinkPreview();
+      quoteVideo = video;
+      renderQuoteVideoPreview();
+      quoteImgBtn.disabled = true;
+    });
+  }
+
   /**
    * Resize/recompress an image File to fit within maxBytes using the Canvas API.
    * - Files already under the limit are returned unchanged.
@@ -4292,10 +4993,11 @@
    * @param {string}      alt      GIF title / alt text
    */
   function selectGif(gifUrl, thumbUrl, alt) {
-    // Clear any existing images or link preview — a GIF embed is mutually exclusive
+    // Clear any existing images, video, or link preview — GIF is mutually exclusive
     composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
     composeImages = [];
     refreshComposePreview();
+    clearComposeVideo();
 
     // _thumbUrl is a private hint used by the submit handler to upload a static
     // preview blob — it is not sent to the AT Protocol API directly.
@@ -4404,7 +5106,7 @@
     e.preventDefault();
     hideError(composeError);
     const text = composeText.value.trim();
-    if (!text && composeImages.length === 0) return;
+    if (!text && composeImages.length === 0 && !composeVideo) return;
 
     const btn = composeForm.querySelector('button[type="submit"]');
     btn.disabled = true;
@@ -4424,13 +5126,26 @@
         );
       }
 
-      // M41: external embed only when no images are attached
-      const linkEmbed = uploadedImages.length === 0 ? composeLinkEmbed : null;
+      // M42: upload video if attached (mutually exclusive with images)
+      let videoEmbed = null;
+      if (composeVideo && uploadedImages.length === 0) {
+        btn.textContent = 'Uploading video…';
+        const altText = $('compose-video-alt')?.value?.trim() || '';
+        const videoBlobRef = await API.uploadBlob(composeVideo.file, composeVideo.file.type || 'video/mp4');
+        videoEmbed = {
+          $type: 'app.bsky.embed.video',
+          video: videoBlobRef,
+          ...(altText ? { alt: altText } : {}),
+          ...(composeVideo.aspectRatio ? { aspectRatio: composeVideo.aspectRatio } : {}),
+        };
+        incrementVideoDailyCount();
+      }
+
+      // M41: external embed only when no images or video are attached
+      const linkEmbed = uploadedImages.length === 0 && !videoEmbed ? composeLinkEmbed : null;
 
       // If the external embed is a GIF, upload the static xs.jpg thumbnail so
       // native Bluesky renders an image card rather than a bare text link.
-      // (Native Bluesky will animate it automatically once klipy.com is on their
-      // allowlist; until then, the thumb makes the card visually useful.)
       if (linkEmbed?._thumbUrl) {
         try {
           btn.textContent = 'Uploading GIF preview…';
@@ -4443,7 +5158,8 @@
         }
       }
 
-      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed);
+      btn.textContent = 'Posting…';
+      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed, videoEmbed);
 
       // M41: apply thread gate and quote gate records if non-default
       const replyGateVal = composeReplyGate.value;
@@ -4476,6 +5192,7 @@
       composeForm.reset();
       composeCount.textContent = '300';
       clearComposeImages();
+      clearComposeVideo();
       clearLinkPreview();
       composeGifPanel.hidden      = true;
       composeSettingsPanel.hidden = true;

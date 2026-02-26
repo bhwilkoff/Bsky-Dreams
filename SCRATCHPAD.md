@@ -2,10 +2,10 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12 and 19–51 are complete,
+The app is fully functional for daily Bluesky use. Milestones 1–12, 19–51, 37, 39, and 42 are complete,
 along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix passes.
 
-**Next focus:** M42 (video upload), M37 (image gallery), M39 (feed filters).
+**Next focus:** M22 (analytics), M13 (timeline scrubber), M14 (constellation), M16 (DMs).
 
 ---
 
@@ -246,6 +246,37 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 - `API.getFeed(feedUri, limit, cursor)` added to `api.js`
 - `overscroll-behavior: none` added to `.view` (the actual scroll container)
 
+### M39: Feed Content Filters ✅
+- "Filters ▾" toggle button added to the feed tab bar (right-aligned)
+- Filter panel: Politics, Sports, Current Events, Entertainment checkboxes + free-text keyword input
+- `/js/filter-words.json`: curated keyword lists for each category
+- `applyFeedFilters()`: client-side keyword matching against `.post-text` content; matching posts set to `display:none`; runs after every `renderFeedItems()` call into the home feed
+- "N posts filtered" counter shown in filter panel when active
+- "Remember my filters" checkbox: writes `bsky_feed_filters: { categories, custom }` to localStorage; `loadFeedFilters()` called in `enterApp()` to restore on login
+- Caveat label: "Approximate — keyword matching may miss or misidentify some posts"
+- Ephemeral by default (unchecked); session-only otherwise
+
+### M37: Image Browser ("Bsky Dreams Gallery") ✅
+- "Gallery" nav item in sidebar (grid icon); `view-gallery` section in index.html
+- Fetches timeline + Discover feed in parallel (`Promise.allSettled`); filters to image posts only
+- Dedup by URI (session-level `Set`) and by blob CID (prevents same image from different reposts); respects M40 seen-posts map
+- `buildGalleryCard()`: image grid via `buildImageGrid`, tap any image → `openLightbox`; author avatar + name + handle strip; Like/Repost action buttons with optimistic update + rollback; click card body → opens thread
+- Infinite scroll via `IntersectionObserver` on sentinel element (400px pre-load margin)
+- Observer disconnected in `showView()` when leaving gallery view
+- `?view=gallery` deep-link routing supported
+
+### M42: Video Upload in All Post Types ✅
+- "Video" toolbar button in main compose and quote post modal; mutually exclusive with images
+- File picker accepts `video/mp4`, `video/webm`, `video/quicktime`; one video per post
+- `validateAndLoadVideo()`: rejects files > 50 MB or > 180s; shows friendly error
+- FFmpeg.wasm skipped (requires SharedArrayBuffer / COOP+COEP headers GitHub Pages cannot serve); unsupported formats show an error
+- Preview: `<video>` element in compose area; filename + duration displayed; ✕ to remove
+- Upload: `API.uploadBlob(file)` → `app.bsky.embed.video` with `alt` and `aspectRatio` when available
+- Video + quote post: `app.bsky.embed.recordWithMedia` (media = video embed, record = quoted post)
+- Daily limit: 25 uploads/day tracked in `bsky_video_daily: { date, count }` in localStorage
+- Cleanup: `clearComposeVideo()` / `clearQuoteVideo()` called on view switch, modal close, and GIF/image selection
+- Applies to: main compose, quote post modal
+
 ### Unnumbered: 8-Item UX Polish Pass ✅
 - **TV sidebar on desktop**: `@media (min-width: 768px)` restores `padding-left: var(--sidebar-width)` for `.view-tv`
 - **TV autoplay fallback**: if `vid.play()` rejected, retries with `vid.muted = true`
@@ -266,35 +297,6 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 ---
 
 ### Near-Term
-
-#### M42: Video Upload in All Post Types
-
-- **Entry**: "Video" button in compose toolbars; mutually exclusive with images; one video per post
-- **File picker**: `video/*` MIME; preview thumbnail captured at 0.5s via canvas
-- **Duration check**: reject if > 180s (3 minutes)
-- **File size**: if > 100 MB, trigger compression with progress bar and Cancel button
-- **Format conversion**: MediaRecorder API for WebM/OGG; FFmpeg.wasm for other formats
-  - ⚠️ FFmpeg.wasm requires `SharedArrayBuffer` (needs `COOP`/`COEP` headers) — GitHub Pages does not support custom headers; investigate Service Worker workaround or limit to MediaRecorder-compatible formats only
-- **Upload**: `API.uploadBlob(videoFile, 'video/mp4')` → embed as `app.bsky.embed.video` with `thumb` blob ref and optional `alt` text
-- **Daily limit**: `bsky_video_daily` in localStorage `{ date, count }`; block at 25/day with user-visible error
-- **Applies to**: main compose, inline reply compose, quote post modal
-
-#### M37: Image Browser ("Bsky Dreams Gallery")
-
-- **Entry**: new nav tab (camera or grid icon)
-- **Data source**: `API.getTimeline()` and `API.getFeed(DISCOVER_FEED_URI)` in parallel; filter to `app.bsky.embed.images` or `recordWithMedia` with image media (exclude video, exclude GIFs)
-- **Dedup**: skip reposts of same post URI; skip posts where image blob CID already appeared; filter `bsky_feed_seen` posts
-- **Layout**: vertical scrolling feed; full-width image grid; slim author strip (avatar + handle + like/repost counts); tap card body to expand caption
-- **Interaction**: tap image → `openLightbox()`; Like and Repost buttons below each strip
-- **Pagination**: infinite scroll
-
-#### M39: Feed Content Filters
-
-- **UI**: "Advanced ▾" toggle below the Following/Discover tab bar
-- **Filter categories** (checkboxes): Politics, Sports, Current Events, Entertainment, Other (free-text keyword list)
-- **Implementation**: client-side keyword matching against `/js/filter-words.json`; hide matching posts with `display: none`; show "N posts filtered" counter
-- **Ephemeral by default**: session-only unless "Remember my filters" checkbox writes to `bsky_feed_filters` localStorage
-- **Caveat label in UI**: "Approximate — keyword matching may miss or misidentify some posts"
 
 ---
 
@@ -427,9 +429,10 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **M42 — Video upload** (duration check, size check, daily limit; FFmpeg.wasm header blocker needs investigation first)
-2. **M37 — Image browser / Gallery** (dedicated image feed, M40 dedup integration, lightbox reuse)
-3. **M39 — Feed content filters** (keyword filter panel, `/js/filter-words.json`, ephemeral by default)
+1. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
+2. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
+3. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
+4. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
 4. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
 5. **M13 — Horizontal Event Timeline Scrubber**
 6. **M14 — Network Constellation Visualization** (D3.js local)
