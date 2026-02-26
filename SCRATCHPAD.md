@@ -98,9 +98,14 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 
 ### M20: Cross-Device Settings Sync (AT Protocol Repo) ✅
 - `API.getRecord()` and `API.putRecord()` added to `api.js`
-- Prefs record: collection `app.bsky-dreams.prefs`, rkey `self`, contains `{ savedChannels, uiPrefs }`
-- `loadPrefsFromCloud()` called inside `enterApp()` after auth; falls back to localStorage
-- `schedulePrefsSync()` — 2-second debounce write after any channel or preference change
+- Prefs record: collection `app.bsky-dreams.prefs`, rkey `self`, contains `{ savedChannels, uiPrefs, feedFilters }`
+- `feedFilters: { categories, custom }` added to prefs record — filter changes now call `schedulePrefsSync()`
+- `loadPrefsFromCloud()` called inside `enterApp()` after auth; falls back to localStorage; restores filter checkboxes and custom keyword input from cloud
+- `schedulePrefsSync()` — 2-second debounce write after any channel, preference, or filter change
+- **Seen-posts cloud sync**: collection `app.bsky-dreams.seen`, rkey `recent`, stores URI-only array for last 7 days
+- `loadSeenFromCloud()` called in `enterApp()` after `loadPrefsFromCloud()`; merges cloud URIs into local `feedSeenMap`
+- `saveSeenToCloud()` — writes 7-day rolling window of seen URIs to AT Protocol repo; URI-only (no engagement data) keeps payload ~75–225 KB
+- `scheduleSeenSync()` — 30-second debounce triggered by every `saveFeedSeen()` call; also fires immediately on `visibilitychange: hidden`
 
 ### M21: Reporting Bad Actors ✅
 - Three-dot ⋯ button on every post card and on profile headers
