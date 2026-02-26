@@ -172,9 +172,15 @@
   let feedSeenBypass  = false;           // session flag: "show anyway" escape hatch
 
   // M20 — Cross-device prefs sync
-  const PREFS_COLLECTION = 'app.bsky-dreams.prefs';
-  const PREFS_RKEY       = 'self';
-  let prefsSyncTimer     = null;
+  const PREFS_COLLECTION     = 'app.bsky-dreams.prefs';
+  const PREFS_RKEY           = 'self';
+  let prefsSyncTimer         = null;
+
+  // M20+ — Cross-device seen-posts sync (7-day rolling window)
+  const SEEN_SYNC_COLLECTION = 'app.bsky-dreams.seen';
+  const SEEN_SYNC_RKEY       = 'recent';
+  const SEEN_SYNC_WINDOW_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+  let seenSyncTimer          = null;
 
   // M30 — Quote post state
   let quoteModalPostRef  = null;  // { uri, cid, post } being quoted
@@ -574,6 +580,7 @@
     try {
       localStorage.setItem(FEED_SEEN_KEY, JSON.stringify([...feedSeenMap.entries()]));
     } catch {}
+    scheduleSeenSync(); // keep cloud in sync (30 s debounce)
   }
 
   /**
@@ -635,6 +642,26 @@
           if (adultToggle) adultToggle.checked = hideAdultContent;
         }
       }
+      if (prefs.feedFilters) {
+        if (Array.isArray(prefs.feedFilters.categories)) {
+          activeFilterCats = new Set(prefs.feedFilters.categories);
+        }
+        if (Array.isArray(prefs.feedFilters.custom)) {
+          customFilterKws = prefs.feedFilters.custom;
+        }
+        // Sync checkbox and text UI to restored cloud values
+        ['politics', 'sports', 'news', 'entertainment'].forEach((cat) => {
+          const el = $(`filter-${cat}`);
+          if (el) el.checked = activeFilterCats.has(cat);
+        });
+        const customEl = $('feed-filter-custom');
+        if (customEl) customEl.value = customFilterKws.join(', ');
+        // Update "Remember" checkbox so subsequent filter changes persist locally too
+        const rememberEl = $('feed-filter-remember');
+        if (rememberEl && (activeFilterCats.size > 0 || customFilterKws.length > 0)) {
+          rememberEl.checked = true;
+        }
+      }
     } catch {
       // Record doesn't exist yet or network error — silently fall back to localStorage
     }
@@ -648,6 +675,7 @@
         $type:        PREFS_COLLECTION,
         savedChannels: channelsLoad(),
         uiPrefs:      { hideAdult: hideAdultContent },
+        feedFilters:  { categories: [...activeFilterCats], custom: customFilterKws },
       };
       await API.putRecord(session.did, PREFS_COLLECTION, PREFS_RKEY, record);
     } catch (err) {
@@ -658,6 +686,65 @@
   function schedulePrefsSync() {
     clearTimeout(prefsSyncTimer);
     prefsSyncTimer = setTimeout(savePrefsToCloud, 2000);
+  }
+
+  /**
+   * Pull the 7-day seen-URI list from the AT Protocol repo and merge it into
+   * the local feedSeenMap. Called once on login, after loadPrefsFromCloud.
+   */
+  async function loadSeenFromCloud() {
+    const session = AUTH.getSession();
+    if (!session?.did) return;
+    try {
+      const result = await API.getRecord(session.did, SEEN_SYNC_COLLECTION, SEEN_SYNC_RKEY);
+      const uris   = result?.value?.uris;
+      if (!Array.isArray(uris) || uris.length === 0) return;
+      // Use the record's syncedAt as the seenAt timestamp for all imported URIs.
+      // Engagement counts are omitted from cloud storage (URI-only), so default to 0.
+      const fallbackTs = result.value.syncedAt || Date.now();
+      let added = 0;
+      for (const uri of uris) {
+        if (!uri || feedSeenMap.has(uri)) continue;
+        if (feedSeenMap.size >= FEED_SEEN_MAX) {
+          feedSeenMap.delete(feedSeenMap.keys().next().value); // FIFO eviction
+        }
+        feedSeenMap.set(uri, { seenAt: fallbackTs, likeCount: 0, repostCount: 0 });
+        added++;
+      }
+      if (added > 0) saveFeedSeen(); // persist merged map to localStorage
+    } catch {
+      // Record doesn't exist yet — first sync, nothing to merge.
+    }
+  }
+
+  /**
+   * Write URIs seen within the last 7 days to the AT Protocol repo.
+   * URI-only (no engagement data) to keep payload small (~75–225 KB typical).
+   */
+  async function saveSeenToCloud() {
+    const session = AUTH.getSession();
+    if (!session?.did) return;
+    const cutoff = Date.now() - SEEN_SYNC_WINDOW_MS;
+    const uris   = [];
+    for (const [uri, entry] of feedSeenMap) {
+      if (entry.seenAt >= cutoff) uris.push(uri);
+    }
+    if (uris.length === 0) return;
+    try {
+      await API.putRecord(session.did, SEEN_SYNC_COLLECTION, SEEN_SYNC_RKEY, {
+        $type:    SEEN_SYNC_COLLECTION,
+        uris,
+        syncedAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn('Cloud seen-posts sync failed:', err.message);
+    }
+  }
+
+  /** Debounce cloud seen-posts writes (30 s) to avoid hammering the PDS. */
+  function scheduleSeenSync() {
+    clearTimeout(seenSyncTimer);
+    seenSyncTimer = setTimeout(saveSeenToCloud, 30000);
   }
 
   /* ================================================================
@@ -703,7 +790,10 @@
   // (tab switch, app backgrounded, or mobile home-screen press). This ensures a
   // hard refresh or cold launch always starts with a fully up-to-date seen list.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveFeedSeen();
+    if (document.visibilityState === 'hidden') {
+      saveFeedSeen();       // flush to localStorage immediately
+      saveSeenToCloud();    // best-effort immediate cloud flush; don't wait for 30 s debounce
+    }
   });
 
   /* ================================================================
@@ -923,6 +1013,7 @@
       else activeFilterCats.delete(cat);
       applyFeedFilters();
       saveFeedFilters();
+      schedulePrefsSync(); // M20: push filter change to cloud
     });
   });
 
@@ -939,6 +1030,7 @@
           .filter(Boolean);
         applyFeedFilters();
         saveFeedFilters();
+        schedulePrefsSync(); // M20: push filter change to cloud
       }, 400);
     });
   }
@@ -1329,8 +1421,9 @@
     // Render channels sidebar and kick off background tasks
     renderChannelsSidebar();
     checkChannelUnreads();    // async background unread check
-    loadPrefsFromCloud();     // M20: merge cloud prefs with localStorage
-    loadFeedFilters();        // M39: restore persisted filter settings
+    loadPrefsFromCloud();     // M20: merge cloud prefs (channels, filters, uiPrefs) with localStorage
+    loadSeenFromCloud();      // M20+: merge cloud seen-posts (7-day window) with localStorage
+    loadFeedFilters();        // M39: restore persisted filter settings (localStorage fallback)
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
