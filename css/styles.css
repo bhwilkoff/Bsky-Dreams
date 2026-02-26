@@ -1191,6 +1191,121 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
+   M37 — GALLERY VIEW
+================================================================ */
+.gallery-feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+}
+
+.gallery-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.gallery-card:hover {
+  border-color: var(--color-accent);
+}
+
+.gallery-author-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.gallery-author-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.gallery-author-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.gallery-author-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-author-name:hover {
+  text-decoration: underline;
+  color: var(--color-accent);
+}
+
+.gallery-author-handle {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-counts {
+  display: flex;
+  gap: var(--space-xs);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.gallery-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s, color 0.12s;
+}
+
+.gallery-action-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-accent);
+}
+
+.gallery-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gallery-load-sentinel {
+  height: 1px;
+}
+
+.gallery-loading {
+  text-align: center;
+  padding: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* ================================================================
    THREAD / CONVERSATION VIEW
 ================================================================ */
 .thread-header {

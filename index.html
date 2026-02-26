@@ -136,6 +136,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span>TV</span>
         </button>
+        <button class="sidebar-nav-item" id="nav-gallery-btn" data-view="gallery">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>Gallery</span>
+        </button>
         <button class="sidebar-nav-item" id="nav-notif-btn" data-view="notifications" aria-label="Notifications">
           <span class="sidebar-notif-wrap" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -568,6 +572,23 @@
               </div>
             </div>
           </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- GALLERY VIEW (M37) ---- -->
+    <section id="view-gallery" class="view" hidden aria-labelledby="gallery-heading">
+      <div class="view-inner">
+        <div class="feed-header">
+          <h2 id="gallery-heading" class="view-heading">Gallery</h2>
+        </div>
+        <div id="gallery-feed" class="gallery-feed" aria-live="polite" aria-label="Image gallery"></div>
+        <div id="gallery-load-sentinel" class="gallery-load-sentinel" aria-hidden="true"></div>
+        <div id="gallery-loading" class="gallery-loading" hidden>
+          <span class="loading-dots">Loading…</span>
+        </div>
+        <div id="gallery-empty" class="feed-empty" hidden>
+          <p>No images found.</p>
         </div>
       </div>
     </section>

@@ -799,6 +799,331 @@
   }, { passive: true });
 
   /* ================================================================
+     M37 — IMAGE GALLERY VIEW
+  ================================================================ */
+  const navGalleryBtn  = $('nav-gallery-btn');
+  const viewGallery    = $('view-gallery');
+  const galleryFeed    = $('gallery-feed');
+  const gallerySentinel = $('gallery-load-sentinel');
+  const galleryLoading = $('gallery-loading');
+  const galleryEmpty   = $('gallery-empty');
+
+  let galleryCursorTimeline = null;
+  let galleryCursorDiscover = null;
+  let galleryLoading_flag   = false;
+  let galleryAllDone        = false;
+  let gallerySeenUris       = new Set(); // dedup within session
+  let gallerySeenCids       = new Set(); // dedup by blob CID
+  let galleryScrollObserver = null;
+
+  /**
+   * Returns true when a post has at least one image embed
+   * (images or recordWithMedia with image media).
+   */
+  function postHasImages(post) {
+    const embed = post.embed || {};
+    const type  = embed.$type || '';
+    if (type === 'app.bsky.embed.images#view') return true;
+    if (type === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      return (media.$type || '') === 'app.bsky.embed.images#view';
+    }
+    return false;
+  }
+
+  /**
+   * Extract image view objects from a post embed.
+   * @returns {Array} array of { thumb, fullsize, alt } objects
+   */
+  function extractImages(post) {
+    const embed = post.embed || {};
+    const type  = embed.$type || '';
+    if (type === 'app.bsky.embed.images#view') {
+      return embed.images || [];
+    }
+    if (type === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      if ((media.$type || '') === 'app.bsky.embed.images#view') {
+        return media.images || [];
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Build a single gallery card for a post with images.
+   */
+  function buildGalleryCard(post) {
+    const author = post.author || {};
+    const images = extractImages(post);
+    if (!images.length) return null;
+
+    // Check for duplicate blob CIDs
+    const cids = images.map((img) => {
+      const src = img.fullsize || img.thumb || '';
+      // CID appears in AT Protocol CDN URLs as a path segment
+      const match = src.match(/\/([A-Za-z0-9]{46,})\//);
+      return match ? match[1] : src;
+    });
+    const allSeen = cids.every((c) => gallerySeenCids.has(c));
+    if (allSeen) return null;
+    cids.forEach((c) => gallerySeenCids.add(c));
+
+    const card = document.createElement('div');
+    card.className = 'gallery-card';
+    card.dataset.uri = post.uri;
+
+    // Image grid — reuse buildImageGrid for consistent sizing
+    const lightboxPayload = images.map((img) => ({
+      src: img.fullsize || img.thumb || '',
+      alt: img.alt || '',
+    }));
+    const grid = buildImageGrid(images);
+    // Make each image open lightbox at the right index
+    grid.querySelectorAll('img').forEach((img, idx) => {
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLightbox(lightboxPayload, idx);
+      });
+    });
+    card.appendChild(grid);
+
+    // Author strip
+    const strip = document.createElement('div');
+    strip.className = 'gallery-author-strip';
+
+    const avatar = document.createElement('img');
+    avatar.src       = author.avatar || '';
+    avatar.alt       = '';
+    avatar.className = 'gallery-author-avatar';
+    avatar.loading   = 'lazy';
+    strip.appendChild(avatar);
+
+    const meta = document.createElement('div');
+    meta.className = 'gallery-author-meta';
+    const nameBtn = document.createElement('button');
+    nameBtn.className   = 'gallery-author-name';
+    nameBtn.textContent = author.displayName || author.handle || '';
+    nameBtn.addEventListener('click', (e) => { e.stopPropagation(); openProfile(author.handle); });
+    const handle = document.createElement('span');
+    handle.className   = 'gallery-author-handle';
+    handle.textContent = `@${author.handle || ''}`;
+    meta.appendChild(nameBtn);
+    meta.appendChild(handle);
+    strip.appendChild(meta);
+
+    // Like / Repost counts
+    const counts = document.createElement('div');
+    counts.className = 'gallery-counts';
+
+    const likeCount   = post.likeCount   || 0;
+    const repostCount = post.repostCount || 0;
+
+    const likeBtn = document.createElement('button');
+    likeBtn.className = 'gallery-action-btn';
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="${post.viewer?.like ? 'currentColor' : 'none'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> <span>${likeCount}</span>`;
+    likeBtn.dataset.uri    = post.uri;
+    likeBtn.dataset.cid    = post.cid;
+    likeBtn.dataset.likeUri = post.viewer?.like || '';
+    likeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const liked      = !!btn.dataset.likeUri;
+      const prevLikeUri = btn.dataset.likeUri;
+      const countSpan  = btn.querySelector('span');
+      const prevCount  = parseInt(countSpan.textContent, 10);
+      // Optimistic
+      if (liked) {
+        btn.dataset.likeUri = '';
+        btn.querySelector('svg').setAttribute('fill', 'none');
+        countSpan.textContent = Math.max(0, prevCount - 1);
+      } else {
+        btn.querySelector('svg').setAttribute('fill', 'currentColor');
+        countSpan.textContent = prevCount + 1;
+      }
+      try {
+        if (liked) {
+          await API.unlikePost(prevLikeUri);
+        } else {
+          const result = await API.likePost(btn.dataset.uri, btn.dataset.cid);
+          btn.dataset.likeUri = result?.uri || '';
+        }
+      } catch {
+        // Rollback
+        btn.dataset.likeUri = prevLikeUri;
+        btn.querySelector('svg').setAttribute('fill', liked ? 'currentColor' : 'none');
+        countSpan.textContent = prevCount;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    const repostBtn = document.createElement('button');
+    repostBtn.className = 'gallery-action-btn';
+    repostBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="${post.viewer?.repost ? 'var(--color-repost)' : 'currentColor'}" fill="none" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> <span>${repostCount}</span>`;
+    repostBtn.dataset.uri      = post.uri;
+    repostBtn.dataset.cid      = post.cid;
+    repostBtn.dataset.repostUri = post.viewer?.repost || '';
+    repostBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const reposted     = !!btn.dataset.repostUri;
+      const prevRepostUri = btn.dataset.repostUri;
+      const countSpan    = btn.querySelector('span');
+      const prevCount    = parseInt(countSpan.textContent, 10);
+      const svg          = btn.querySelector('svg');
+      // Optimistic
+      if (reposted) {
+        btn.dataset.repostUri = '';
+        svg.setAttribute('stroke', 'currentColor');
+        countSpan.textContent = Math.max(0, prevCount - 1);
+      } else {
+        svg.setAttribute('stroke', 'var(--color-repost)');
+        countSpan.textContent = prevCount + 1;
+      }
+      try {
+        if (reposted) {
+          await API.unrepostPost(prevRepostUri);
+        } else {
+          const result = await API.repostPost(btn.dataset.uri, btn.dataset.cid);
+          btn.dataset.repostUri = result?.uri || '';
+        }
+      } catch {
+        // Rollback
+        btn.dataset.repostUri = prevRepostUri;
+        svg.setAttribute('stroke', reposted ? 'var(--color-repost)' : 'currentColor');
+        countSpan.textContent = prevCount;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    counts.appendChild(likeBtn);
+    counts.appendChild(repostBtn);
+    strip.appendChild(counts);
+    card.appendChild(strip);
+
+    // Clicking the card (not on an image or button) opens the thread
+    card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
+
+    return card;
+  }
+
+  /**
+   * Fetch one batch of images from both timeline and discover feeds,
+   * filter and render them.
+   */
+  async function loadGalleryBatch() {
+    if (galleryLoading_flag || galleryAllDone) return;
+    galleryLoading_flag = true;
+    galleryLoading.hidden = false;
+
+    try {
+      const [timelineRes, discoverRes] = await Promise.allSettled([
+        galleryCursorTimeline !== 'done' ? API.getTimeline(30, galleryCursorTimeline || undefined) : Promise.resolve(null),
+        galleryCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 30, galleryCursorDiscover || undefined) : Promise.resolve(null),
+      ]);
+
+      const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
+      const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
+
+      // Update cursors
+      if (timelineData) {
+        galleryCursorTimeline = timelineData.cursor || 'done';
+      } else {
+        galleryCursorTimeline = 'done';
+      }
+      if (discoverData) {
+        galleryCursorDiscover = discoverData.cursor || 'done';
+      } else {
+        galleryCursorDiscover = 'done';
+      }
+
+      if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done') {
+        galleryAllDone = true;
+      }
+
+      // Merge, dedup by URI, extract image posts
+      const allItems = [
+        ...(timelineData?.feed || []),
+        ...(discoverData?.feed || []),
+      ];
+
+      let rendered = 0;
+      for (const item of allItems) {
+        const post = item.post;
+        if (!post?.uri) continue;
+        if (gallerySeenUris.has(post.uri)) continue;
+        gallerySeenUris.add(post.uri);
+        // Skip posts already in the seen-posts dedup map (M40), unless bypass active
+        if (!feedSeenBypass && feedSeenMap.has(post.uri)) continue;
+        if (!postHasImages(post)) continue;
+        const card = buildGalleryCard(post);
+        if (!card) continue;
+        galleryFeed.appendChild(card);
+        rendered++;
+      }
+
+      // If we rendered nothing but there's more to load, try another batch
+      if (rendered === 0 && !galleryAllDone) {
+        galleryLoading_flag = false;
+        galleryLoading.hidden = true;
+        await loadGalleryBatch();
+        return;
+      }
+
+      galleryEmpty.hidden = galleryFeed.children.length > 0;
+    } catch (err) {
+      // silently log — gallery is non-critical
+      console.warn('Gallery load error:', err);
+    } finally {
+      galleryLoading_flag = false;
+      galleryLoading.hidden = true;
+    }
+  }
+
+  /** Reset gallery state and load fresh. */
+  function loadGallery() {
+    galleryCursorTimeline = null;
+    galleryCursorDiscover = null;
+    galleryLoading_flag   = false;
+    galleryAllDone        = false;
+    gallerySeenUris       = new Set();
+    gallerySeenCids       = new Set();
+    galleryFeed.innerHTML = '';
+    galleryEmpty.hidden   = true;
+    galleryLoading.hidden = true;
+    setupGalleryScrollObserver();
+    loadGalleryBatch();
+  }
+
+  /** Set up IntersectionObserver on the sentinel to trigger infinite scroll. */
+  function setupGalleryScrollObserver() {
+    if (galleryScrollObserver) galleryScrollObserver.disconnect();
+    galleryScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !galleryLoading_flag) {
+          loadGalleryBatch();
+        }
+      },
+      { rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (gallerySentinel) galleryScrollObserver.observe(gallerySentinel);
+  }
+
+  if (navGalleryBtn) {
+    navGalleryBtn.addEventListener('click', () => {
+      showView('gallery');
+      loadGallery();
+    });
+  }
+
+  /* ================================================================
      INIT — check stored session on page load
   ================================================================ */
   async function init() {
@@ -875,6 +1200,9 @@
     } else if (urlView === 'feed') {
       showView('feed', true);
       loadFeed();
+    } else if (urlView === 'gallery') {
+      showView('gallery', true);
+      loadGallery();
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -922,6 +1250,7 @@
       profile:       viewProfile,
       notifications: viewNotifications,
       tv:            viewTv,
+      gallery:       viewGallery,
     };
     const navBtns = {
       feed:          navFeedBtn,
@@ -929,6 +1258,7 @@
       compose:       navComposeBtn,
       notifications: navNotifBtn,
       tv:            navTvBtn,
+      gallery:       navGalleryBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -987,6 +1317,8 @@
         url = '?view=compose';
       } else if (name === 'tv') {
         url = '?view=tv';
+      } else if (name === 'gallery') {
+        url = '?view=gallery';
       }
       history.pushState(state, '', url);
     }
@@ -1000,6 +1332,12 @@
     if (name !== 'feed' && feedSeenObserver) {
       feedSeenObserver.disconnect();
       feedSeenObserver = null;
+    }
+
+    // M37: disconnect gallery scroll observer when leaving gallery view
+    if (name !== 'gallery' && galleryScrollObserver) {
+      galleryScrollObserver.disconnect();
+      galleryScrollObserver = null;
     }
 
     // Hide scroll-to-top button on view switch (M34)
