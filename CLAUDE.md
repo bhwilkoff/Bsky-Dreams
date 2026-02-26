@@ -76,6 +76,8 @@ No build step required. The app runs as a static file.
 - No build pipeline — everything must work as plain HTML/CSS/JS
 - User credentials (app password) stored in localStorage only, never transmitted anywhere except bsky.social
 - AT Protocol base URL: `https://bsky.social/xrpc/` for all API calls
+- Chat API base URL: `https://api.bsky.chat/xrpc/` for `chat.bsky.convo.*` endpoints (M16, not yet implemented)
+- GIF provider: Klipy (`api.klipy.com`) — key hardcoded as `KLIPY_KEY` in `app.js`; GIFs posted as `app.bsky.embed.external` (CDN URL) to preserve animation
 
 ## Do Not Touch
 
