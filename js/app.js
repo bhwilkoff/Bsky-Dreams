@@ -1507,7 +1507,7 @@
       });
     }, {
       root: null,
-      rootMargin: '0px 0px -80% 0px', // card must be in top 20% of viewport to trigger
+      rootMargin: '0px', // full viewport — fires when card exits from top after being visible
       threshold: 0,
     });
 
@@ -1583,10 +1583,10 @@
   })();
 
   feedTabFollowing.addEventListener('click', () => {
-    if (feedMode !== 'following') { setFeedMode('following'); loadFeed(); }
+    setFeedMode('following'); loadFeed(); // no guard: clicking active tab refreshes feed
   });
   feedTabDiscover.addEventListener('click', () => {
-    if (feedMode !== 'discover') { setFeedMode('discover'); loadFeed(); }
+    setFeedMode('discover'); loadFeed(); // no guard: clicking active tab refreshes feed
   });
 
   /* ---- M47: Pull-to-refresh on Search + Profile views ---- */
@@ -2293,14 +2293,20 @@
         const hls = new Hls({ lowLatencyMode: false, enableWorker: false });
         hls.loadSource(src);
         hls.attachMedia(vid);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        vid.play().catch(() => {
+          // Autoplay blocked (e.g. browser policy); retry muted so video still plays
+          vid.muted = true;
+          vid.play().catch(() => {});
+        });
+      });
         hls.on(Hls.Events.ERROR, (ev, data) => {
           if (data.fatal) { destroyHls(s); if (s === tvSlot) advanceToNext(); }
         });
         tvHlsArr[s] = hls;
       } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
         vid.src = src;
-        vid.play().catch(() => {});
+        vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
       }
 
       // M36: Short-clip filter — skip videos shorter than 5 seconds
@@ -2440,7 +2446,7 @@
       tvSlot       = 0;
       tvSliding    = false;
       tvPaused     = false;
-      tvAllowAdult = $('tv-adult-toggle').checked;
+      tvAllowAdult = !$('tv-adult-toggle').checked; // checkbox = "Hide adult" so invert
       tvTopicBadge.textContent = tvTopic || 'All videos';
 
       // Reset slides: A at 0 (visible), B below screen (ready for next)
@@ -2708,6 +2714,14 @@
     quoteModalError.hidden = true;
     quoteModalSubmit.disabled = false;
     quoteModalSubmit.textContent = 'Quote Post';
+    // Clear any leftover compose state from a previous quote
+    clearQuoteImages();
+    clearQuoteLinkPreview();
+    clearTimeout(quoteLinkTimer);
+    quoteGifPanel.hidden = true;
+    quoteSettingsPanel.hidden = true;
+    if (quoteReplyGate) quoteReplyGate.value = 'everyone';
+    if (quoteQuoteGate) quoteQuoteGate.value = 'everyone';
 
     // Render quoted post preview
     quoteModalPreview.innerHTML = '';
@@ -2725,32 +2739,255 @@
     quoteModalText.focus();
   }
 
+  /* ---- Quote modal extended compose state ---- */
+  const quoteImgBtn        = $('quote-img-btn');
+  const quoteImgInput      = $('quote-img-input');
+  const quoteImgPreview    = $('quote-images-preview');
+  const quoteGifBtn        = $('quote-gif-btn');
+  const quoteGifPanel      = $('quote-gif-panel');
+  const quoteGifInput      = $('quote-gif-input');
+  const quoteGifGrid       = $('quote-gif-grid');
+  const quoteGifSearchBtn  = $('quote-gif-search-btn');
+  const quoteSettingsBtn   = $('quote-settings-btn');
+  const quoteSettingsPanel = $('quote-settings-panel');
+  const quoteReplyGate     = $('quote-reply-gate');
+  const quoteQuoteGate     = $('quote-quote-gate');
+  const quoteLinkWrap      = $('quote-link-preview-wrap');
+
+  let quoteImages    = [];
+  let quoteLinkEmbed = null;
+  let quoteLinkTimer = null;
+
+  function clearQuoteImages() {
+    quoteImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+    quoteImages = [];
+    quoteImgPreview.innerHTML = '';
+    quoteImgPreview.hidden = true;
+    quoteImgBtn.disabled = false;
+  }
+
+  function refreshQuotePreview() {
+    quoteImgPreview.innerHTML = '';
+    quoteImgPreview.hidden = quoteImages.length === 0;
+    quoteImgBtn.disabled = quoteImages.length >= 4;
+    quoteImages.forEach((entry, idx) => {
+      const item = document.createElement('div');
+      item.className = 'compose-image-item';
+      const thumb = document.createElement('img');
+      thumb.src = entry.previewUrl; thumb.alt = ''; thumb.className = 'compose-image-thumb';
+      item.appendChild(thumb);
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button'; removeBtn.className = 'compose-image-remove';
+      removeBtn.setAttribute('aria-label', 'Remove image'); removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        URL.revokeObjectURL(entry.previewUrl);
+        quoteImages.splice(idx, 1);
+        refreshQuotePreview();
+      });
+      item.appendChild(removeBtn);
+      const altInput = document.createElement('textarea');
+      altInput.className = 'compose-alt-input'; altInput.placeholder = 'Alt text…';
+      altInput.rows = 2; altInput.maxLength = 1000; altInput.value = entry.alt || '';
+      altInput.addEventListener('input', () => { entry.alt = altInput.value; });
+      item.appendChild(altInput);
+      quoteImgPreview.appendChild(item);
+    });
+  }
+
+  function clearQuoteLinkPreview() {
+    quoteLinkEmbed = null;
+    quoteLinkWrap.innerHTML = '';
+  }
+
+  function renderQuoteLinkPreviewCard(hostname) {
+    const { title, description, _thumbUrl } = quoteLinkEmbed;
+    quoteLinkWrap.innerHTML = `
+      <div class="compose-link-preview">
+        ${_thumbUrl ? `<img class="compose-link-preview-thumb" src="${escHtml(_thumbUrl)}" alt="" loading="lazy">` : ''}
+        <div class="compose-link-preview-body">
+          <input class="compose-link-preview-input compose-link-preview-title"
+                 value="${escHtml(title)}" placeholder="Title" maxlength="300" aria-label="Link title">
+          <input class="compose-link-preview-input compose-link-preview-desc"
+                 value="${escHtml(description)}" placeholder="Description (optional)" maxlength="500" aria-label="Link description">
+          <span class="compose-link-preview-host">${escHtml(hostname)}</span>
+        </div>
+        <button type="button" class="compose-link-preview-dismiss" aria-label="Remove link preview">✕</button>
+      </div>
+    `;
+    quoteLinkWrap.querySelector('.compose-link-preview-title').addEventListener('input', (e) => { quoteLinkEmbed.title = e.target.value; });
+    quoteLinkWrap.querySelector('.compose-link-preview-desc').addEventListener('input', (e) => { quoteLinkEmbed.description = e.target.value; });
+    quoteLinkWrap.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearQuoteLinkPreview);
+  }
+
+  async function fetchQuoteLinkPreview(url) {
+    if (quoteLinkEmbed) return;
+    try {
+      const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      const html = data.contents || '';
+      const doc  = new DOMParser().parseFromString(html, 'text/html');
+      const getOg = (name) => doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute('content') || '';
+      const title    = (getOg('og:title') || getOg('title') || doc.title || url).trim();
+      const desc     = (getOg('og:description') || getOg('description') || '').trim();
+      const thumb    = getOg('og:image') || getOg('twitter:image') || '';
+      const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+      quoteLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
+      renderQuoteLinkPreviewCard(hostname);
+    } catch { /* silently ignore */ }
+  }
+
+  function quoteSelectGif(gifUrl, thumbUrl, alt) {
+    clearQuoteImages();
+    quoteLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+    quoteLinkWrap.innerHTML = `
+      <div class="compose-link-preview compose-gif-preview">
+        <img class="compose-gif-preview-img" src="${escHtml(gifUrl)}" alt="${escHtml(alt)}">
+        <button type="button" class="compose-link-preview-dismiss" aria-label="Remove GIF">✕</button>
+      </div>
+    `;
+    quoteLinkWrap.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearQuoteLinkPreview);
+    quoteGifPanel.hidden = true;
+  }
+
+  // GIF panel toggle
+  quoteGifBtn.addEventListener('click', () => {
+    const willOpen = quoteGifPanel.hidden;
+    quoteGifPanel.hidden = !willOpen;
+    quoteSettingsPanel.hidden = true;
+    if (willOpen) quoteGifInput.focus();
+  });
+
+  // Settings panel toggle
+  quoteSettingsBtn.addEventListener('click', () => {
+    quoteSettingsPanel.hidden = !quoteSettingsPanel.hidden;
+    quoteGifPanel.hidden = true;
+  });
+
+  // GIF search for quote modal
+  quoteGifSearchBtn.addEventListener('click', () => {
+    const q = quoteGifInput.value.trim();
+    if (q) searchKlipyGifs(q, quoteGifGrid, quoteSelectGif);
+  });
+  quoteGifInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); quoteGifSearchBtn.click(); }
+  });
+
+  // Image attachment for quote modal
+  quoteImgBtn.addEventListener('click', () => {
+    if (quoteImages.length >= 4) return;
+    quoteImgInput.click();
+  });
+  quoteImgInput.addEventListener('change', async () => {
+    const files = Array.from(quoteImgInput.files || []);
+    const available = 4 - quoteImages.length;
+    quoteImgInput.value = '';
+    quoteImgBtn.disabled = true;
+    quoteImgPreview.hidden = false;
+    for (const file of files.slice(0, available)) {
+      if (!file.type.startsWith('image/')) continue;
+      try {
+        const resized    = await resizeImageFile(file);
+        const previewUrl = URL.createObjectURL(resized);
+        quoteImages.push({ file: resized, previewUrl, alt: '' });
+        refreshQuotePreview();
+      } catch (err) {
+        showError(quoteModalError, `Could not process image "${file.name}": ${err.message}`);
+      }
+    }
+    refreshQuotePreview();
+  });
+
   function closeQuoteModal() {
-    quoteModal.hidden   = true;
-    quoteModalPostRef   = null;
+    quoteModal.hidden = true;
+    quoteModalPostRef = null;
+    clearQuoteImages();
+    clearQuoteLinkPreview();
+    clearTimeout(quoteLinkTimer);
+    quoteGifPanel.hidden = true;
+    quoteSettingsPanel.hidden = true;
+    if (quoteReplyGate) quoteReplyGate.value = 'everyone';
+    if (quoteQuoteGate) quoteQuoteGate.value = 'everyone';
   }
 
   quoteModalClose.addEventListener('click', closeQuoteModal);
   quoteModalCancel.addEventListener('click', closeQuoteModal);
   quoteModal.addEventListener('click', (e) => { if (e.target === quoteModal) closeQuoteModal(); });
+
+  // Char count + link preview detection for quote textarea
   quoteModalText.addEventListener('input', () => {
     const remaining = 300 - quoteModalText.value.length;
     quoteModalCount.textContent = remaining;
     quoteModalCount.className = 'char-count' +
       (remaining <= 0 ? ' over' : remaining <= 20 ? ' warn' : '');
+    clearTimeout(quoteLinkTimer);
+    if (quoteLinkEmbed) return;
+    const matches = quoteModalText.value.match(/https?:\/\/[^\s]+/g);
+    if (!matches) return;
+    quoteLinkTimer = setTimeout(() => fetchQuoteLinkPreview(matches[0]), 800);
   });
 
   quoteModalSubmit.addEventListener('click', async () => {
     if (!quoteModalPostRef) return;
     const text = quoteModalText.value.trim();
-    if (!text) { quoteModalText.focus(); return; }
+    if (!text && quoteImages.length === 0) { quoteModalText.focus(); return; }
 
     quoteModalSubmit.disabled    = true;
     quoteModalSubmit.textContent = 'Posting…';
     quoteModalError.hidden = true;
 
     try {
-      const result = await API.createPost(text, null, [], { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid });
+      // Upload images if attached
+      let uploadedImages = [];
+      if (quoteImages.length > 0) {
+        quoteModalSubmit.textContent = `Uploading ${quoteImages.length} image${quoteImages.length > 1 ? 's' : ''}…`;
+        uploadedImages = await Promise.all(
+          quoteImages.map(async ({ file, alt }) => {
+            const blob = await API.uploadBlob(file);
+            return { blob, alt: alt || '' };
+          })
+        );
+      }
+
+      // External embed only when no images are attached
+      const linkEmbed = uploadedImages.length === 0 ? quoteLinkEmbed : null;
+
+      // Upload thumbnail for GIF / link previews
+      if (linkEmbed?._thumbUrl) {
+        try {
+          quoteModalSubmit.textContent = 'Uploading preview…';
+          const thumbRes  = await fetch(linkEmbed._thumbUrl);
+          const thumbBlob = await thumbRes.blob();
+          const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
+          linkEmbed.thumb = await API.uploadBlob(thumbFile);
+        } catch { /* non-fatal */ }
+      }
+
+      const embedRef = { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid };
+      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed);
+
+      // Apply gate records if non-default
+      const replyGateVal = quoteReplyGate?.value || 'everyone';
+      const quoteGateVal = quoteQuoteGate?.value || 'everyone';
+      if (result.uri && (replyGateVal !== 'everyone' || quoteGateVal === 'nobody')) {
+        const session  = AUTH.getSession();
+        const postRkey = result.uri.split('/').pop();
+        if (replyGateVal !== 'everyone') {
+          const allow = replyGateVal === 'mentioned'
+            ? [{ $type: 'app.bsky.feed.threadgate#mentionRule' }]
+            : [{ $type: 'app.bsky.feed.threadgate#followingRule' }];
+          await API.putRecord(session.did, 'app.bsky.feed.threadgate', postRkey, {
+            $type: 'app.bsky.feed.threadgate', post: result.uri, allow, createdAt: new Date().toISOString(),
+          });
+        }
+        if (quoteGateVal === 'nobody') {
+          await API.putRecord(session.did, 'app.bsky.feed.postgate', postRkey, {
+            $type: 'app.bsky.feed.postgate', post: result.uri,
+            detachedEmbeddingUris: [], embeddingRules: [{ $type: 'app.bsky.feed.postgate#disableRule' }],
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
       closeQuoteModal();
       // M51: show in-app success banner with link to new post
       if (result?.uri && ownProfile) {
@@ -2763,7 +3000,6 @@
           openThread(result.uri, result.cid || '', ownProfile.handle);
         };
       } else {
-        // Fallback if no result.uri
         quoteSuccessBanner.hidden = false;
         setTimeout(() => { quoteSuccessBanner.hidden = true; }, 3000);
       }
@@ -4003,19 +4239,19 @@
     composeGifPanel.hidden = true;
   });
 
-  // GIF search via Klipy
+  // GIF search via Klipy — accepts target grid element and selection callback
   // Response: { result: true, data: { data: [ { title, file: { xs, gif, hd } } ] } }
-  async function searchKlipyGifs(q) {
-    composeGifGrid.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
+  async function searchKlipyGifs(q, gridEl, onSelect) {
+    gridEl.innerHTML = '<p class="compose-gif-empty">Searching…</p>';
     try {
       const res  = await fetch(`https://api.klipy.com/api/v1/${encodeURIComponent(KLIPY_KEY)}/gifs/search?q=${encodeURIComponent(q)}&per_page=16`);
       const data = await res.json();
       const items = data?.data?.data;
       if (!items?.length) {
-        composeGifGrid.innerHTML = '<p class="compose-gif-empty">No results. Try a different search.</p>';
+        gridEl.innerHTML = '<p class="compose-gif-empty">No results. Try a different search.</p>';
         return;
       }
-      composeGifGrid.innerHTML = '';
+      gridEl.innerHTML = '';
       items.forEach((item) => {
         const thumbUrl = item.file?.xs?.jpg?.url || item.file?.xs?.gif?.url;
         // Best available animated URL — no upload needed, so size is not a constraint
@@ -4026,17 +4262,17 @@
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => selectGif(gifUrl, thumbUrl, item.title || ''));
-        composeGifGrid.appendChild(img);
+        img.addEventListener('click', () => onSelect(gifUrl, thumbUrl, item.title || ''));
+        gridEl.appendChild(img);
       });
     } catch (err) {
-      composeGifGrid.innerHTML = `<p class="compose-gif-empty">Search failed: ${escHtml(err.message)}</p>`;
+      gridEl.innerHTML = `<p class="compose-gif-empty">Search failed: ${escHtml(err.message)}</p>`;
     }
   }
 
   composeGifSearchBtn.addEventListener('click', () => {
     const q = composeGifInput.value.trim();
-    if (q) searchKlipyGifs(q);
+    if (q) searchKlipyGifs(q, composeGifGrid, selectGif);
   });
   composeGifInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); composeGifSearchBtn.click(); }
@@ -4101,7 +4337,8 @@
       const desc     = (getOg('og:description') || getOg('description') || '').trim();
       const thumb    = getOg('og:image')        || getOg('twitter:image') || '';
       const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-      composeLinkEmbed = { uri: url, title, description: desc, thumb };
+      // Store thumb as _thumbUrl so the submit handler uploads it as a blob ref
+      composeLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
       renderLinkPreviewCard(hostname);
     } catch {
       // Silently ignore — link preview is best-effort
@@ -4109,10 +4346,21 @@
   }
 
   function renderLinkPreviewCard(hostname) {
-    const { title, description, thumb } = composeLinkEmbed;
+    const { title, description, _thumbUrl } = composeLinkEmbed;
     composeLinkWrap.innerHTML = `
       <div class="compose-link-preview">
-        ${thumb ? `<img class="compose-link-preview-thumb" src="${escHtml(thumb)}" alt="" loading="lazy">` : ''}
+        ${_thumbUrl ? `
+          <div style="position:relative;">
+            <img class="compose-link-preview-thumb" src="${escHtml(_thumbUrl)}" alt="" loading="lazy">
+            <button type="button" class="compose-link-preview-change-thumb" title="Change thumbnail image"
+                    style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;">
+              Change
+            </button>
+          </div>` : `
+          <button type="button" class="compose-link-preview-change-thumb" title="Set thumbnail image"
+                  style="display:block;width:100%;padding:8px;background:none;border:none;color:var(--color-accent);font-size:0.8rem;cursor:pointer;text-align:left;">
+            + Set thumbnail image
+          </button>`}
         <div class="compose-link-preview-body">
           <input class="compose-link-preview-input compose-link-preview-title"
                  value="${escHtml(title)}" placeholder="Title" maxlength="300" aria-label="Link title">
@@ -4130,6 +4378,13 @@
       composeLinkEmbed.description = e.target.value;
     });
     composeLinkWrap.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearLinkPreview);
+    composeLinkWrap.querySelector('.compose-link-preview-change-thumb')?.addEventListener('click', () => {
+      const newUrl = prompt('Enter image URL for thumbnail:', composeLinkEmbed._thumbUrl || '');
+      if (newUrl !== null) {
+        composeLinkEmbed._thumbUrl = newUrl.trim() || null;
+        renderLinkPreviewCard(hostname); // re-render with new thumb
+      }
+    });
   }
 
   /* ================================================================

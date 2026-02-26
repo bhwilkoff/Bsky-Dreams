@@ -972,3 +972,45 @@
   This is acceptable — rapid scroll-past is not reading.
 - **Revisit if:** Users report that seen-post filtering is too aggressive (posts being
   filtered that they have not actually read).
+
+---
+
+## GIF Provider — Klipy via External Embed (not Blob Upload)
+
+- **Date:** 2026-02-25
+- **Decision:** GIFs selected from Klipy are posted as `app.bsky.embed.external` with
+  the Klipy CDN URL as the embed `uri`. The `xs.jpg` static thumbnail is uploaded as a
+  blob and attached as `thumb` so native Bluesky renders an image card. No GIF file is
+  uploaded to the AT Protocol blob store.
+- **Rationale:** BlueSky's AppView CDN transcodes all uploaded image blobs to JPEG,
+  stripping animation. The only way to preserve GIF animation is to reference the
+  source CDN URL directly via an external embed — the same approach the official Bluesky
+  app uses for Tenor and Giphy. Uploading the thumbnail blob ensures native Bluesky
+  renders a rich card (not a bare text link) while animation is served from Klipy.
+- **Alternatives considered:** Uploading the GIF as an image blob (strips animation);
+  canvas-frame capture (produces pixelated static first frame).
+- **Trade-offs:** Klipy is not yet on Bluesky's animated-GIF allowlist (issue #9728
+  pending), so native Bluesky shows the thumbnail image card but not animation. Bsky
+  Dreams renders the animated `<img>` from the Klipy URL. Animation in native clients
+  will work automatically once Klipy is added to the allowlist.
+- **Revisit if:** Klipy is added to Bluesky's allowlist (no code change needed); or if
+  Bluesky adds native GIF blob support with a dedicated embed type.
+
+---
+
+## IntersectionObserver rootMargin — Full Viewport (0px) Not -80%
+
+- **Date:** 2026-02-25
+- **Decision:** Changed `rootMargin: '0px 0px -80% 0px'` to `rootMargin: '0px'` (full
+  viewport) for the feed seen-posts IntersectionObserver.
+- **Rationale:** The -80% rootMargin shrinks the effective root to only the top 20% of
+  the viewport. A post scrolled past so quickly that it never enters the top 20% zone
+  stays at 0 intersection ratio throughout — no callback fires, post is never marked
+  seen. With rootMargin: 0px, the callback fires when a post transitions from
+  "intersecting" (visible) to "not intersecting from above" (scrolled past), capturing
+  all scroll speeds correctly. The `boundingClientRect.top < 0` guard still ensures we
+  only mark posts that have scrolled above the viewport, not those below it.
+- **Trade-offs:** Posts at the very bottom of the initial render batch that are partly
+  visible are now "intersecting" immediately. They'll be marked seen as soon as the user
+  scrolls them above the viewport, which is the correct behavior.
+- **Revisit if:** Users report that the deduplication filter is too aggressive.

@@ -199,10 +199,28 @@ const API = (() => {
       langs:     ['en'],
     };
     if (replyRef) record.reply = replyRef;
-    if (images.length > 0) {
+    if (images.length > 0 && embedRef) {
+      // Quote post with images → recordWithMedia
+      record.embed = {
+        $type:  'app.bsky.embed.recordWithMedia',
+        record: { $type: 'app.bsky.embed.record', record: { uri: embedRef.uri, cid: embedRef.cid } },
+        media:  { $type: 'app.bsky.embed.images', images: images.map(({ blob, alt }) => ({ image: blob, alt: alt || '' })) },
+      };
+    } else if (images.length > 0) {
       record.embed = {
         $type:  'app.bsky.embed.images',
         images: images.map(({ blob, alt }) => ({ image: blob, alt: alt || '' })),
+      };
+    } else if (embedRef && externalEmbed) {
+      // Quote post with external link embed → recordWithMedia
+      const external = {
+        uri: externalEmbed.uri, title: externalEmbed.title || '', description: externalEmbed.description || '',
+      };
+      if (externalEmbed.thumb) external.thumb = externalEmbed.thumb;
+      record.embed = {
+        $type:  'app.bsky.embed.recordWithMedia',
+        record: { $type: 'app.bsky.embed.record', record: { uri: embedRef.uri, cid: embedRef.cid } },
+        media:  { $type: 'app.bsky.embed.external', external },
       };
     } else if (embedRef) {
       record.embed = {
