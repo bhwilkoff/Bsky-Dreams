@@ -1191,6 +1191,128 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
+   M39 — FEED CONTENT FILTERS
+================================================================ */
+.feed-filter-toggle-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.feed-filter-toggle-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-accent);
+}
+
+.feed-filter-panel {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.feed-filter-caveat {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.feed-filter-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feed-filter-legend {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.feed-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  margin: 2px 4px 2px 0;
+  transition: background 0.12s, border-color 0.12s;
+  user-select: none;
+}
+
+.feed-filter-chip:has(input:checked) {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.feed-filter-chip input {
+  accent-color: var(--color-accent);
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+
+.feed-filter-custom-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.feed-filter-label {
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.feed-filter-custom-input {
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  outline: none;
+}
+
+.feed-filter-custom-input:focus {
+  border-color: var(--color-accent);
+}
+
+.feed-filter-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.feed-filter-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ================================================================
    M37 — GALLERY VIEW
 ================================================================ */
 .gallery-feed {

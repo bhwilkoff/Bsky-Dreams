@@ -181,6 +181,30 @@
         <div class="feed-tabs" role="tablist" aria-label="Feed type">
           <button id="feed-tab-discover" class="feed-tab feed-tab-active" role="tab" aria-selected="true" aria-controls="feed-results">Discover</button>
           <button id="feed-tab-following" class="feed-tab" role="tab" aria-selected="false" aria-controls="feed-results">Following</button>
+          <button type="button" id="feed-filter-toggle" class="feed-filter-toggle-btn" aria-expanded="false" aria-controls="feed-filter-panel">
+            Filters ▾
+          </button>
+        </div>
+        <!-- M39: Feed content filters panel -->
+        <div id="feed-filter-panel" class="feed-filter-panel" hidden aria-label="Feed content filters">
+          <p class="feed-filter-caveat">Approximate — keyword matching may miss or misidentify some posts.</p>
+          <fieldset class="feed-filter-fieldset">
+            <legend class="feed-filter-legend">Hide posts about:</legend>
+            <label class="feed-filter-chip"><input type="checkbox" id="filter-politics"      value="politics">      Politics</label>
+            <label class="feed-filter-chip"><input type="checkbox" id="filter-sports"        value="sports">        Sports</label>
+            <label class="feed-filter-chip"><input type="checkbox" id="filter-news"          value="news">          Current Events</label>
+            <label class="feed-filter-chip"><input type="checkbox" id="filter-entertainment" value="entertainment"> Entertainment</label>
+          </fieldset>
+          <div class="feed-filter-custom-wrap">
+            <label for="feed-filter-custom" class="feed-filter-label">Also hide posts containing:</label>
+            <input type="text" id="feed-filter-custom" class="feed-filter-custom-input"
+                   placeholder="Comma-separated keywords (e.g. crypto, nft)" autocomplete="off">
+          </div>
+          <label class="feed-filter-remember">
+            <input type="checkbox" id="feed-filter-remember">
+            Remember my filters
+          </label>
+          <div id="feed-filter-count" class="feed-filter-count" hidden></div>
         </div>
         <div id="feed-results" class="feed" aria-live="polite" aria-label="Home feed">
           <div class="feed-empty">

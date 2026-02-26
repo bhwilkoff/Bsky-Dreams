@@ -2,10 +2,10 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12, 19–51, 42, and 37 are complete,
+The app is fully functional for daily Bluesky use. Milestones 1–12, 19–51, 37, 39, and 42 are complete,
 along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix passes.
 
-**Next focus:** M39 (feed filters), M22 (analytics), M13 (timeline scrubber).
+**Next focus:** M22 (analytics), M13 (timeline scrubber), M14 (constellation), M16 (DMs).
 
 ---
 
@@ -246,6 +246,16 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 - `API.getFeed(feedUri, limit, cursor)` added to `api.js`
 - `overscroll-behavior: none` added to `.view` (the actual scroll container)
 
+### M39: Feed Content Filters ✅
+- "Filters ▾" toggle button added to the feed tab bar (right-aligned)
+- Filter panel: Politics, Sports, Current Events, Entertainment checkboxes + free-text keyword input
+- `/js/filter-words.json`: curated keyword lists for each category
+- `applyFeedFilters()`: client-side keyword matching against `.post-text` content; matching posts set to `display:none`; runs after every `renderFeedItems()` call into the home feed
+- "N posts filtered" counter shown in filter panel when active
+- "Remember my filters" checkbox: writes `bsky_feed_filters: { categories, custom }` to localStorage; `loadFeedFilters()` called in `enterApp()` to restore on login
+- Caveat label: "Approximate — keyword matching may miss or misidentify some posts"
+- Ephemeral by default (unchecked); session-only otherwise
+
 ### M37: Image Browser ("Bsky Dreams Gallery") ✅
 - "Gallery" nav item in sidebar (grid icon); `view-gallery` section in index.html
 - Fetches timeline + Discover feed in parallel (`Promise.allSettled`); filters to image posts only
@@ -287,14 +297,6 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 ---
 
 ### Near-Term
-
-#### M39: Feed Content Filters
-
-- **UI**: "Advanced ▾" toggle below the Following/Discover tab bar
-- **Filter categories** (checkboxes): Politics, Sports, Current Events, Entertainment, Other (free-text keyword list)
-- **Implementation**: client-side keyword matching against `/js/filter-words.json`; hide matching posts with `display: none`; show "N posts filtered" counter
-- **Ephemeral by default**: session-only unless "Remember my filters" checkbox writes to `bsky_feed_filters` localStorage
-- **Caveat label in UI**: "Approximate — keyword matching may miss or misidentify some posts"
 
 ---
 
@@ -427,9 +429,10 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **M39 — Feed content filters** (keyword filter panel, `/js/filter-words.json`, ephemeral by default)
-2. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
-3. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
+1. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
+2. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
+3. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
+4. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
 4. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
 5. **M13 — Horizontal Event Timeline Scrubber**
 6. **M14 — Network Constellation Visualization** (D3.js local)

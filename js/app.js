@@ -799,6 +799,135 @@
   }, { passive: true });
 
   /* ================================================================
+     M39 — FEED CONTENT FILTERS
+  ================================================================ */
+  const FEED_FILTERS_KEY = 'bsky_feed_filters';
+
+  // Filter state
+  let feedFilterWords  = {};          // loaded from filter-words.json
+  let activeFilterCats = new Set();   // 'politics' | 'sports' | 'news' | 'entertainment'
+  let customFilterKws  = [];          // user-supplied keywords
+  let feedFilterCount  = 0;           // posts hidden this session
+
+  // Load filter-words.json once
+  fetch('js/filter-words.json')
+    .then((r) => r.json())
+    .then((data) => { feedFilterWords = data; })
+    .catch(() => {}); // non-fatal
+
+  // Load remembered filters from localStorage
+  function loadFeedFilters() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(FEED_FILTERS_KEY) || 'null');
+      if (!stored) return;
+      activeFilterCats = new Set(stored.categories || []);
+      customFilterKws  = stored.custom || [];
+      // Sync checkboxes
+      ['politics', 'sports', 'news', 'entertainment'].forEach((cat) => {
+        const el = $(`filter-${cat}`);
+        if (el) el.checked = activeFilterCats.has(cat);
+      });
+      const customEl = $('feed-filter-custom');
+      if (customEl) customEl.value = customFilterKws.join(', ');
+    } catch {}
+  }
+
+  function saveFeedFilters() {
+    const rememberEl = $('feed-filter-remember');
+    if (!rememberEl?.checked) return;
+    localStorage.setItem(FEED_FILTERS_KEY, JSON.stringify({
+      categories: [...activeFilterCats],
+      custom:     customFilterKws,
+    }));
+  }
+
+  /**
+   * Apply filters to all rendered feed posts. Call after filter state changes.
+   */
+  function applyFeedFilters() {
+    const cards = feedResults?.querySelectorAll('.post-card') || [];
+    let hidden = 0;
+    cards.forEach((card) => {
+      const postText = (card.querySelector('.post-text')?.textContent || '').toLowerCase();
+      const matchesCat = [...activeFilterCats].some((cat) => {
+        const words = feedFilterWords[cat] || [];
+        return words.some((w) => postText.includes(w.toLowerCase()));
+      });
+      const matchesCustom = customFilterKws.some((kw) => kw && postText.includes(kw.toLowerCase()));
+      const shouldHide = matchesCat || matchesCustom;
+      card.style.display = shouldHide ? 'none' : '';
+      if (shouldHide) hidden++;
+    });
+    feedFilterCount = hidden;
+    updateFeedFilterCount();
+  }
+
+  function updateFeedFilterCount() {
+    const countEl = $('feed-filter-count');
+    if (!countEl) return;
+    if (feedFilterCount > 0) {
+      countEl.textContent = `${feedFilterCount} post${feedFilterCount !== 1 ? 's' : ''} filtered`;
+      countEl.hidden = false;
+    } else {
+      countEl.hidden = true;
+    }
+  }
+
+  // Wire up filter panel toggle
+  const feedFilterToggle = $('feed-filter-toggle');
+  const feedFilterPanel  = $('feed-filter-panel');
+
+  if (feedFilterToggle && feedFilterPanel) {
+    feedFilterToggle.addEventListener('click', () => {
+      const willOpen = feedFilterPanel.hidden;
+      feedFilterPanel.hidden = !willOpen;
+      feedFilterToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      feedFilterToggle.textContent = willOpen ? 'Filters ▴' : 'Filters ▾';
+    });
+  }
+
+  // Wire up category checkboxes
+  ['politics', 'sports', 'news', 'entertainment'].forEach((cat) => {
+    const el = $(`filter-${cat}`);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (el.checked) activeFilterCats.add(cat);
+      else activeFilterCats.delete(cat);
+      applyFeedFilters();
+      saveFeedFilters();
+    });
+  });
+
+  // Wire up custom keywords input (debounced)
+  const feedFilterCustomEl = $('feed-filter-custom');
+  if (feedFilterCustomEl) {
+    let customTimer = null;
+    feedFilterCustomEl.addEventListener('input', () => {
+      clearTimeout(customTimer);
+      customTimer = setTimeout(() => {
+        customFilterKws = feedFilterCustomEl.value
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        applyFeedFilters();
+        saveFeedFilters();
+      }, 400);
+    });
+  }
+
+  // Wire up "Remember my filters" checkbox
+  const feedFilterRemember = $('feed-filter-remember');
+  if (feedFilterRemember) {
+    feedFilterRemember.addEventListener('change', () => {
+      if (!feedFilterRemember.checked) {
+        localStorage.removeItem(FEED_FILTERS_KEY);
+      } else {
+        saveFeedFilters();
+      }
+    });
+  }
+
+  /* ================================================================
      M37 — IMAGE GALLERY VIEW
   ================================================================ */
   const navGalleryBtn  = $('nav-gallery-btn');
@@ -1181,6 +1310,7 @@
     renderChannelsSidebar();
     checkChannelUnreads();    // async background unread check
     loadPrefsFromCloud();     // M20: merge cloud prefs with localStorage
+    loadFeedFilters();        // M39: restore persisted filter settings
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -2100,6 +2230,9 @@
       wrapper.appendChild(card);
       container.appendChild(wrapper);
     });
+
+    // M39: re-apply content filters after every feed render
+    if (container === feedResults) applyFeedFilters();
   }
 
   /* ================================================================
