@@ -2,10 +2,10 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12 and 19–51 are complete,
+The app is fully functional for daily Bluesky use. Milestones 1–12, 19–51, and 42 are complete,
 along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix passes.
 
-**Next focus:** M42 (video upload), M37 (image gallery), M39 (feed filters).
+**Next focus:** M37 (image gallery), M39 (feed filters), M22 (analytics).
 
 ---
 
@@ -246,6 +246,18 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 - `API.getFeed(feedUri, limit, cursor)` added to `api.js`
 - `overscroll-behavior: none` added to `.view` (the actual scroll container)
 
+### M42: Video Upload in All Post Types ✅
+- "Video" toolbar button in main compose and quote post modal; mutually exclusive with images
+- File picker accepts `video/mp4`, `video/webm`, `video/quicktime`; one video per post
+- `validateAndLoadVideo()`: rejects files > 50 MB or > 180s; shows friendly error
+- FFmpeg.wasm skipped (requires SharedArrayBuffer / COOP+COEP headers GitHub Pages cannot serve); unsupported formats show an error
+- Preview: `<video>` element in compose area; filename + duration displayed; ✕ to remove
+- Upload: `API.uploadBlob(file)` → `app.bsky.embed.video` with `alt` and `aspectRatio` when available
+- Video + quote post: `app.bsky.embed.recordWithMedia` (media = video embed, record = quoted post)
+- Daily limit: 25 uploads/day tracked in `bsky_video_daily: { date, count }` in localStorage
+- Cleanup: `clearComposeVideo()` / `clearQuoteVideo()` called on view switch, modal close, and GIF/image selection
+- Applies to: main compose, quote post modal
+
 ### Unnumbered: 8-Item UX Polish Pass ✅
 - **TV sidebar on desktop**: `@media (min-width: 768px)` restores `padding-left: var(--sidebar-width)` for `.view-tv`
 - **TV autoplay fallback**: if `vid.play()` rejected, retries with `vid.muted = true`
@@ -266,18 +278,6 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 ---
 
 ### Near-Term
-
-#### M42: Video Upload in All Post Types
-
-- **Entry**: "Video" button in compose toolbars; mutually exclusive with images; one video per post
-- **File picker**: `video/*` MIME; preview thumbnail captured at 0.5s via canvas
-- **Duration check**: reject if > 180s (3 minutes)
-- **File size**: if > 100 MB, trigger compression with progress bar and Cancel button
-- **Format conversion**: MediaRecorder API for WebM/OGG; FFmpeg.wasm for other formats
-  - ⚠️ FFmpeg.wasm requires `SharedArrayBuffer` (needs `COOP`/`COEP` headers) — GitHub Pages does not support custom headers; investigate Service Worker workaround or limit to MediaRecorder-compatible formats only
-- **Upload**: `API.uploadBlob(videoFile, 'video/mp4')` → embed as `app.bsky.embed.video` with `thumb` blob ref and optional `alt` text
-- **Daily limit**: `bsky_video_daily` in localStorage `{ date, count }`; block at 25/day with user-visible error
-- **Applies to**: main compose, inline reply compose, quote post modal
 
 #### M37: Image Browser ("Bsky Dreams Gallery")
 
@@ -427,9 +427,9 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **M42 — Video upload** (duration check, size check, daily limit; FFmpeg.wasm header blocker needs investigation first)
-2. **M37 — Image browser / Gallery** (dedicated image feed, M40 dedup integration, lightbox reuse)
-3. **M39 — Feed content filters** (keyword filter panel, `/js/filter-words.json`, ephemeral by default)
+1. **M37 — Image browser / Gallery** (dedicated image feed, M40 dedup integration, lightbox reuse)
+2. **M39 — Feed content filters** (keyword filter panel, `/js/filter-words.json`, ephemeral by default)
+3. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
 4. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
 5. **M13 — Horizontal Event Timeline Scrubber**
 6. **M14 — Network Constellation Visualization** (D3.js local)

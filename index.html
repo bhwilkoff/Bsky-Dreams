@@ -296,6 +296,18 @@
               ></textarea>
               <!-- Image previews with alt text inputs — populated by app.js -->
               <div id="compose-images-preview" class="compose-images-preview" hidden></div>
+              <!-- M42: Video preview — populated by app.js -->
+              <div id="compose-video-preview" class="compose-video-preview" hidden>
+                <div class="compose-video-preview-inner">
+                  <video id="compose-video-player" class="compose-video-player" muted playsinline preload="metadata"></video>
+                  <button type="button" id="compose-video-remove" class="compose-video-remove-btn" aria-label="Remove video">✕</button>
+                </div>
+                <div class="compose-video-meta">
+                  <span id="compose-video-name" class="compose-video-name"></span>
+                  <span id="compose-video-dur" class="compose-video-dur"></span>
+                </div>
+                <input type="text" id="compose-video-alt" class="compose-alt-input" placeholder="Alt text (optional)">
+              </div>
               <!-- M41: Link preview card (injected by JS when a URL is pasted) -->
               <div id="compose-link-preview-wrap"></div>
               <!-- M41: GIF search panel (shown/hidden by JS) -->
@@ -338,6 +350,11 @@
                           aria-label="Attach GIF" title="Search GIFs">
                     <span style="font-size:0.8rem;font-weight:700;letter-spacing:-0.5px">GIF</span>
                   </button>
+                  <!-- M42: Video attach -->
+                  <button type="button" class="compose-attach-btn" id="compose-video-btn"
+                          aria-label="Attach video" title="Attach video (MP4/WebM, max 3 min, 50 MB)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="2" y="7" width="15" height="10" rx="2" ry="2"/><polygon points="22 7 16 12 22 17 22 7"/></svg>
+                  </button>
                   <!-- M41: Post settings toggle -->
                   <button type="button" class="compose-attach-btn" id="compose-settings-btn"
                           aria-label="Post settings (thread gate, quote gate)">
@@ -346,6 +363,8 @@
                   <input type="file" id="compose-img-input" class="sr-only"
                          accept="image/jpeg,image/png,image/gif,image/webp"
                          multiple aria-label="Choose images to attach">
+                  <input type="file" id="compose-video-input" class="sr-only"
+                         accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach">
                   <span class="char-count" id="compose-char-count" aria-live="polite">300</span>
                 </div>
                 <div class="compose-actions">
@@ -572,6 +591,18 @@
       <textarea id="quote-modal-text" class="compose-textarea" placeholder="Add your thoughts…" maxlength="300" rows="4" aria-label="Quote post text"></textarea>
       <!-- Image previews -->
       <div id="quote-images-preview" class="compose-images-preview" hidden></div>
+      <!-- M42: Video preview -->
+      <div id="quote-video-preview" class="compose-video-preview" hidden>
+        <div class="compose-video-preview-inner">
+          <video id="quote-video-player" class="compose-video-player" muted playsinline preload="metadata"></video>
+          <button type="button" id="quote-video-remove" class="compose-video-remove-btn" aria-label="Remove video">✕</button>
+        </div>
+        <div class="compose-video-meta">
+          <span id="quote-video-name" class="compose-video-name"></span>
+          <span id="quote-video-dur" class="compose-video-dur"></span>
+        </div>
+        <input type="text" id="quote-video-alt" class="compose-alt-input" placeholder="Alt text (optional)">
+      </div>
       <!-- Link preview card (injected by JS when a URL is detected) -->
       <div id="quote-link-preview-wrap"></div>
       <!-- GIF search panel -->
@@ -618,6 +649,10 @@
                   aria-label="Attach GIF" title="Search GIFs">
             <span style="font-size:0.8rem;font-weight:700;letter-spacing:-0.5px">GIF</span>
           </button>
+          <button type="button" class="compose-attach-btn" id="quote-video-btn"
+                  aria-label="Attach video" title="Attach video (MP4/WebM, max 3 min, 50 MB)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="2" y="7" width="15" height="10" rx="2" ry="2"/><polygon points="22 7 16 12 22 17 22 7"/></svg>
+          </button>
           <button type="button" class="compose-attach-btn" id="quote-settings-btn"
                   aria-label="Post settings (thread gate, quote gate)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
@@ -625,6 +660,8 @@
           <input type="file" id="quote-img-input" class="sr-only"
                  accept="image/jpeg,image/png,image/gif,image/webp"
                  multiple aria-label="Choose images to attach to quote">
+          <input type="file" id="quote-video-input" class="sr-only"
+                 accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach to quote">
           <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
         </div>
         <div class="compose-actions">

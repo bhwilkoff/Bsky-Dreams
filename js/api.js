@@ -188,7 +188,7 @@ const API = (() => {
    * @param {Array}       images   - optional array of { blob, alt } objects
    *                                 where blob is the result of uploadBlob()
    */
-  async function createPost(text, replyRef = null, images = [], embedRef = null, externalEmbed = null) {
+  async function createPost(text, replyRef = null, images = [], embedRef = null, externalEmbed = null, videoEmbed = null) {
     const session = AUTH.getSession();
     if (!session) throw new Error('Not authenticated.');
 
@@ -211,6 +211,16 @@ const API = (() => {
         $type:  'app.bsky.embed.images',
         images: images.map(({ blob, alt }) => ({ image: blob, alt: alt || '' })),
       };
+    } else if (videoEmbed && embedRef) {
+      // M42: video + quote post → recordWithMedia
+      record.embed = {
+        $type:  'app.bsky.embed.recordWithMedia',
+        record: { $type: 'app.bsky.embed.record', record: { uri: embedRef.uri, cid: embedRef.cid } },
+        media:  videoEmbed,
+      };
+    } else if (videoEmbed) {
+      // M42: standalone video embed
+      record.embed = videoEmbed;
     } else if (embedRef && externalEmbed) {
       // Quote post with external link embed → recordWithMedia
       const external = {

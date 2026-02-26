@@ -1116,6 +1116,73 @@ a.post-timestamp:hover {
   background: var(--color-accent-light);
 }
 
+/* M42 — Video preview in compose / quote modal */
+.compose-video-preview {
+  margin: var(--space-sm) 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface-alt);
+}
+
+.compose-video-preview-inner {
+  position: relative;
+}
+
+.compose-video-player {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  background: #000;
+  object-fit: contain;
+}
+
+.compose-video-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.compose-video-remove-btn:hover {
+  background: rgba(0,0,0,0.9);
+}
+
+.compose-video-meta {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+  padding: 4px var(--space-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.compose-video-name {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.compose-video-dur {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .compose-actions {
   display: flex;
   flex-direction: column;

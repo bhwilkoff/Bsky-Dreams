@@ -159,6 +159,12 @@
   let lastSearchOpts     = {};   // M48: last advanced opts for "load more"
   let searchMediaFilters = new Set(); // M49: active media-type filter keys
 
+  // M42 — Video upload state
+  const VIDEO_DAILY_KEY   = 'bsky_video_daily';
+  const DAILY_VIDEO_LIMIT = 25;
+  let composeVideo = null; // { file, objectUrl, duration, aspectRatio } | null
+  let quoteVideo   = null; // same shape
+
   // M40 — Seen-posts deduplication
   const FEED_SEEN_KEY = 'bsky_feed_seen';
   const FEED_SEEN_MAX = 5000;
@@ -950,6 +956,7 @@
       hideError(composeError);
       composeSuccess.hidden = true;
       clearComposeImages();
+      clearComposeVideo();
       // M41: clear link preview and toggle panels
       const lpWrap = $('compose-link-preview-wrap');
       if (lpWrap) lpWrap.innerHTML = '';
@@ -2716,6 +2723,7 @@
     quoteModalSubmit.textContent = 'Quote Post';
     // Clear any leftover compose state from a previous quote
     clearQuoteImages();
+    clearQuoteVideo();
     clearQuoteLinkPreview();
     clearTimeout(quoteLinkTimer);
     quoteGifPanel.hidden = true;
@@ -2838,6 +2846,7 @@
 
   function quoteSelectGif(gifUrl, thumbUrl, alt) {
     clearQuoteImages();
+    clearQuoteVideo();
     quoteLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
     quoteLinkWrap.innerHTML = `
       <div class="compose-link-preview compose-gif-preview">
@@ -2901,6 +2910,7 @@
     quoteModal.hidden = true;
     quoteModalPostRef = null;
     clearQuoteImages();
+    clearQuoteVideo();
     clearQuoteLinkPreview();
     clearTimeout(quoteLinkTimer);
     quoteGifPanel.hidden = true;
@@ -2929,7 +2939,7 @@
   quoteModalSubmit.addEventListener('click', async () => {
     if (!quoteModalPostRef) return;
     const text = quoteModalText.value.trim();
-    if (!text && quoteImages.length === 0) { quoteModalText.focus(); return; }
+    if (!text && quoteImages.length === 0 && !quoteVideo) { quoteModalText.focus(); return; }
 
     quoteModalSubmit.disabled    = true;
     quoteModalSubmit.textContent = 'Posting…';
@@ -2948,8 +2958,23 @@
         );
       }
 
-      // External embed only when no images are attached
-      const linkEmbed = uploadedImages.length === 0 ? quoteLinkEmbed : null;
+      // M42: upload video if attached (mutually exclusive with images)
+      let videoEmbed = null;
+      if (quoteVideo && uploadedImages.length === 0) {
+        quoteModalSubmit.textContent = 'Uploading video…';
+        const altText = $('quote-video-alt')?.value?.trim() || '';
+        const videoBlobRef = await API.uploadBlob(quoteVideo.file, quoteVideo.file.type || 'video/mp4');
+        videoEmbed = {
+          $type: 'app.bsky.embed.video',
+          video: videoBlobRef,
+          ...(altText ? { alt: altText } : {}),
+          ...(quoteVideo.aspectRatio ? { aspectRatio: quoteVideo.aspectRatio } : {}),
+        };
+        incrementVideoDailyCount();
+      }
+
+      // External embed only when no images or video are attached
+      const linkEmbed = uploadedImages.length === 0 && !videoEmbed ? quoteLinkEmbed : null;
 
       // Upload thumbnail for GIF / link previews
       if (linkEmbed?._thumbUrl) {
@@ -2962,8 +2987,9 @@
         } catch { /* non-fatal */ }
       }
 
+      quoteModalSubmit.textContent = 'Posting…';
       const embedRef = { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid };
-      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed);
+      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed, videoEmbed);
 
       // Apply gate records if non-default
       const replyGateVal = quoteReplyGate?.value || 'everyone';
@@ -4096,6 +4122,210 @@
     });
   }
 
+  /* ================================================================
+     M42 — VIDEO UPLOAD HELPERS
+  ================================================================ */
+
+  function getVideoDailyCount() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(VIDEO_DAILY_KEY) || 'null');
+      const today  = new Date().toISOString().slice(0, 10);
+      if (stored?.date === today) return stored.count || 0;
+    } catch {}
+    return 0;
+  }
+
+  function incrementVideoDailyCount() {
+    const today = new Date().toISOString().slice(0, 10);
+    const count = getVideoDailyCount() + 1;
+    localStorage.setItem(VIDEO_DAILY_KEY, JSON.stringify({ date: today, count }));
+  }
+
+  /** Clear compose video state and hide the preview element. */
+  function clearComposeVideo() {
+    if (composeVideo?.objectUrl) URL.revokeObjectURL(composeVideo.objectUrl);
+    composeVideo = null;
+    const wrap = $('compose-video-preview');
+    if (wrap) wrap.hidden = true;
+    const player = $('compose-video-player');
+    if (player) { player.pause(); player.src = ''; }
+    const videoBtnEl = $('compose-video-btn');
+    if (videoBtnEl) videoBtnEl.disabled = false;
+  }
+
+  /** Render the compose video preview given current composeVideo state. */
+  function renderComposeVideoPreview() {
+    const wrap   = $('compose-video-preview');
+    const player = $('compose-video-player');
+    const name   = $('compose-video-name');
+    const dur    = $('compose-video-dur');
+    const removeBtn = $('compose-video-remove');
+    if (!wrap || !player) return;
+
+    if (!composeVideo) { wrap.hidden = true; return; }
+
+    player.src  = composeVideo.objectUrl;
+    player.load();
+    if (name) name.textContent = composeVideo.file.name;
+    if (dur)  dur.textContent  = composeVideo.duration != null
+      ? `${Math.floor(composeVideo.duration)}s`
+      : '';
+    wrap.hidden = false;
+
+    if (removeBtn) {
+      removeBtn.onclick = () => {
+        clearComposeVideo();
+        composeImgBtn.disabled = false;
+      };
+    }
+  }
+
+  /** Clear quote modal video state and hide the preview element. */
+  function clearQuoteVideo() {
+    if (quoteVideo?.objectUrl) URL.revokeObjectURL(quoteVideo.objectUrl);
+    quoteVideo = null;
+    const wrap = $('quote-video-preview');
+    if (wrap) wrap.hidden = true;
+    const player = $('quote-video-player');
+    if (player) { player.pause(); player.src = ''; }
+    const videoBtnEl = $('quote-video-btn');
+    if (videoBtnEl) videoBtnEl.disabled = false;
+  }
+
+  /** Render the quote video preview given current quoteVideo state. */
+  function renderQuoteVideoPreview() {
+    const wrap   = $('quote-video-preview');
+    const player = $('quote-video-player');
+    const name   = $('quote-video-name');
+    const dur    = $('quote-video-dur');
+    const removeBtn = $('quote-video-remove');
+    if (!wrap || !player) return;
+
+    if (!quoteVideo) { wrap.hidden = true; return; }
+
+    player.src  = quoteVideo.objectUrl;
+    player.load();
+    if (name) name.textContent = quoteVideo.file.name;
+    if (dur)  dur.textContent  = quoteVideo.duration != null
+      ? `${Math.floor(quoteVideo.duration)}s`
+      : '';
+    wrap.hidden = false;
+
+    if (removeBtn) {
+      removeBtn.onclick = () => clearQuoteVideo();
+    }
+  }
+
+  /**
+   * Validate a chosen video file and populate the given state object.
+   * Returns an error string on failure, or null on success.
+   * @param {File} file
+   * @returns {Promise<{video: object, error: string|null}>}
+   */
+  async function validateAndLoadVideo(file) {
+    const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+    const MAX_SECS  = 180;              // 3 minutes
+
+    if (!file.type.startsWith('video/')) {
+      return { video: null, error: 'Please choose a video file.' };
+    }
+    if (file.size > MAX_BYTES) {
+      return { video: null, error: `Video is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 50 MB.` };
+    }
+    if (getVideoDailyCount() >= DAILY_VIDEO_LIMIT) {
+      return { video: null, error: `You have reached the daily video limit of ${DAILY_VIDEO_LIMIT} uploads. Try again tomorrow.` };
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const duration  = await new Promise((resolve) => {
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      vid.onloadedmetadata = () => {
+        URL.revokeObjectURL(vid.src);
+        resolve(vid.duration);
+      };
+      vid.onerror = () => { URL.revokeObjectURL(vid.src); resolve(null); };
+      vid.src = objectUrl;
+    });
+
+    if (duration != null && duration > MAX_SECS) {
+      URL.revokeObjectURL(objectUrl);
+      return { video: null, error: `Video is too long (${Math.floor(duration)}s). Maximum is 3 minutes (180s).` };
+    }
+
+    const aspectRatio = await new Promise((resolve) => {
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      vid.onloadedmetadata = () => {
+        const w = vid.videoWidth;
+        const h = vid.videoHeight;
+        resolve(w && h ? { width: w, height: h } : null);
+      };
+      vid.onerror = () => resolve(null);
+      vid.src = URL.createObjectURL(file);
+    });
+
+    return {
+      video: { file, objectUrl, duration, aspectRatio },
+      error: null,
+    };
+  }
+
+  /* ---- Compose video button + input handlers ---- */
+  const composeVideoBtn   = $('compose-video-btn');
+  const composeVideoInput = $('compose-video-input');
+
+  if (composeVideoBtn && composeVideoInput) {
+    composeVideoBtn.addEventListener('click', () => {
+      if (composeVideo) return; // already have one
+      composeVideoInput.value = '';
+      composeVideoInput.click();
+    });
+
+    composeVideoInput.addEventListener('change', async () => {
+      const file = composeVideoInput.files?.[0];
+      composeVideoInput.value = '';
+      if (!file) return;
+
+      const { video, error } = await validateAndLoadVideo(file);
+      if (error) { showError(composeError, error); return; }
+
+      // Video is mutually exclusive with images and link/GIF embeds
+      clearComposeImages();
+      clearLinkPreview();
+      composeVideo = video;
+      renderComposeVideoPreview();
+      composeImgBtn.disabled = true;
+    });
+  }
+
+  /* ---- Quote modal video button + input handlers ---- */
+  const quoteVideoBtn   = $('quote-video-btn');
+  const quoteVideoInput = $('quote-video-input');
+
+  if (quoteVideoBtn && quoteVideoInput) {
+    quoteVideoBtn.addEventListener('click', () => {
+      if (quoteVideo) return;
+      quoteVideoInput.value = '';
+      quoteVideoInput.click();
+    });
+
+    quoteVideoInput.addEventListener('change', async () => {
+      const file = quoteVideoInput.files?.[0];
+      quoteVideoInput.value = '';
+      if (!file) return;
+
+      const { video, error } = await validateAndLoadVideo(file);
+      if (error) { showError(quoteModalError, error); return; }
+
+      clearQuoteImages();
+      clearQuoteLinkPreview();
+      quoteVideo = video;
+      renderQuoteVideoPreview();
+      quoteImgBtn.disabled = true;
+    });
+  }
+
   /**
    * Resize/recompress an image File to fit within maxBytes using the Canvas API.
    * - Files already under the limit are returned unchanged.
@@ -4292,10 +4522,11 @@
    * @param {string}      alt      GIF title / alt text
    */
   function selectGif(gifUrl, thumbUrl, alt) {
-    // Clear any existing images or link preview — a GIF embed is mutually exclusive
+    // Clear any existing images, video, or link preview — GIF is mutually exclusive
     composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
     composeImages = [];
     refreshComposePreview();
+    clearComposeVideo();
 
     // _thumbUrl is a private hint used by the submit handler to upload a static
     // preview blob — it is not sent to the AT Protocol API directly.
@@ -4404,7 +4635,7 @@
     e.preventDefault();
     hideError(composeError);
     const text = composeText.value.trim();
-    if (!text && composeImages.length === 0) return;
+    if (!text && composeImages.length === 0 && !composeVideo) return;
 
     const btn = composeForm.querySelector('button[type="submit"]');
     btn.disabled = true;
@@ -4424,13 +4655,26 @@
         );
       }
 
-      // M41: external embed only when no images are attached
-      const linkEmbed = uploadedImages.length === 0 ? composeLinkEmbed : null;
+      // M42: upload video if attached (mutually exclusive with images)
+      let videoEmbed = null;
+      if (composeVideo && uploadedImages.length === 0) {
+        btn.textContent = 'Uploading video…';
+        const altText = $('compose-video-alt')?.value?.trim() || '';
+        const videoBlobRef = await API.uploadBlob(composeVideo.file, composeVideo.file.type || 'video/mp4');
+        videoEmbed = {
+          $type: 'app.bsky.embed.video',
+          video: videoBlobRef,
+          ...(altText ? { alt: altText } : {}),
+          ...(composeVideo.aspectRatio ? { aspectRatio: composeVideo.aspectRatio } : {}),
+        };
+        incrementVideoDailyCount();
+      }
+
+      // M41: external embed only when no images or video are attached
+      const linkEmbed = uploadedImages.length === 0 && !videoEmbed ? composeLinkEmbed : null;
 
       // If the external embed is a GIF, upload the static xs.jpg thumbnail so
       // native Bluesky renders an image card rather than a bare text link.
-      // (Native Bluesky will animate it automatically once klipy.com is on their
-      // allowlist; until then, the thumb makes the card visually useful.)
       if (linkEmbed?._thumbUrl) {
         try {
           btn.textContent = 'Uploading GIF preview…';
@@ -4443,7 +4687,8 @@
         }
       }
 
-      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed);
+      btn.textContent = 'Posting…';
+      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed, videoEmbed);
 
       // M41: apply thread gate and quote gate records if non-default
       const replyGateVal = composeReplyGate.value;
@@ -4476,6 +4721,7 @@
       composeForm.reset();
       composeCount.textContent = '300';
       clearComposeImages();
+      clearComposeVideo();
       clearLinkPreview();
       composeGifPanel.hidden      = true;
       composeSettingsPanel.hidden = true;
