@@ -165,11 +165,12 @@
   let composeVideo = null; // { file, objectUrl, duration, aspectRatio } | null
   let quoteVideo   = null; // same shape
 
-  // M40 — Seen-posts deduplication
+  // M40 — Seen-posts deduplication (unified across all interfaces)
   const FEED_SEEN_KEY = 'bsky_feed_seen';
-  const FEED_SEEN_MAX = 5000;
+  const FEED_SEEN_MAX = 10000;           // increased cap for cross-interface coverage
   let feedSeenMap     = loadFeedSeen();  // Map<uri, { seenAt, likeCount, repostCount }>
   let feedSeenBypass  = false;           // session flag: "show anyway" escape hatch
+  let feedSeenSaveTimer = null;          // debounce handle for localStorage writes
 
   // M20 — Cross-device prefs sync
   const PREFS_COLLECTION = 'app.bsky-dreams.prefs';
@@ -576,13 +577,24 @@
     } catch {}
   }
 
+  /** Debounced save — batches writes from rapid back-to-back mark calls. */
+  function scheduleFeedSeenSave() {
+    clearTimeout(feedSeenSaveTimer);
+    feedSeenSaveTimer = setTimeout(saveFeedSeen, 500);
+  }
+
+  /**
+   * Mark a post as seen in the unified cross-interface registry.
+   * Called immediately at render time in every interface (feed, gallery, TV).
+   * No-op if the URI is already registered.
+   */
   function markFeedPostSeen(uri, likeCount, repostCount) {
     if (!uri || feedSeenMap.has(uri)) return;
     if (feedSeenMap.size >= FEED_SEEN_MAX) {
       feedSeenMap.delete(feedSeenMap.keys().next().value); // evict oldest (FIFO)
     }
     feedSeenMap.set(uri, { seenAt: Date.now(), likeCount: likeCount || 0, repostCount: repostCount || 0 });
-    saveFeedSeen();
+    scheduleFeedSeenSave();
   }
 
   function isFeedPostSeen(uri, likeCount, repostCount) {
@@ -602,7 +614,7 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-ghost feed-seen-hint-btn';
-    btn.textContent = `${count} post${count === 1 ? '' : 's'} filtered as already seen (show anyway)`;
+    btn.textContent = `${count} post${count === 1 ? '' : 's'} already seen across all interfaces — show anyway`;
     btn.addEventListener('click', () => {
       feedSeenBypass = true;
       hint.remove();
@@ -941,8 +953,7 @@
   let galleryCursorDiscover = null;
   let galleryLoading_flag   = false;
   let galleryAllDone        = false;
-  let gallerySeenUris       = new Set(); // dedup within session
-  let gallerySeenCids       = new Set(); // dedup by blob CID
+  let gallerySeenCids       = new Set(); // dedup by blob CID (within session)
   let galleryScrollObserver = null;
 
   /**
@@ -1140,6 +1151,9 @@
     // Clicking the card (not on an image or button) opens the thread
     card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
 
+    // Mark seen immediately at render time — unified cross-interface registry
+    markFeedPostSeen(post.uri, post.likeCount, post.repostCount);
+
     return card;
   }
 
@@ -1187,10 +1201,10 @@
       for (const item of allItems) {
         const post = item.post;
         if (!post?.uri) continue;
-        if (gallerySeenUris.has(post.uri)) continue;
-        gallerySeenUris.add(post.uri);
-        // Skip posts already in the seen-posts dedup map (M40), unless bypass active
-        if (!feedSeenBypass && feedSeenMap.has(post.uri)) continue;
+        // Use the unified feedSeenMap for cross-interface + cross-session dedup.
+        // buildGalleryCard calls markFeedPostSeen, so within-batch duplicates are
+        // automatically caught by feedSeenMap after the first occurrence is rendered.
+        if (isFeedPostSeen(post.uri, post.likeCount, post.repostCount)) continue;
         if (!postHasImages(post)) continue;
         const card = buildGalleryCard(post);
         if (!card) continue;
@@ -1222,8 +1236,7 @@
     galleryCursorDiscover = null;
     galleryLoading_flag   = false;
     galleryAllDone        = false;
-    gallerySeenUris       = new Set();
-    gallerySeenCids       = new Set();
+    gallerySeenCids       = new Set(); // reset blob-CID dedup for this session
     galleryFeed.innerHTML = '';
     galleryEmpty.hidden   = true;
     galleryLoading.hidden = true;
@@ -1942,10 +1955,10 @@
         renderFeedItems(displayItems, feedResults, append);
       }
 
-      // M40+M44: show filtered hint; seen-marking is now scroll-based (IntersectionObserver below)
+      // Show filtered hint when previously-seen posts were skipped
       if (seenCount > 0) showFeedSeenHint(seenCount);
 
-      // M44: attach IntersectionObserver for scroll-based seen tracking
+      // M44: visual read indicator only — dedup marking happens at render time
       attachFeedSeenObserver(feedResults);
 
       // Show "Load more" only if there's a next page
@@ -1959,32 +1972,24 @@
     }
   }
 
-  /* ---- M44: Scroll-based read indicator (IntersectionObserver) ---- */
+  /* ---- M44: Scroll-based visual read indicator (IntersectionObserver) ---- */
+  // Posts are now marked seen immediately at render time (see renderFeedItems).
+  // This observer is responsible only for adding the visual .post-seen dimming
+  // style when a card scrolls above the viewport — dedup tracking is decoupled.
   let feedSeenObserver = null;
 
   function attachFeedSeenObserver(container) {
-    // Disconnect any previous observer before attaching a new one
     if (feedSeenObserver) { feedSeenObserver.disconnect(); feedSeenObserver = null; }
 
     feedSeenObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        // Mark as seen when the card has fully scrolled above the 80% viewport line
         if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
           const card = entry.target;
-          const uri  = card.dataset.uri;
-          if (!uri || card.classList.contains('post-seen')) return;
-          const likeCount   = parseInt(card.querySelector('.like-action-btn .action-count')?.textContent || '0', 10);
-          const repostCount = parseInt(card.querySelector('.repost-action-btn .action-count')?.textContent || '0', 10);
-          markFeedPostSeen(uri, likeCount, repostCount);
           card.classList.add('post-seen');
-          feedSeenObserver.unobserve(card); // each card only needs to be marked once
+          feedSeenObserver.unobserve(card);
         }
       });
-    }, {
-      root: null,
-      rootMargin: '0px', // full viewport — fires when card exits from top after being visible
-      threshold: 0,
-    });
+    }, { root: null, rootMargin: '0px', threshold: 0 });
 
     container.querySelectorAll('.post-card[data-uri]').forEach((card) => {
       if (!card.classList.contains('post-seen')) feedSeenObserver.observe(card);
@@ -2229,6 +2234,11 @@
 
       wrapper.appendChild(card);
       container.appendChild(wrapper);
+
+      // Mark seen immediately at render time (unified cross-interface registry).
+      // The scroll-based M44 observer is now only responsible for the visual
+      // .post-seen dimming style; the dedup tracking happens here.
+      markFeedPostSeen(post.uri, post.likeCount, post.repostCount);
     });
 
     // M39: re-apply content filters after every feed render
@@ -2675,11 +2685,15 @@
       try { localStorage.setItem(TV_SEEN_KEY, JSON.stringify([...tvSeen])); } catch {}
     }
 
-    function markSeen(uri) {
+    function markSeen(post) {
+      const uri = post?.uri || post; // accept post object or bare URI
       if (!uri || tvSeen.has(uri)) return;
       tvSeen.add(uri);
       if (tvSeen.size > TV_SEEN_MAX) tvSeen.delete(tvSeen.values().next().value);
       saveSeen();
+      // Also mark in the unified cross-interface registry so this video is
+      // filtered from the home feed and gallery in future sessions.
+      markFeedPostSeen(uri, post?.likeCount || 0, post?.repostCount || 0);
     }
 
     /* ---- Show overlay meta and start auto-hide timer (3 s) ---- */
@@ -2740,7 +2754,12 @@
           }
         }
 
-        const found = dedup(posts).filter((p) => hasVideo(p) && (tvAllowAdult || !isAdultPost(p)) && !tvSeen.has(p.uri));
+        const found = dedup(posts).filter((p) =>
+          hasVideo(p) &&
+          (tvAllowAdult || !isAdultPost(p)) &&
+          !tvSeen.has(p.uri) &&
+          !feedSeenMap.has(p.uri)  // skip posts already seen in feed or gallery
+        );
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
@@ -2885,7 +2904,7 @@
       const embed = getVideoEmbed(post);
       if (!embed?.playlist) { tvSliding = false; advanceToNext(); return; }
 
-      markSeen(post.uri);
+      markSeen(post); // marks in both tvSeen and unified feedSeenMap
       showOverlay(post);
 
       if (!direction || direction === 'none') {
@@ -2991,6 +3010,10 @@
     updateSeenBtn();  // set initial state on load
 
     $('tv-clear-history-btn').addEventListener('click', () => {
+      // Remove TV-watched URIs from the unified feed seen map so those
+      // videos can resurface in the home feed and gallery after clearing history.
+      tvSeen.forEach((uri) => feedSeenMap.delete(uri));
+      scheduleFeedSeenSave();
       tvSeen.clear();
       saveSeen();
       updateSeenBtn();
