@@ -420,8 +420,8 @@
         </form>
 
         <label class="tv-adult-label">
-          <input type="checkbox" id="tv-adult-toggle">
-          Show adult content
+          <input type="checkbox" id="tv-adult-toggle" checked>
+          Hide adult content
         </label>
 
         <button type="button" id="tv-clear-history-btn" class="tv-clear-history-btn" hidden>
@@ -560,7 +560,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
   </button>
 
-  <!-- Quote Post Modal (M30) -->
+  <!-- Quote Post Modal (M30, extended with full compose features) -->
   <div id="quote-modal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="quote-modal-title">
     <div class="modal-card">
       <div class="modal-header">
@@ -570,16 +570,68 @@
         </button>
       </div>
       <textarea id="quote-modal-text" class="compose-textarea" placeholder="Add your thoughts…" maxlength="300" rows="4" aria-label="Quote post text"></textarea>
-      <div class="compose-footer">
-        <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
-        <div id="quote-modal-error" class="error-banner" hidden role="alert"></div>
+      <!-- Image previews -->
+      <div id="quote-images-preview" class="compose-images-preview" hidden></div>
+      <!-- Link preview card (injected by JS when a URL is detected) -->
+      <div id="quote-link-preview-wrap"></div>
+      <!-- GIF search panel -->
+      <div id="quote-gif-panel" class="compose-gif-panel" hidden>
+        <div class="compose-gif-search-row">
+          <input type="search" id="quote-gif-input" class="compose-gif-input"
+                 placeholder="Search GIFs on Klipy…" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-ghost" id="quote-gif-search-btn">Search</button>
+        </div>
+        <div id="quote-gif-grid" class="compose-gif-grid">
+          <p class="compose-gif-empty">Type above to search for GIFs</p>
+        </div>
       </div>
+      <!-- Post settings panel -->
+      <div id="quote-settings-panel" class="compose-settings-panel" hidden>
+        <div class="compose-settings-row">
+          <span class="compose-settings-label">Who can reply</span>
+          <select id="quote-reply-gate" class="compose-settings-select">
+            <option value="everyone">Everyone</option>
+            <option value="mentioned">Mentioned only</option>
+            <option value="following">Following only</option>
+          </select>
+        </div>
+        <div class="compose-settings-row">
+          <span class="compose-settings-label">Who can quote</span>
+          <select id="quote-quote-gate" class="compose-settings-select">
+            <option value="everyone">Everyone</option>
+            <option value="nobody">Nobody</option>
+          </select>
+        </div>
+      </div>
+      <!-- Quoted post preview -->
       <div id="quote-modal-preview" class="quote-modal-preview">
         <!-- Quoted post preview injected by JS -->
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="quote-modal-cancel">Cancel</button>
-        <button class="btn btn-primary" id="quote-modal-submit">Quote Post</button>
+      <!-- Footer: toolbar + char count + actions -->
+      <div class="compose-footer" style="margin-top: var(--space-sm);">
+        <div class="compose-footer-left compose-toolbar">
+          <button type="button" class="compose-attach-btn" id="quote-img-btn"
+                  aria-label="Attach images (up to 4)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </button>
+          <button type="button" class="compose-attach-btn" id="quote-gif-btn"
+                  aria-label="Attach GIF" title="Search GIFs">
+            <span style="font-size:0.8rem;font-weight:700;letter-spacing:-0.5px">GIF</span>
+          </button>
+          <button type="button" class="compose-attach-btn" id="quote-settings-btn"
+                  aria-label="Post settings (thread gate, quote gate)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+          </button>
+          <input type="file" id="quote-img-input" class="sr-only"
+                 accept="image/jpeg,image/png,image/gif,image/webp"
+                 multiple aria-label="Choose images to attach to quote">
+          <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
+        </div>
+        <div class="compose-actions">
+          <div id="quote-modal-error" class="error-banner" hidden role="alert"></div>
+          <button class="btn btn-ghost" id="quote-modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="quote-modal-submit">Quote Post</button>
+        </div>
       </div>
     </div>
   </div>

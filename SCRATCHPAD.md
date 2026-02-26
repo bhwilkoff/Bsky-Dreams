@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40–51 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation, pause button, 2× speed hold, dual-feed queue, short-clip filter), home feed Discover tab with elastic overscroll fix, M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish), M20 (cross-device prefs sync via AT Protocol repo), M29 (GIF playback in timeline), M30 (quote post interface), M32 (iOS Safari PWA session persistence), M34 (PTR resistance + scroll-to-top button), M35 (inline reply from home feed), M40 (seen-posts deduplication), M41 (link preview + GIF picker + post settings in compose), M43 (sidebar nav redesign), M44 (scroll-based read indicator), M45 (scroll-to-top left gutter), M46 (deep thread overflow fix), M47 (PTR on search + profile), M48 (load more on search), M49 (advanced search media filters), M50 (infinite scroll thread replies), M51 (post success banner with in-app link).
+Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40–51 are complete, plus repost/quote-post rendering fixes, thread nesting visual polish, M9 (Inline Reply Compose), video player bug fix, M11 (Channels sidebar), M19 (Deep-Link Routing), UX improvements (default home view, pull-to-refresh), Bsky Dreams TV enhancements (TikTok-style redesign, watch history, dual search, back navigation, pause button, 2× speed hold, dual-feed queue, short-clip filter), home feed Discover tab with elastic overscroll fix, M28/M31/M33/M38 (Discover as default, reposter links, mention links, interface polish), M20 (cross-device prefs sync via AT Protocol repo), M29 (GIF playback in timeline), M30 (quote post interface), M32 (iOS Safari PWA session persistence), M34 (PTR resistance + scroll-to-top button), M35 (inline reply from home feed), M40 (seen-posts deduplication), M41 (link preview + GIF picker + post settings in compose), M43 (sidebar nav redesign), M44 (scroll-based read indicator), M45 (scroll-to-top left gutter), M46 (deep thread overflow fix), M47 (PTR on search + profile), M48 (load more on search), M49 (advanced search media filters), M50 (infinite scroll thread replies), M51 (post success banner with in-app link), Tenor→Klipy GIF migration, and the 8-item UX polish pass (TV sidebar/playback/checkbox, mobile header layout, link preview thumbnail upload, quote modal full compose features, seen-posts observer fix, collapse button visibility, feed tab refresh).
 
 ## Completed Milestones
 
@@ -418,6 +418,44 @@ Milestones 1–12, 19, 20, 21, 29, 30, 32, 34, 35, 36, 38, 40–51 are complete,
   calls `openThread()` in-app. Auto-dismisses after 4 seconds.
 - Quote post modal now shows a `#quote-success-banner` fixed banner after successful
   submission with the same "View post →" in-app navigation.
+
+### GIF Provider Migration: Tenor → Klipy ✅
+- Replaced Tenor API with Klipy (`api.klipy.com/api/v1/{key}/gifs/search`) throughout.
+- Key hardcoded as `KLIPY_KEY` constant (no user-facing override UI).
+- Fixed Klipy response schema (`data.data.data[]`, `item.file.hd.gif.url` etc.).
+- GIFs embedded as `app.bsky.embed.external` (CDN URL) so animation is preserved —
+  BlueSky CDN strips animation from uploaded blobs.
+- `xs.jpg` thumbnail uploaded as blob → `thumb` in external embed so native Bluesky
+  shows an image card instead of a bare text link.
+- `isGifExternalEmbed` updated to detect `klipy.com` URLs.
+
+### 8-Item UX Polish Pass ✅
+- **TV sidebar on desktop**: `.view-tv { padding: 0 !important }` now has a desktop
+  `@media` override restoring `padding-left: var(--sidebar-width)`.
+- **TV video playback**: Muted fallback in `loadVideoInSlot` — if `vid.play()` is
+  rejected (autoplay policy), retries with `vid.muted = true`.
+- **TV adult content checkbox**: Label changed to "Hide adult content"; `checked` by
+  default; `tvAllowAdult = !$('tv-adult-toggle').checked` (inverted).
+- **Mobile header layout**: `.mobile-logo` absolutely centered with `left:50%; transform:
+  translateX(-50%)`; `position: relative` on `.top-bar-inner`; `margin-left: auto` on
+  `.nav-avatar-btn` so avatar is right-aligned.
+- **Link preview thumbnail in post**: `fetchLinkPreview` now stores thumb as `_thumbUrl`
+  (like GIFs). Submit handler uploads it as a blob and includes it in the external embed
+  so native Bluesky renders an image card. "Change" button added to swap the thumbnail URL.
+- **Quote modal full compose features**: Added image attachment, GIF picker, link preview,
+  and post settings (thread gate / quote gate) to the quote modal. `api.js createPost`
+  extended to support `app.bsky.embed.recordWithMedia` when both images/external embed
+  and a quote embedRef are present. `searchKlipyGifs` refactored to accept `(q, gridEl,
+  onSelect)` parameters for reuse across compose and quote contexts.
+- **Seen-posts IntersectionObserver**: Changed `rootMargin: '0px 0px -80% 0px'` to
+  `rootMargin: '0px'`. The -80% approach caused fast-scrolled posts to never trigger
+  (intersection ratio stayed at 0 throughout). Full-viewport root fires correctly on exit.
+- **Thread collapse button visibility**: Removed `overflow-x: hidden` from `.reply-group`
+  (which was clipping the `left: -9px` collapse button). Moved it to `.reply-group-body`
+  so deep nesting is still contained but the button is fully visible.
+- **Feed tab click-to-refresh**: Removed `if (feedMode !== '...')` guards from
+  `feedTabFollowing` and `feedTabDiscover` click handlers so clicking the active tab
+  always refreshes the feed.
 
 ---
 

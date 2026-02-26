@@ -313,6 +313,7 @@ button {
   gap: var(--space-md);
   max-width: var(--max-content-width);
   margin: 0 auto;
+  position: relative; /* allows .mobile-logo to be absolutely centered */
 }
 
 .nav-logo-btn {
@@ -336,6 +337,14 @@ button {
 
 .nav-logo-mark {
   font-size: 1.3rem;
+}
+
+/* Mobile top bar: logo is absolutely centered between hamburger and avatar */
+.mobile-logo {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none; /* don't intercept clicks meant for underlying buttons */
 }
 
 .top-nav {
@@ -396,7 +405,7 @@ button {
   gap: var(--space-sm);
   background: none;
   border: none;
-  margin-left: var(--space-sm);
+  margin-left: auto; /* push profile avatar to the far right */
   border-radius: var(--radius-pill);
   padding: 4px;
 }
@@ -1156,8 +1165,14 @@ a.post-timestamp:hover {
   padding-left: 16px;       /* extra room for the collapse button */
   border-left: 2px solid var(--thread-line-color, var(--color-border));
   border-bottom-left-radius: 3px;
-  overflow-x: hidden;       /* M46: prevent deep nesting from causing horizontal scroll */
+  /* overflow-x: visible — collapse btn is left: -9px and must not be clipped */
   max-width: 100%;          /* M46: ensure groups don't expand beyond container */
+}
+
+/* M46: contain horizontal overflow at the body level so the collapse button
+   (position: absolute; left: -9px on .reply-group) remains fully visible */
+.reply-group-body {
+  overflow-x: hidden;
 }
 
 /* Post cards inside a reply group inherit the depth color as their left border */
@@ -2379,6 +2394,13 @@ a.post-timestamp:hover {
 ================================================================ */
 .view-tv {
   padding: 0 !important;  /* full-bleed for the TV player */
+}
+
+@media (min-width: 768px) {
+  /* Restore sidebar offset that .view-tv's padding:0 removes on desktop */
+  .view-tv {
+    padding-left: var(--sidebar-width) !important;
+  }
 }
 
 .tv-setup {
