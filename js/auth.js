@@ -10,6 +10,7 @@
 
 const AUTH = (() => {
   const SESSION_KEY = 'bsky_session';
+  const CREDS_KEY   = 'bsky_saved_creds';
   const BSKY_BASE   = 'https://bsky.social/xrpc';
 
   /**
@@ -102,5 +103,28 @@ const AUTH = (() => {
     return !!(s && s.accessJwt);
   }
 
-  return { login, refreshSession, saveSession, getSession, clearSession, isLoggedIn };
+  /**
+   * Persist the user's app-password credentials so a silent re-login can be
+   * attempted if the refresh token itself expires.  Only app passwords should
+   * be stored here — never the user's main Bluesky password.
+   */
+  function saveCredentials(identifier, password) {
+    localStorage.setItem(CREDS_KEY, JSON.stringify({ identifier, password }));
+  }
+
+  /** Retrieve saved credentials, or null if none. */
+  function getSavedCredentials() {
+    try {
+      const raw = localStorage.getItem(CREDS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  /** Remove saved credentials (called on explicit sign-out). */
+  function clearCredentials() {
+    localStorage.removeItem(CREDS_KEY);
+  }
+
+  return { login, refreshSession, saveSession, getSession, clearSession, isLoggedIn,
+           saveCredentials, getSavedCredentials, clearCredentials };
 })();

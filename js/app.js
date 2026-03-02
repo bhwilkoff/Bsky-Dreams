@@ -479,6 +479,7 @@
 
   sidebarSignOutBtn.addEventListener('click', () => {
     AUTH.clearSession();
+    AUTH.clearCredentials();
     appScreen.hidden  = true;
     authScreen.hidden = false;
     sidebarOwnProfile.hidden = true;
@@ -588,22 +589,17 @@
    * Called immediately at render time in every interface (feed, gallery, TV).
    * No-op if the URI is already registered.
    */
-  function markFeedPostSeen(uri, likeCount, repostCount) {
+  function markFeedPostSeen(uri) {
     if (!uri || feedSeenMap.has(uri)) return;
     if (feedSeenMap.size >= FEED_SEEN_MAX) {
       feedSeenMap.delete(feedSeenMap.keys().next().value); // evict oldest (FIFO)
     }
-    feedSeenMap.set(uri, { seenAt: Date.now(), likeCount: likeCount || 0, repostCount: repostCount || 0 });
+    feedSeenMap.set(uri, { seenAt: Date.now() });
   }
 
-  function isFeedPostSeen(uri, likeCount, repostCount) {
+  function isFeedPostSeen(uri) {
     if (feedSeenBypass) return false;
-    const entry = feedSeenMap.get(uri);
-    if (!entry) return false;
-    // "Gone viral" threshold: resurface if engagement jumped by ≥ 50
-    const delta = (likeCount || 0) + (repostCount || 0)
-                - (entry.likeCount || 0) - (entry.repostCount || 0);
-    return delta < 50;
+    return feedSeenMap.has(uri);
   }
 
   function showFeedSeenHint(count) {
@@ -708,7 +704,7 @@
         if (feedSeenMap.size >= FEED_SEEN_MAX) {
           feedSeenMap.delete(feedSeenMap.keys().next().value); // FIFO eviction
         }
-        feedSeenMap.set(uri, { seenAt: fallbackTs, likeCount: 0, repostCount: 0 });
+        feedSeenMap.set(uri, { seenAt: fallbackTs });
         added++;
       }
       if (added > 0) saveFeedSeen(); // persist merged map to localStorage
@@ -757,6 +753,46 @@
     } catch { return null; }
   }
 
+  /**
+   * Attempt to restore an expired session using (in order):
+   * 1. The stored refresh token.
+   * 2. Saved app-password credentials (silent re-login).
+   * 3. Show the auth screen with the handle pre-filled as a last resort.
+   *
+   * Network errors (TypeError / "Failed to fetch") during the refresh attempt
+   * are treated as transient — the existing session is preserved so the next
+   * foreground event can retry.  Only a clear server-side auth rejection triggers
+   * sign-out.
+   */
+  async function tryRestoreSession(session) {
+    // 1. Try refresh token
+    try {
+      await AUTH.refreshSession(session.refreshJwt);
+      return; // success — new tokens saved by refreshSession
+    } catch (err) {
+      // TypeError means a network failure (e.g. device just woke up, still offline).
+      // Don't log the user out — keep the existing session and retry on next foreground.
+      if (err instanceof TypeError) return;
+    }
+
+    // 2. Try silent re-login with saved app-password credentials
+    const creds = AUTH.getSavedCredentials();
+    if (creds) {
+      try {
+        await AUTH.login(creds.identifier, creds.password);
+        return; // success
+      } catch { /* credentials may have been revoked — fall through */ }
+    }
+
+    // 3. Both failed — show auth screen with handle pre-filled to minimise friction
+    AUTH.clearSession();
+    appScreen.hidden  = true;
+    authScreen.hidden = false;
+    const savedHandle = session?.handle || creds?.identifier || '';
+    if (savedHandle) authForm.handle.value = savedHandle;
+    showError(authError, 'Your session expired. Please sign in again.');
+  }
+
   async function handleVisibilityChange() {
     if (document.hidden || !AUTH.isLoggedIn()) return;
     const session = AUTH.getSession();
@@ -768,16 +804,7 @@
     const msUntilExpiry = exp - Date.now();
 
     if (msUntilExpiry < 0) {
-      // Access token expired — try to refresh using the refresh token
-      try {
-        await AUTH.refreshSession(session.refreshJwt);
-      } catch {
-        // Both tokens expired — return to auth screen with a message
-        AUTH.clearSession();
-        appScreen.hidden  = true;
-        authScreen.hidden = false;
-        showError(authError, 'Your session expired. Please sign in again.');
-      }
+      await tryRestoreSession(session);
     } else if (msUntilExpiry < 15 * 60 * 1000) {
       // Within 15 minutes of expiry — proactively refresh
       try { await AUTH.refreshSession(session.refreshJwt); } catch { /* non-fatal */ }
@@ -1249,7 +1276,7 @@
     card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
 
     // Mark seen immediately at render time — unified cross-interface registry
-    markFeedPostSeen(post.uri, post.likeCount, post.repostCount);
+    markFeedPostSeen(post.uri);
 
     return card;
   }
@@ -1301,7 +1328,7 @@
         // Use the unified feedSeenMap for cross-interface + cross-session dedup.
         // buildGalleryCard calls markFeedPostSeen, so within-batch duplicates are
         // automatically caught by feedSeenMap after the first occurrence is rendered.
-        if (isFeedPostSeen(post.uri, post.likeCount, post.repostCount)) continue;
+        if (isFeedPostSeen(post.uri)) continue;
         if (!postHasImages(post)) continue;
         const card = buildGalleryCard(post);
         if (!card) continue;
@@ -1376,6 +1403,14 @@
     }
 
     if (AUTH.isLoggedIn()) {
+      // On cold launch the access token may already be expired.  Proactively
+      // restore it before enterApp fires any API calls with a stale token.
+      const session = AUTH.getSession();
+      const exp = session?.accessJwt ? getJwtExp(session.accessJwt) : null;
+      if (exp !== null && exp - Date.now() < 0) {
+        await tryRestoreSession(session);
+        if (!AUTH.isLoggedIn()) return; // auth screen is now shown — stop here
+      }
       await enterApp(urlParams);
     }
     // Auth screen visible by default
@@ -1396,6 +1431,7 @@
 
     try {
       await AUTH.login(handle, password);
+      AUTH.saveCredentials(handle, password); // enables silent re-login if refresh token expires
       await enterApp(new URLSearchParams(window.location.search));
     } catch (err) {
       showError(authError, err.message || 'Sign in failed. Check your handle and app password.');
@@ -1650,6 +1686,7 @@
 
   menuSignOut.addEventListener('click', () => {
     AUTH.clearSession();
+    AUTH.clearCredentials();
     appScreen.hidden  = true;
     authScreen.hidden = false;
     profileMenu.hidden = true;
@@ -2040,7 +2077,7 @@
       const displayItems = items.filter((item) => {
         const post = item.post;
         if (!post) return true;
-        if (isFeedPostSeen(post.uri, post.likeCount, post.repostCount)) {
+        if (isFeedPostSeen(post.uri)) {
           seenCount++;
           return false;
         }
@@ -2339,7 +2376,7 @@
       // Mark seen immediately at render time (unified cross-interface registry).
       // The scroll-based M44 observer is now only responsible for the visual
       // .post-seen dimming style; the dedup tracking happens here.
-      markFeedPostSeen(post.uri, post.likeCount, post.repostCount);
+      markFeedPostSeen(post.uri);
     });
 
     // M39: re-apply content filters after every feed render
@@ -2796,7 +2833,7 @@
       if (tvSeen.size > TV_SEEN_MAX) tvSeen.delete(tvSeen.values().next().value);
       saveSeen();
       // Also mark in the unified cross-interface registry and persist immediately.
-      markFeedPostSeen(uri, post?.likeCount || 0, post?.repostCount || 0);
+      markFeedPostSeen(uri);
       saveFeedSeen();
     }
 
