@@ -937,6 +937,10 @@
     const viewConvoBtn = document.getElementById('lightbox-view-convo');
     if (viewConvoBtn) viewConvoBtn.hidden = !lightboxPost;
 
+    // Re-enable pinch-zoom inside the lightbox
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.content = 'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+
     renderLightboxSlide();
     imageLightbox.hidden         = false;
     document.body.style.overflow = 'hidden';
@@ -985,6 +989,10 @@
     document.body.style.overflow = '';
     const viewConvoBtn = document.getElementById('lightbox-view-convo');
     if (viewConvoBtn) viewConvoBtn.hidden = true;
+
+    // Restore no-zoom viewport for the rest of the app
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
   }
 
   lightboxCloseBtn.addEventListener('click', closeLightbox);
