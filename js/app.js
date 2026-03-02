@@ -38,8 +38,7 @@
 
   const feedResults    = $('feed-results');
   const ptrIndicator   = $('ptr-indicator');
-  const feedLoadMore   = $('feed-load-more');
-  const feedLoadMoreBtn = $('feed-load-more-btn');
+  const feedSentinel   = $('feed-load-sentinel'); // M60: infinite scroll sentinel
   const feedTabFollowing = $('feed-tab-following');
   const feedTabDiscover  = $('feed-tab-discover');
 
@@ -460,6 +459,7 @@
   const sidebarOwnName     = $('sidebar-own-name');
   const sidebarOwnHandle   = $('sidebar-own-handle');
   const sidebarSignOutBtn  = $('sidebar-sign-out-btn');
+  const sidebarSettingsBtn = $('sidebar-settings-btn');
 
   function updateSidebarProfile(profile) {
     if (!profile) { sidebarOwnProfile.hidden = true; return; }
@@ -488,6 +488,86 @@
     notifLoaded = false;
     notifBadge.hidden = true;
     closeSidebar();
+  });
+
+  /* ================================================================
+     SETTINGS MODAL (M52)
+  ================================================================ */
+  const settingsModal      = $('settings-modal');
+  const settingsHandleDisp = $('settings-handle-display');
+  const settingsDidDisp    = $('settings-did-display');
+  const settingsSavedLogin = $('settings-saved-login-display');
+  const settingsForgetBtn  = $('settings-forget-login');
+  const settingsDefaultTab = $('settings-default-tab');
+  const settingsSeenCount  = $('settings-seen-count');
+  const settingsTvCount    = $('settings-tv-count');
+  const settingsClearSeen  = $('settings-clear-seen');
+  const settingsClearTv    = $('settings-clear-tv');
+
+  function openSettings() {
+    const session = AUTH.getSession();
+    settingsHandleDisp.textContent = session?.handle ? `@${session.handle}` : '—';
+    settingsDidDisp.textContent    = session?.did    || '—';
+
+    const creds = AUTH.getSavedCredentials();
+    if (creds) {
+      settingsSavedLogin.textContent = `@${creds.identifier}`;
+      settingsForgetBtn.disabled     = false;
+    } else {
+      settingsSavedLogin.textContent = 'None saved';
+      settingsForgetBtn.disabled     = true;
+    }
+
+    const storedTab = localStorage.getItem('bsky_default_tab') || 'discover';
+    settingsDefaultTab.value = storedTab;
+
+    settingsSeenCount.textContent = `${feedSeenMap.size.toLocaleString()} posts`;
+
+    try {
+      const tvRaw  = localStorage.getItem('bsky_tv_seen');
+      const tvCnt  = tvRaw ? JSON.parse(tvRaw).length : 0;
+      settingsTvCount.textContent = `${tvCnt.toLocaleString()} videos`;
+    } catch {
+      settingsTvCount.textContent = '0 videos';
+    }
+
+    settingsModal.hidden = false;
+    closeSidebar();
+  }
+
+  function closeSettings() {
+    settingsModal.hidden = true;
+  }
+
+  sidebarSettingsBtn.addEventListener('click', openSettings);
+
+  $('settings-modal-close').addEventListener('click', closeSettings);
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) closeSettings();
+  });
+
+  settingsForgetBtn.addEventListener('click', () => {
+    AUTH.clearCredentials();
+    settingsSavedLogin.textContent = 'None saved';
+    settingsForgetBtn.disabled     = true;
+  });
+
+  settingsDefaultTab.addEventListener('change', () => {
+    const tab = settingsDefaultTab.value;
+    localStorage.setItem('bsky_default_tab', tab);
+    setFeedMode(tab);
+  });
+
+  settingsClearSeen.addEventListener('click', () => {
+    feedSeenMap.clear();
+    saveFeedSeen();
+    feedSeenBypass = false;
+    settingsSeenCount.textContent = '0 posts';
+  });
+
+  settingsClearTv.addEventListener('click', () => {
+    $('tv-clear-history-btn').click();
+    settingsTvCount.textContent = '0 videos';
   });
 
   /* ================================================================
@@ -843,7 +923,8 @@
   ================================================================ */
   let lightboxImages  = [];   // [{ src, alt }, ...]
   let lightboxIndex   = 0;
-  let lightboxTouchX  = null; // for swipe detection
+  let lightboxTouchX  = null; // for horizontal swipe detection
+  let lightboxTouchY  = null; // M54: for vertical swipe-to-dismiss detection
   let lightboxPost    = null; // post object when opened from gallery; null otherwise
 
   function openLightbox(images, startIndex = 0, post = null) {
@@ -930,16 +1011,25 @@
     if (e.key === 'ArrowRight')  goLightbox(lightboxIndex + 1);
   });
 
-  // Touch swipe support
+  // Touch swipe support (M54: vertical swipe closes; horizontal swipe navigates)
   imageLightbox.addEventListener('touchstart', (e) => {
     lightboxTouchX = e.touches[0].clientX;
+    lightboxTouchY = e.touches[0].clientY;
   }, { passive: true });
 
   imageLightbox.addEventListener('touchend', (e) => {
-    if (lightboxTouchX === null) return;
+    if (lightboxTouchX === null || lightboxTouchY === null) return;
     const dx = e.changedTouches[0].clientX - lightboxTouchX;
+    const dy = e.changedTouches[0].clientY - lightboxTouchY;
     lightboxTouchX = null;
-    if (Math.abs(dx) < 40) return; // ignore small swipes
+    lightboxTouchY = null;
+    // Vertical swipe (any direction, ≥ 80px) → dismiss lightbox
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) >= 80) {
+      closeLightbox();
+      return;
+    }
+    // Horizontal swipe → navigate images
+    if (Math.abs(dx) < 40) return;
     if (dx < 0) goLightbox(lightboxIndex + 1);  // swipe left → next
     else         goLightbox(lightboxIndex - 1);  // swipe right → prev
   }, { passive: true });
@@ -1084,6 +1174,7 @@
   const gallerySentinel = $('gallery-load-sentinel');
   const galleryLoading = $('gallery-loading');
   const galleryEmpty   = $('gallery-empty');
+  const galleryEndMsg  = $('gallery-end'); // M59: end-of-feed indicator
 
   let galleryCursorTimeline = null;
   let galleryCursorDiscover = null;
@@ -1348,6 +1439,11 @@
       }
 
       galleryEmpty.hidden = galleryFeed.children.length > 0;
+      // M59: show end-of-feed message when all posts have been loaded
+      if (galleryAllDone) {
+        if (galleryEndMsg) galleryEndMsg.hidden = false;
+        if (galleryScrollObserver) galleryScrollObserver.disconnect();
+      }
     } catch (err) {
       // silently log — gallery is non-critical
       console.warn('Gallery load error:', err);
@@ -1367,6 +1463,7 @@
     galleryFeed.innerHTML = '';
     galleryEmpty.hidden   = true;
     galleryLoading.hidden = true;
+    if (galleryEndMsg) galleryEndMsg.hidden = true;
     setupGalleryScrollObserver();
     loadGalleryBatch();
   }
@@ -1461,6 +1558,10 @@
     loadPrefsFromCloud();     // M20: merge cloud prefs (channels, filters, uiPrefs) with localStorage
     loadSeenFromCloud();      // M20+: merge cloud seen-posts (7-day window) with localStorage
     loadFeedFilters();        // M39: restore persisted filter settings (localStorage fallback)
+
+    // M52: apply saved default feed tab preference
+    const savedTab = localStorage.getItem('bsky_default_tab');
+    if (savedTab === 'following' || savedTab === 'discover') setFeedMode(savedTab);
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -1614,6 +1715,11 @@
       feedSeenObserver = null;
     }
 
+    // M60: disconnect feed infinite-scroll observer when leaving feed view
+    if (name !== 'feed' && feedScrollObserver) {
+      feedScrollObserver.disconnect();
+    }
+
     // M37: disconnect gallery scroll observer when leaving gallery view
     if (name !== 'gallery' && galleryScrollObserver) {
       galleryScrollObserver.disconnect();
@@ -1682,6 +1788,11 @@
 
   document.addEventListener('click', () => {
     profileMenu.hidden = true;
+  });
+
+  $('menu-settings').addEventListener('click', () => {
+    profileMenu.hidden = true;
+    openSettings();
   });
 
   menuSignOut.addEventListener('click', () => {
@@ -2057,7 +2168,6 @@
       feedLoaded     = false;
       feedSeenBypass = false; // M40: reset bypass on fresh feed load
       feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
-      feedLoadMore.hidden   = true;
       document.querySelector('.feed-seen-hint')?.remove(); // M40: clear old hint
     }
 
@@ -2099,8 +2209,12 @@
       // M44: visual read indicator only — dedup marking happens at render time
       attachFeedSeenObserver(feedResults);
 
-      // Show "Load more" only if there's a next page
-      feedLoadMore.hidden = !feedCursor;
+      // M60: sentinel triggers next page automatically; reconnect observer when there's more
+      if (feedCursor) {
+        setupFeedScrollObserver();
+      } else if (feedScrollObserver) {
+        feedScrollObserver.disconnect();
+      }
     } catch (err) {
       if (!append) {
         feedResults.innerHTML = `<div class="feed-empty"><p>Could not load feed: ${escHtml(err.message)}</p></div>`;
@@ -2136,7 +2250,7 @@
 
   /* ---- Pull-to-refresh on the home feed ---- */
   (() => {
-    const PTR_THRESHOLD = 96;  // M34: increased from 64px to reduce accidental triggers
+    const PTR_THRESHOLD = 48;  // M65: reduced from 96px — original was too stiff on mobile
     const PTR_HOLD_MS   = 400; // M34: must hold at threshold for 400ms before triggering
     const PTR_HEIGHT    = 52;  // must match CSS height of .ptr-indicator
     let ptrStartY   = 0;
@@ -2209,7 +2323,7 @@
 
   /* ---- M47: Pull-to-refresh on Search + Profile views ---- */
   (() => {
-    const PTR_THRESHOLD = 96;
+    const PTR_THRESHOLD = 48; // M65: reduced from 96px
     const PTR_HOLD_MS   = 400;
     const PTR_HEIGHT    = 52;
 
@@ -2264,12 +2378,15 @@
     makePTR(viewProfile, () => {
       if (profileActor) loadProfileFeed(profileActor, false);
     });
+
+    // M57: Gallery view PTR — reload gallery from scratch
+    makePTR(viewGallery, () => loadGallery());
   })();
 
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv];
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery]; // M57: added viewGallery
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -2285,7 +2402,18 @@
     });
   })();
 
-  feedLoadMoreBtn.addEventListener('click',    () => loadFeed(true));
+  /* M60: Infinite scroll for Following/Discover feed */
+  let feedScrollObserver = null;
+  function setupFeedScrollObserver() {
+    if (feedScrollObserver) feedScrollObserver.disconnect();
+    feedScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && feedCursor) loadFeed(true);
+      },
+      { rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (feedSentinel) feedScrollObserver.observe(feedSentinel);
+  }
   profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
   notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
   notifLoadMoreBtn.addEventListener('click',   () => loadNotifications(true));
@@ -2690,10 +2818,14 @@
 
       item.appendChild(body);
 
-      // Click to open profile for follows; open thread for others
+      // Click to open profile for follows; for likes/reposts open the subject post;
+      // for replies/mentions/quotes open the notification post itself (M63)
       item.addEventListener('click', () => {
         if (reason === 'follow') {
           openProfile(author.handle);
+        } else if ((reason === 'like' || reason === 'repost') && notif.reasonSubject) {
+          // reasonSubject is the AT URI of the post that was liked/reposted
+          openThread(notif.reasonSubject, '', '');
         } else if (notif.uri) {
           openThread(notif.uri, notif.cid, author.handle);
         }
@@ -2935,6 +3067,7 @@
         vid.play().catch(() => {
           // Autoplay blocked (e.g. browser policy); retry muted so video still plays
           vid.muted = true;
+          syncMuteBtn(); // M58: update icon to show muted state
           vid.play().catch(() => {});
         });
       });
@@ -2944,7 +3077,7 @@
         tvHlsArr[s] = hls;
       } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
         vid.src = src;
-        vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
+        vid.play().catch(() => { vid.muted = true; syncMuteBtn(); vid.play().catch(() => {}); }) // M58;
       }
 
       // M36: Short-clip filter — skip videos shorter than 5 seconds
@@ -3203,6 +3336,9 @@
       if      (e.deltaY > 30)  advanceToNext();   // scroll down → next
       else if (e.deltaY < -30) goBack();           // scroll up   → previous
     }, { passive: false });
+
+    /* ---- M53: Prevent long-press context menu / text-selection during 2× speed hold ---- */
+    tvWrap.addEventListener('contextmenu', (e) => e.preventDefault());
 
     /* ---- 2× speed hold (M36): hold pointer on the video area for fast-forward ---- */
     tvWrap.addEventListener('pointerdown', (e) => {
@@ -3559,6 +3695,9 @@
   quoteModalClose.addEventListener('click', closeQuoteModal);
   quoteModalCancel.addEventListener('click', closeQuoteModal);
   quoteModal.addEventListener('click', (e) => { if (e.target === quoteModal) closeQuoteModal(); });
+
+  // M61: attach @mention autocomplete to quote modal textarea
+  attachMentionAutocomplete(quoteModalText);
 
   // Char count + link preview detection for quote textarea
   quoteModalText.addEventListener('input', () => {
@@ -4541,6 +4680,135 @@
   });
 
   /* ================================================================
+     M61 — @MENTION AUTOCOMPLETE
+  ================================================================ */
+  /**
+   * Attach @mention autocomplete to any compose textarea.
+   *
+   * While typing, if the cursor is immediately after "@word", a dropdown of
+   * matching Bluesky users is shown.  Selecting one inserts their handle.
+   * Escape, blur, or clicking away dismisses the dropdown.
+   *
+   * @param {HTMLTextAreaElement} textarea - the textarea to augment
+   */
+  function attachMentionAutocomplete(textarea) {
+    let dropdown = null;
+    let debounceTimer = null;
+    let activeIdx = -1;
+    let lastQuery = '';
+
+    function closeDropdown() {
+      dropdown?.remove();
+      dropdown = null;
+      activeIdx = -1;
+      lastQuery = '';
+    }
+
+    function getActiveMentionQuery() {
+      const val  = textarea.value;
+      const pos  = textarea.selectionStart;
+      // Walk backwards from cursor to find the start of a @word
+      let i = pos - 1;
+      while (i >= 0 && val[i] !== '@' && val[i] !== ' ' && val[i] !== '\n') i--;
+      if (i < 0 || val[i] !== '@') return null;
+      // Make sure @ is not inside an existing handle (preceded by a letter)
+      if (i > 0 && /\w/.test(val[i - 1])) return null;
+      const query = val.slice(i + 1, pos);
+      if (!query.length) return null;
+      return { query, atStart: i, wordEnd: pos };
+    }
+
+    function showDropdown(items, atStart, wordEnd) {
+      closeDropdown();
+      if (!items.length) return;
+
+      dropdown = document.createElement('div');
+      dropdown.className = 'mention-dropdown';
+
+      items.forEach((actor, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mention-item';
+        btn.innerHTML = `
+          <img class="mention-avatar" src="${escHtml(actor.avatar || '')}" alt="" loading="lazy">
+          <span class="mention-name">${escHtml(actor.displayName || actor.handle || '')}</span>
+          <span class="mention-handle">@${escHtml(actor.handle || '')}</span>
+        `;
+        btn.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // don't blur textarea
+          insertHandle(actor.handle, atStart, wordEnd);
+        });
+        dropdown.appendChild(btn);
+      });
+
+      // Position below textarea
+      const rect = textarea.getBoundingClientRect();
+      dropdown.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+      dropdown.style.left = `${rect.left  + window.scrollX}px`;
+      document.body.appendChild(dropdown);
+      setActive(0);
+    }
+
+    function setActive(idx) {
+      if (!dropdown) return;
+      const items = dropdown.querySelectorAll('.mention-item');
+      items.forEach((el, i) => el.classList.toggle('mention-item-active', i === idx));
+      activeIdx = idx;
+    }
+
+    function insertHandle(handle, atStart, wordEnd) {
+      const val  = textarea.value;
+      const insert = handle + ' ';
+      textarea.value = val.slice(0, atStart + 1) + insert + val.slice(wordEnd);
+      textarea.selectionStart = textarea.selectionEnd = atStart + 1 + insert.length;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      closeDropdown();
+      textarea.focus();
+    }
+
+    textarea.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const match = getActiveMentionQuery();
+      if (!match) { closeDropdown(); return; }
+      if (match.query === lastQuery) return;
+      lastQuery = match.query;
+      debounceTimer = setTimeout(async () => {
+        try {
+          const result = await API.searchActors(match.query, 5);
+          const actors = result?.actors || [];
+          const fresh = getActiveMentionQuery();
+          if (!fresh || fresh.query !== match.query) return; // cursor moved
+          showDropdown(actors, fresh.atStart, fresh.wordEnd);
+        } catch { /* non-fatal */ }
+      }, 300);
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if (!dropdown) return;
+      const items = dropdown.querySelectorAll('.mention-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActive(Math.min(activeIdx + 1, items.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive(Math.max(activeIdx - 1, 0));
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        if (activeIdx >= 0) {
+          e.preventDefault();
+          items[activeIdx]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        }
+      } else if (e.key === 'Escape') {
+        closeDropdown();
+      }
+    });
+
+    textarea.addEventListener('blur', () => {
+      // Small delay so mousedown on dropdown item fires first
+      setTimeout(closeDropdown, 150);
+    });
+  }
+
+  /* ================================================================
      INLINE REPLY COMPOSE (M9)
   ================================================================ */
   /**
@@ -4616,6 +4884,10 @@
     textarea.maxLength   = 300;
     textarea.rows        = 3;
     textarea.setAttribute('aria-label', 'Reply text');
+    textarea.setAttribute('autocorrect', 'on');       // M64
+    textarea.setAttribute('autocapitalize', 'sentences'); // M64
+    textarea.setAttribute('spellcheck', 'true');      // M64
+    attachMentionAutocomplete(textarea);               // M61
     body.appendChild(textarea);
 
     const footer = document.createElement('div');
@@ -5254,6 +5526,9 @@
       }
     });
   }
+
+  // M61: attach @mention autocomplete to main compose textarea
+  attachMentionAutocomplete(composeText);
 
   /* ================================================================
      COMPOSE — SUBMIT

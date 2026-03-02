@@ -1427,6 +1427,16 @@ a.post-timestamp:hover {
   font-size: 0.875rem;
 }
 
+/* M59: end-of-gallery notification */
+.gallery-end-msg {
+  text-align: center;
+  padding: var(--space-lg) var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-md);
+}
+
 /* ================================================================
    THREAD / CONVERSATION VIEW
 ================================================================ */
@@ -1857,6 +1867,95 @@ a.post-timestamp:hover {
 .btn-danger:hover:not(:disabled) { background: #b91c1c; }
 .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ================================================================
+   SETTINGS MODAL (M52)
+================================================================ */
+.settings-modal-card {
+  max-width: 460px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+.settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-xs);
+}
+
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 2px 0;
+}
+.settings-row-between {
+  align-items: center;
+}
+
+.settings-label {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  flex-shrink: 0;
+  min-width: 110px;
+}
+
+.settings-value {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  text-align: right;
+  word-break: break-all;
+}
+.settings-value-muted { color: var(--color-text-muted); }
+.settings-value-mono {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.settings-select {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.settings-select:focus { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+.settings-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  padding-top: var(--space-xs);
+}
+
+.settings-danger-btn {
+  font-size: 0.8125rem;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: #dc2626;
+}
+.settings-danger-btn:hover { background: rgba(220, 38, 38, 0.08); border-color: #dc2626; }
+
 .report-action-btn {
   opacity: 0;
   transition: opacity 0.15s;
@@ -1864,6 +1963,10 @@ a.post-timestamp:hover {
 .post-card:hover .report-action-btn,
 .post-card:focus-within .report-action-btn {
   opacity: 1;
+}
+/* M56: always show on touch devices (no hover) */
+@media (hover: none) {
+  .report-action-btn { opacity: 1; }
 }
 
 .report-actor-btn {
@@ -2719,6 +2822,12 @@ a.post-timestamp:hover {
 .view-tv {
   padding: 0 !important;  /* full-bleed for the TV player */
 }
+/* M53: prevent long-press from triggering text selection in TV mode */
+.view-tv,
+.tv-video-wrap {
+  -webkit-user-select: none;
+  user-select: none;
+}
 
 @media (min-width: 768px) {
   /* Restore sidebar offset that .view-tv's padding:0 removes on desktop */
@@ -3338,6 +3447,26 @@ a.post-timestamp:hover {
   color: var(--color-text);
 }
 
+.sidebar-settings-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-settings-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
 /* ---- Channel list ---- */
 .channels-list {
   flex: 1;
@@ -3792,6 +3921,9 @@ a.post-timestamp:hover {
   margin-top: var(--space-sm);
   background: var(--color-surface-alt);
   overflow: hidden;
+  /* M55: ensure panel never overflows the compose body on narrow screens */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .compose-gif-search-row {
@@ -3838,6 +3970,58 @@ a.post-timestamp:hover {
   padding: var(--space-md);
   color: var(--color-text-muted);
   font-size: 0.875rem;
+}
+
+/* M61: @mention autocomplete dropdown */
+.mention-dropdown {
+  position: absolute;
+  z-index: 1000;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+.mention-item:hover,
+.mention-item.mention-item-active {
+  background: var(--color-surface-alt);
+}
+.mention-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.mention-name {
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mention-handle {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Post settings gear panel */
