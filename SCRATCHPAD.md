@@ -2,10 +2,12 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12, 19–51, 37, 39, and 42 are complete,
-along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix passes.
+The app is fully functional for daily Bluesky use. Milestones 1–12, 19–65, 37, 39, and 42 are complete,
+along with a GIF provider migration (Tenor → Klipy), several polish/bug-fix passes, two session-level
+updates (seen-posts virality threshold removed; silent iOS re-login via saved credentials), and a full
+UX polish batch (M53–M65) plus a Settings Panel (M52).
 
-**Next focus:** M22 (analytics), M13 (timeline scrubber), M14 (constellation), M16 (DMs).
+**Next focus:** M62 (Rich Compose in Inline Reply), then M22 (analytics), M13, M14, M16.
 
 ---
 
@@ -297,6 +299,28 @@ along with a GIF provider migration (Tenor → Klipy) and several polish/bug-fix
 - **Thread collapse button**: `overflow-x: hidden` moved from `.reply-group` to `.reply-group-body`
 - **Feed tab refresh**: removed `if (feedMode !== '...')` guards so clicking the active tab always refreshes
 
+### M52: User Settings Panel ✅
+- **Entry**: gear icon button in sidebar footer (alongside Sign Out); also accessible from profile dropdown menu on mobile
+- **Modal sections**: Account (handle + DID display-only, saved-login indicator, "Forget saved login" button), Feed (default feed tab select — persists to `bsky_default_tab` in localStorage), Data (seen posts count + "Clear seen posts", TV watch history count + "Clear TV history")
+- **Default tab**: applied on login in `enterApp()` via `localStorage.getItem('bsky_default_tab')`
+- **Clear seen posts**: calls `feedSeenMap.clear()` + `saveFeedSeen()`; resets `feedSeenBypass`
+- **Clear TV history**: delegates to `tv-clear-history-btn.click()` so the TV closure's in-memory `tvSeen` Set is also cleared
+
+### M53–M65: UX Polish Batch ✅
+- **M53** TV long-press text selection fix: `user-select: none` on `.view-tv` / `.tv-video-wrap`; `contextmenu` → `preventDefault()`
+- **M54** Lightbox swipe-to-dismiss: track `lightboxTouchY`; `|dy| > |dx| && |dy| ≥ 80` → `closeLightbox()`
+- **M55** GIF picker width: `width: 100%; box-sizing: border-box` on `.compose-gif-panel`
+- **M56** Report button always visible on mobile: `@media (hover: none) { .report-action-btn { opacity: 1; } }`
+- **M57** Gallery scroll-to-top + PTR: `viewGallery` added to `ALL_VIEWS`; `makePTR(viewGallery, loadGallery)`
+- **M58** TV mute visual state: `syncMuteBtn()` called in autoplay-fallback `catch` block
+- **M59** Gallery end-of-feed notification: `#gallery-end` element shown when `galleryAllDone`; hidden on `loadGallery()`
+- **M60** Feed infinite scroll: `#feed-load-sentinel` replaces "Load more" button; `setupFeedScrollObserver()` IntersectionObserver
+- **M61** @Mention autocomplete: `attachMentionAutocomplete(textarea)` with debounced `API.searchActors`, dropdown, arrow-key nav; applied to all 3 compose textareas
+- **M62** Rich compose in inline reply: deferred (complex refactor)
+- **M63** Notification navigation: `notif.reasonSubject` used for like/repost notifications
+- **M64** Mobile text editing: `autocorrect="on" autocapitalize="sentences" spellcheck="true"` on all compose textareas
+- **M65** PTR threshold: reduced from 96 to 48 px
+
 ---
 
 ## Planned Milestones
@@ -306,6 +330,12 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 ---
 
 ### Near-Term
+
+#### M62: Rich Compose in Inline Reply
+
+- Inline reply currently offers only a plain textarea; main compose has image upload, GIF picker, link preview, and post settings
+- **Add to inline reply**: image upload (up to 4 images with alt text), GIF picker, post settings (reply/quote gate); link preview is optional
+- **Approach**: extract compose toolbar button creation into a reusable `buildComposeToolbar(config)` helper; call it from both main compose and `expandInlineReply`; share `composeImages`/`composeGif` per-instance state maps keyed by compose instance ID
 
 ---
 
@@ -438,11 +468,8 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
-2. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
-3. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
-4. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
-4. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
-5. **M13 — Horizontal Event Timeline Scrubber**
-6. **M14 — Network Constellation Visualization** (D3.js local)
-7. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
+1. **M62 — Rich Compose in Inline Reply** (complex refactor; extract toolbar helper)
+2. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
+3. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
+4. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
+5. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
