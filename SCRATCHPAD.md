@@ -2,12 +2,12 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12, 19–65, 37, 39, and 42 are complete,
+The app is fully functional for daily Bluesky use. Milestones 1–12, 19–65, 37, 39, 42, and 62 are complete,
 along with a GIF provider migration (Tenor → Klipy), several polish/bug-fix passes, two session-level
-updates (seen-posts virality threshold removed; silent iOS re-login via saved credentials), and a full
-UX polish batch (M53–M65) plus a Settings Panel (M52).
+updates (seen-posts virality threshold removed; silent iOS re-login via saved credentials), a full UX polish
+batch (M52–M65), and mobile zoom prevention (viewport + input font-size fix).
 
-**Next focus:** M62 (Rich Compose in Inline Reply), then M22 (analytics), M13, M14, M16.
+**Next focus:** M22 (analytics), M13, M14, M16.
 
 ---
 
@@ -316,7 +316,7 @@ UX polish batch (M53–M65) plus a Settings Panel (M52).
 - **M59** Gallery end-of-feed notification: `#gallery-end` element shown when `galleryAllDone`; hidden on `loadGallery()`
 - **M60** Feed infinite scroll: `#feed-load-sentinel` replaces "Load more" button; `setupFeedScrollObserver()` IntersectionObserver
 - **M61** @Mention autocomplete: `attachMentionAutocomplete(textarea)` with debounced `API.searchActors`, dropdown, arrow-key nav; applied to all 3 compose textareas
-- **M62** Rich compose in inline reply: deferred (complex refactor)
+- **M62** Rich compose in inline reply: image upload (up to 4 with alt text) + GIF picker added to inline reply box; per-instance state managed in closure; images uploaded at submit time; GIF thumbnail fetched and uploaded as blob for native card rendering
 - **M63** Notification navigation: `notif.reasonSubject` used for like/repost notifications
 - **M64** Mobile text editing: `autocorrect="on" autocapitalize="sentences" spellcheck="true"` on all compose textareas
 - **M65** PTR threshold: reduced from 96 to 48 px
@@ -330,12 +330,6 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 ---
 
 ### Near-Term
-
-#### M62: Rich Compose in Inline Reply
-
-- Inline reply currently offers only a plain textarea; main compose has image upload, GIF picker, link preview, and post settings
-- **Add to inline reply**: image upload (up to 4 images with alt text), GIF picker, post settings (reply/quote gate); link preview is optional
-- **Approach**: extract compose toolbar button creation into a reusable `buildComposeToolbar(config)` helper; call it from both main compose and `expandInlineReply`; share `composeImages`/`composeGif` per-instance state maps keyed by compose instance ID
 
 ---
 
@@ -468,8 +462,7 @@ None currently.
 
 ## Next Session Starting Point
 
-1. **M62 — Rich Compose in Inline Reply** (complex refactor; extract toolbar helper)
-2. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
-3. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
-4. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
-5. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)
+1. **M22 — Analytics Dashboard** (Chart.js local, engagement over time, top posts table)
+2. **M13 — Horizontal Event Timeline Scrubber** (search-seeded, horizontal scroll rail)
+3. **M14 — Network Constellation Visualization** (D3.js local, force-directed graph)
+4. **M16 — Direct Messages** (chat.bsky.convo.* API, separate base URL)

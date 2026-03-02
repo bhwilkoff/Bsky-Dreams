@@ -4837,6 +4837,10 @@
     const record = post.record  || {};
     const text   = record.text  || '';
 
+    // ---- Per-instance compose state ----
+    let replyImages    = [];  // [{ file, previewUrl, altText }]
+    let replyGifEmbed  = null; // { uri, title, description, _thumbUrl }
+
     const box = document.createElement('div');
     box.className     = 'inline-reply-box';
     box.dataset.replyTo = post.uri;
@@ -4858,10 +4862,9 @@
     quoteAuthor.className   = 'inline-reply-quote-author';
     quoteAuthor.textContent = `@${author.handle || ''}`;
 
-    const quoteSnippet  = text.length > 120 ? text.slice(0, 120) + '…' : text;
-    const quoteText     = document.createTextNode(' · ' + quoteSnippet);
+    const quoteSnippet = text.length > 120 ? text.slice(0, 120) + '…' : text;
     quoteContent.appendChild(quoteAuthor);
-    quoteContent.appendChild(quoteText);
+    quoteContent.appendChild(document.createTextNode(' · ' + quoteSnippet));
     quoteEl.appendChild(quoteContent);
     box.appendChild(quoteEl);
 
@@ -4878,20 +4881,78 @@
     const body = document.createElement('div');
     body.className = 'inline-reply-body';
 
+    // ---- Textarea ----
     const textarea = document.createElement('textarea');
     textarea.className   = 'compose-textarea inline-reply-textarea';
     textarea.placeholder = `Reply to @${author.handle || ''}…`;
     textarea.maxLength   = 300;
     textarea.rows        = 3;
     textarea.setAttribute('aria-label', 'Reply text');
-    textarea.setAttribute('autocorrect', 'on');       // M64
-    textarea.setAttribute('autocapitalize', 'sentences'); // M64
-    textarea.setAttribute('spellcheck', 'true');      // M64
-    attachMentionAutocomplete(textarea);               // M61
+    textarea.setAttribute('autocorrect', 'on');
+    textarea.setAttribute('autocapitalize', 'sentences');
+    textarea.setAttribute('spellcheck', 'true');
+    attachMentionAutocomplete(textarea);
     body.appendChild(textarea);
 
+    // ---- Image previews area ----
+    const imgPreviewEl = document.createElement('div');
+    imgPreviewEl.className = 'compose-images-preview';
+    imgPreviewEl.hidden = true;
+    body.appendChild(imgPreviewEl);
+
+    // ---- GIF / link preview area ----
+    const gifPreviewEl = document.createElement('div');
+    gifPreviewEl.className = 'inline-reply-gif-preview';
+    gifPreviewEl.hidden = true;
+    body.appendChild(gifPreviewEl);
+
+    // ---- GIF picker panel ----
+    const gifPanel = document.createElement('div');
+    gifPanel.className = 'compose-gif-panel';
+    gifPanel.hidden    = true;
+    gifPanel.innerHTML = `
+      <div class="compose-gif-search-row">
+        <input type="search" class="compose-gif-input" placeholder="Search GIFs…" autocomplete="off" spellcheck="false">
+        <button type="button" class="btn btn-ghost">Search</button>
+      </div>
+      <div class="compose-gif-grid"><p class="compose-gif-empty">Type above to search for GIFs</p></div>`;
+    body.appendChild(gifPanel);
+
+    const gifInput     = gifPanel.querySelector('.compose-gif-input');
+    const gifSearchBtn = gifPanel.querySelector('.btn');
+    const gifGrid      = gifPanel.querySelector('.compose-gif-grid');
+
+    // ---- Toolbar + footer ----
     const footer = document.createElement('div');
     footer.className = 'inline-reply-footer';
+
+    // Toolbar (image + GIF buttons)
+    const toolbar = document.createElement('div');
+    toolbar.className = 'compose-toolbar inline-reply-toolbar';
+
+    // Hidden file input for images
+    const imgFileInput = document.createElement('input');
+    imgFileInput.type     = 'file';
+    imgFileInput.accept   = 'image/jpeg,image/png,image/webp,image/gif';
+    imgFileInput.multiple = true;
+    imgFileInput.hidden   = true;
+    imgFileInput.setAttribute('aria-hidden', 'true');
+
+    const imgBtn = document.createElement('button');
+    imgBtn.type      = 'button';
+    imgBtn.className = 'compose-attach-btn';
+    imgBtn.setAttribute('aria-label', 'Attach images');
+    imgBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
+    const gifBtn = document.createElement('button');
+    gifBtn.type      = 'button';
+    gifBtn.className = 'compose-attach-btn';
+    gifBtn.setAttribute('aria-label', 'Add GIF');
+    gifBtn.innerHTML = `<span style="font-size:0.75rem;font-weight:700;letter-spacing:-0.02em">GIF</span>`;
+
+    toolbar.appendChild(imgFileInput);
+    toolbar.appendChild(imgBtn);
+    toolbar.appendChild(gifBtn);
 
     const countSpan = document.createElement('span');
     countSpan.className   = 'char-count';
@@ -4906,20 +4967,23 @@
     errorEl.setAttribute('role', 'alert');
 
     const cancelBtn = document.createElement('button');
-    cancelBtn.type      = 'button';
-    cancelBtn.className = 'btn btn-ghost';
+    cancelBtn.type        = 'button';
+    cancelBtn.className   = 'btn btn-ghost';
     cancelBtn.textContent = 'Cancel';
 
     const submitBtn = document.createElement('button');
-    submitBtn.type      = 'button';
-    submitBtn.className = 'btn btn-primary';
+    submitBtn.type        = 'button';
+    submitBtn.className   = 'btn btn-primary';
     submitBtn.textContent = 'Reply';
 
     actionsEl.appendChild(errorEl);
     actionsEl.appendChild(cancelBtn);
     actionsEl.appendChild(submitBtn);
+
+    footer.appendChild(toolbar);
     footer.appendChild(countSpan);
     footer.appendChild(actionsEl);
+
     body.appendChild(footer);
     composeEl.appendChild(body);
     box.appendChild(composeEl);
@@ -4929,6 +4993,72 @@
     box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     textarea.focus();
 
+    // ---- Helper: refresh image preview ----
+    function refreshImgPreview() {
+      imgPreviewEl.innerHTML = '';
+      imgPreviewEl.hidden    = replyImages.length === 0;
+      imgBtn.disabled        = replyImages.length >= 4;
+
+      replyImages.forEach((entry, idx) => {
+        const item = document.createElement('div');
+        item.className = 'compose-image-item';
+
+        const thumb = document.createElement('img');
+        thumb.src       = entry.previewUrl;
+        thumb.alt       = '';
+        thumb.className = 'compose-image-thumb';
+        item.appendChild(thumb);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type      = 'button';
+        removeBtn.className = 'compose-image-remove';
+        removeBtn.setAttribute('aria-label', 'Remove image');
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', () => {
+          URL.revokeObjectURL(entry.previewUrl);
+          replyImages.splice(idx, 1);
+          refreshImgPreview();
+        });
+        item.appendChild(removeBtn);
+
+        const altInput = document.createElement('input');
+        altInput.type        = 'text';
+        altInput.className   = 'compose-alt-input';
+        altInput.placeholder = 'Alt text (optional)';
+        altInput.value       = entry.altText || '';
+        altInput.addEventListener('input', () => { entry.altText = altInput.value; });
+        item.appendChild(altInput);
+
+        imgPreviewEl.appendChild(item);
+      });
+    }
+
+    // ---- Helper: clear GIF embed ----
+    function clearGifEmbed() {
+      replyGifEmbed    = null;
+      gifPreviewEl.innerHTML = '';
+      gifPreviewEl.hidden    = true;
+    }
+
+    // ---- Helper: select GIF ----
+    function selectGifEmbed(gifUrl, thumbUrl, alt) {
+      // GIF is mutually exclusive with images
+      replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+      replyImages = [];
+      refreshImgPreview();
+
+      replyGifEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+      gifPanel.hidden = true;
+
+      gifPreviewEl.innerHTML = `
+        <div class="compose-link-preview compose-gif-preview">
+          <img class="compose-gif-preview-img" src="${escHtml(gifUrl)}" alt="${escHtml(alt)}">
+          <button type="button" class="compose-link-preview-dismiss" aria-label="Remove GIF">✕</button>
+        </div>`;
+      gifPreviewEl.hidden = false;
+      gifPreviewEl.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearGifEmbed);
+    }
+
     // ---- Event handlers ----
     textarea.addEventListener('input', () => {
       const remaining = 300 - textarea.value.length;
@@ -4936,15 +5066,60 @@
       countSpan.style.color = remaining < 20 ? 'var(--color-error-text)' : '';
     });
 
-    cancelBtn.addEventListener('click', () => box.remove());
+    // Image button
+    imgBtn.addEventListener('click', () => {
+      if (replyImages.length >= 4 || replyGifEmbed) return;
+      imgFileInput.value = '';
+      imgFileInput.click();
+    });
+
+    imgFileInput.addEventListener('change', async () => {
+      const files = [...(imgFileInput.files || [])].slice(0, 4 - replyImages.length);
+      imgFileInput.value = '';
+      for (const file of files) {
+        if (replyImages.length >= 4) break;
+        if (!file.type.startsWith('image/')) continue;
+        let processed = file;
+        if (file.size > 950_000) {
+          try { processed = await resizeImageFile(file); } catch { continue; }
+        }
+        const previewUrl = URL.createObjectURL(processed);
+        replyImages.push({ file: processed, previewUrl, altText: '' });
+        // Clear GIF if images added
+        clearGifEmbed();
+      }
+      refreshImgPreview();
+    });
+
+    // GIF button
+    gifBtn.addEventListener('click', () => {
+      gifPanel.hidden = !gifPanel.hidden;
+      if (!gifPanel.hidden) gifInput.focus();
+    });
+
+    gifSearchBtn.addEventListener('click', () => {
+      const q = gifInput.value.trim();
+      if (q) searchKlipyGifs(q, gifGrid, selectGifEmbed);
+    });
+    gifInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); gifSearchBtn.click(); }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+      box.remove();
+    });
 
     box.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') box.remove();
+      if (e.key === 'Escape') {
+        replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
+        box.remove();
+      }
     });
 
     submitBtn.addEventListener('click', async () => {
       const replyText = textarea.value.trim();
-      if (!replyText) return;
+      if (!replyText && replyImages.length === 0 && !replyGifEmbed) return;
 
       errorEl.hidden        = true;
       submitBtn.disabled    = true;
@@ -4956,13 +5131,37 @@
       };
 
       try {
-        await API.createPost(replyText, replyRef);
+        // Upload images if any
+        let uploadedImages = [];
+        if (replyImages.length > 0) {
+          uploadedImages = await Promise.all(
+            replyImages.map(async (img) => {
+              const blob = await API.uploadBlob(img.file);
+              return { blob, alt: img.altText || '' };
+            })
+          );
+        }
+
+        // Upload GIF thumbnail if any
+        let externalEmbed = null;
+        if (replyGifEmbed) {
+          externalEmbed = { ...replyGifEmbed };
+          if (externalEmbed._thumbUrl) {
+            try {
+              const thumbRes  = await fetch(externalEmbed._thumbUrl);
+              const thumbBlob = await thumbRes.blob();
+              const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
+              externalEmbed.thumb = await API.uploadBlob(thumbFile);
+            } catch { /* non-fatal */ }
+          }
+        }
+
+        await API.createPost(replyText, replyRef, uploadedImages, null, externalEmbed);
+        replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
         box.remove();
         if (onSuccess) {
-          // Feed context: call success callback without reloading thread
           onSuccess();
         } else {
-          // Thread context: reload the full thread
           showLoading();
           const data = await API.getPostThread(effectiveRoot.uri);
           renderThread(data.thread, currentThread?.authorHandle || '');
