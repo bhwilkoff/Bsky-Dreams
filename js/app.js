@@ -38,14 +38,15 @@
 
   const feedResults    = $('feed-results');
   const ptrIndicator   = $('ptr-indicator');
-  const feedSentinel   = $('feed-load-sentinel'); // M60: infinite scroll sentinel
+  const feedSentinel    = $('feed-load-sentinel');    // M60: infinite scroll sentinel
+  const searchSentinel  = $('search-load-sentinel');  // infinite scroll sentinel
+  const profileSentinel = $('profile-load-sentinel'); // infinite scroll sentinel
+  const notifSentinel   = $('notif-load-sentinel');   // infinite scroll sentinel
   const feedTabFollowing = $('feed-tab-following');
   const feedTabDiscover  = $('feed-tab-discover');
 
   const profileHeaderEl    = $('profile-header');
   const profileFeedEl      = $('profile-feed');
-  const profileLoadMore    = $('profile-load-more');
-  const profileLoadMoreBtn = $('profile-load-more-btn');
   const profileBackBtn     = $('profile-back-btn');
 
   const searchForm     = $('search-form');
@@ -65,8 +66,6 @@
 
   const notifList        = $('notif-list');
   const notifBadge       = $('notif-badge');
-  const notifLoadMore    = $('notif-load-more');
-  const notifLoadMoreBtn = $('notif-load-more-btn');
   const notifRefreshBtn  = $('notif-refresh-btn');
 
   const channelsSidebar   = $('channels-sidebar');
@@ -1723,7 +1722,7 @@
       feedSeenObserver = null;
     }
 
-    // M60: disconnect feed infinite-scroll observer when leaving feed view
+    // disconnect feed infinite-scroll observer when leaving feed view
     if (name !== 'feed' && feedScrollObserver) {
       feedScrollObserver.disconnect();
     }
@@ -1732,6 +1731,21 @@
     if (name !== 'gallery' && galleryScrollObserver) {
       galleryScrollObserver.disconnect();
       galleryScrollObserver = null;
+    }
+
+    // disconnect profile scroll observer when leaving profile view
+    if (name !== 'profile' && profileScrollObserver) {
+      profileScrollObserver.disconnect();
+    }
+
+    // disconnect notifications scroll observer when leaving notifications view
+    if (name !== 'notifications' && notifScrollObserver) {
+      notifScrollObserver.disconnect();
+    }
+
+    // disconnect search scroll observer when leaving search view
+    if (name !== 'search' && searchScrollObserver) {
+      searchScrollObserver.disconnect();
     }
 
     // Hide scroll-to-top button on view switch (M34)
@@ -1889,52 +1903,45 @@
     });
   }
 
-  /* ---- M48: Append a "Load more" button below search results ---- */
-  function appendSearchLoadMore(type) {
-    const existing = document.querySelector('.search-load-more');
-    if (existing) existing.remove();
+  /* ---- M48 (updated): Infinite scroll for search results ---- */
+  let searchScrollObserver = null;
+  let searchScrollLoading  = false;
 
-    const wrap = document.createElement('div');
-    wrap.className = 'search-load-more';
-
-    const btn = document.createElement('button');
-    btn.className   = 'btn btn-ghost';
-    btn.textContent = 'Load more';
-
-    btn.addEventListener('click', async () => {
-      btn.disabled    = true;
-      btn.textContent = 'Loading…';
-      try {
-        if (type === 'actors') {
-          const data   = await API.searchActors(lastSearchQuery, 25, searchCursor);
-          const actors = data.actors || [];
-          searchCursor  = data.cursor || null;
-          // Append actor cards directly without wiping the container
-          actors.forEach((actor) => {
-            const tmpContainer = document.createElement('div');
-            // Build card outside of searchResults so we don't wipe
-            lastSearchResults = [...(lastSearchResults || []), actor];
-          });
-          renderActorResultsAppend(actors);
-        } else {
-          const data = await API.searchPosts(lastSearchQuery, lastSearchSort, 25, searchCursor, lastSearchOpts);
-          let posts  = data.posts || [];
-          searchCursor = data.cursor || null;
-          posts = applyMediaFilter(posts);
-          lastSearchResults = [...(lastSearchResults || []), ...posts];
-          renderPostFeed(posts, searchResults, true);
+  function setupSearchScrollObserver(type) {
+    if (searchScrollObserver) searchScrollObserver.disconnect();
+    searchScrollObserver = new IntersectionObserver(
+      async (entries) => {
+        if (!entries[0]?.isIntersecting || !searchCursor || searchScrollLoading) return;
+        searchScrollLoading = true;
+        try {
+          if (type === 'actors') {
+            const data   = await API.searchActors(lastSearchQuery, 25, searchCursor);
+            const actors = data.actors || [];
+            searchCursor  = data.cursor || null;
+            lastSearchResults = [...(lastSearchResults || []), ...actors];
+            renderActorResultsAppend(actors);
+          } else {
+            const data = await API.searchPosts(lastSearchQuery, lastSearchSort, 25, searchCursor, lastSearchOpts);
+            let posts  = data.posts || [];
+            searchCursor = data.cursor || null;
+            posts = applyMediaFilter(posts);
+            lastSearchResults = [...(lastSearchResults || []), ...posts];
+            renderPostFeed(posts, searchResults, true);
+          }
+          if (searchCursor) {
+            setupSearchScrollObserver(type);
+          } else if (searchScrollObserver) {
+            searchScrollObserver.disconnect();
+          }
+        } catch (err) {
+          console.error('Search infinite scroll error:', err.message);
+        } finally {
+          searchScrollLoading = false;
         }
-        wrap.remove();
-        if (searchCursor) appendSearchLoadMore(type);
-      } catch (err) {
-        btn.disabled    = false;
-        btn.textContent = 'Load more';
-        console.error('Search load more error:', err.message);
-      }
-    });
-
-    wrap.appendChild(btn);
-    searchResults.after(wrap);
+      },
+      { root: viewSearch, rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (searchSentinel) searchScrollObserver.observe(searchSentinel);
   }
 
   searchForm.addEventListener('submit', async (e) => {
@@ -1965,8 +1972,9 @@
         }
       }
 
-      // M48+M49: reset cursor and media filters on new search
+      // Reset cursor, observer, and media filters on new search
       searchCursor = null;
+      if (searchScrollObserver) { searchScrollObserver.disconnect(); searchScrollObserver = null; }
       lastSearchQuery = q;
       document.querySelector('.search-load-more')?.remove();
 
@@ -1976,7 +1984,7 @@
         lastSearchType    = 'actors';
         searchCursor      = data.cursor || null;
         renderActorResults(lastSearchResults);
-        if (searchCursor) appendSearchLoadMore('actors');
+        if (searchCursor) setupSearchScrollObserver('actors');
       } else {
         const sort = activeFilter === 'latest' ? 'latest' : 'top';
         lastSearchSort = sort;
@@ -2002,7 +2010,7 @@
         lastSearchResults = posts;
         lastSearchType    = 'posts';
         renderPostFeed(posts, searchResults);
-        if (searchCursor) appendSearchLoadMore('posts');
+        if (searchCursor) setupSearchScrollObserver('posts');
       }
 
       // Show "Save as channel" button above results
@@ -2422,9 +2430,7 @@
     );
     if (feedSentinel) feedScrollObserver.observe(feedSentinel);
   }
-  profileLoadMoreBtn.addEventListener('click', () => loadProfileFeed(profileActor, true));
-  notifRefreshBtn.addEventListener('click',    () => loadNotifications(false));
-  notifLoadMoreBtn.addEventListener('click',   () => loadNotifications(true));
+  notifRefreshBtn.addEventListener('click', () => loadNotifications(false));
 
   /**
    * Render an array of timeline feed items (post + optional reason/reply context).
@@ -2537,7 +2543,6 @@
     profileCursor = null;
     profileHeaderEl.innerHTML = '<div class="feed-loading">Loading profile…</div>';
     profileFeedEl.innerHTML   = '';
-    profileLoadMore.hidden    = true;
     showView('profile', true);
 
     if (!opts.fromHistory) {
@@ -2668,12 +2673,29 @@
     profileHeaderEl.appendChild(el);
   }
 
+  let profileScrollObserver = null;
+  let profileScrollLoading  = false;
+
+  function setupProfileScrollObserver() {
+    if (profileScrollObserver) profileScrollObserver.disconnect();
+    profileScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && profileCursor && !profileScrollLoading) {
+          profileScrollLoading = true;
+          loadProfileFeed(profileActor, true).finally(() => { profileScrollLoading = false; });
+        }
+      },
+      { root: viewProfile, rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (profileSentinel) profileScrollObserver.observe(profileSentinel);
+  }
+
   /** Load (or append) posts for the current profile view. */
   async function loadProfileFeed(actor, append = false) {
     if (!append) {
       profileCursor = null;
       profileFeedEl.innerHTML = '<div class="feed-loading">Loading posts…</div>';
-      profileLoadMore.hidden  = true;
+      if (profileScrollObserver) profileScrollObserver.disconnect();
     }
     try {
       const data  = await API.getAuthorFeed(actor, 25, append ? profileCursor : undefined);
@@ -2686,7 +2708,11 @@
       } else {
         renderFeedItems(items, profileFeedEl, append);
       }
-      profileLoadMore.hidden = !profileCursor;
+      if (profileCursor) {
+        setupProfileScrollObserver();
+      } else if (profileScrollObserver) {
+        profileScrollObserver.disconnect();
+      }
     } catch (err) {
       if (!append) {
         profileFeedEl.innerHTML = `<div class="feed-empty"><p>Could not load posts: ${escHtml(err.message)}</p></div>`;
@@ -2697,12 +2723,29 @@
   /* ================================================================
      NOTIFICATIONS VIEW
   ================================================================ */
+  let notifScrollObserver = null;
+  let notifScrollLoading  = false;
+
+  function setupNotifScrollObserver() {
+    if (notifScrollObserver) notifScrollObserver.disconnect();
+    notifScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && notifCursor && !notifScrollLoading) {
+          notifScrollLoading = true;
+          loadNotifications(true).finally(() => { notifScrollLoading = false; });
+        }
+      },
+      { root: viewNotifications, rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (notifSentinel) notifScrollObserver.observe(notifSentinel);
+  }
+
   async function loadNotifications(append = false) {
     if (!append) {
       notifCursor  = null;
       notifLoaded  = false;
       notifList.innerHTML = '<div class="feed-loading">Loading notifications…</div>';
-      notifLoadMore.hidden = true;
+      if (notifScrollObserver) notifScrollObserver.disconnect();
     }
 
     showLoading();
@@ -2733,7 +2776,11 @@
         API.updateSeen().catch(() => {});
       }
 
-      notifLoadMore.hidden = !notifCursor;
+      if (notifCursor) {
+        setupNotifScrollObserver();
+      } else if (notifScrollObserver) {
+        notifScrollObserver.disconnect();
+      }
     } catch (err) {
       if (!append) {
         notifList.innerHTML = `<div class="feed-empty"><p>Could not load notifications: ${escHtml(err.message)}</p></div>`;
