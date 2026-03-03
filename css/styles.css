@@ -1688,23 +1688,35 @@ a.post-timestamp:hover {
   min-width: 0;
 }
 
+/* Toolbar row — image / video / GIF attach buttons, always visible */
+.inline-reply-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-xs);
+}
+
+/* Footer row — char count + cancel + reply */
 .inline-reply-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: var(--space-sm);
+  justify-content: flex-end;
   gap: var(--space-sm);
-}
-
-.inline-reply-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-xs);
+  margin-top: 2px;
 }
 
 .inline-reply-error {
   font-size: 0.8125rem;
   color: var(--color-error-text);
+  flex: 1;
+}
+
+.inline-reply-gif-preview {
+  margin-top: var(--space-xs);
 }
 
 /* ================================================================
@@ -2016,6 +2028,16 @@ a.post-timestamp:hover {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   MOBILE: PREVENT INPUT AUTO-ZOOM
+   All focusable form controls must be ≥16px on touch devices so iOS
+   Safari doesn't zoom the viewport on focus. user-scalable=no in the
+   viewport meta is the primary guard, but this is the belt-and-suspenders fix.
+================================================================ */
+@media (hover: none) {
+  input, textarea, select { font-size: max(1rem, 16px) !important; }
 }
 
 /* ================================================================
@@ -3937,7 +3959,7 @@ a.post-timestamp:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
-  font-size: 0.875rem;
+  font-size: 1rem; /* ≥16px — prevents iOS auto-zoom on focus */
   font-family: inherit;
   background: var(--color-surface);
 }
