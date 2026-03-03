@@ -3,13 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *; img-src * data: blob:; media-src * blob:; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *; img-src * data: blob:; media-src * blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self';">
   <title>Bsky Dreams</title>
+  <!-- Google Fonts: Syne (headings/nav) + Inter (body/UI) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600;700&display=swap">
   <!-- PWA / iOS Safari standalone support (M32) -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Bsky Dreams">
-  <meta name="theme-color" content="#0085ff">
+  <meta name="theme-color" content="#FF5C35">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -21,9 +26,8 @@
   <div id="auth-screen" class="screen" aria-label="Sign in to BlueSky">
     <div class="auth-card">
       <div class="auth-logo" aria-hidden="true">
-        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="56" height="56">
-          <path d="M32 8C18.7 8 8 18.7 8 32s10.7 24 24 24 24-10.7 24-24S45.3 8 32 8z" fill="var(--color-accent)"/>
-          <path d="M22 26c0-5.5 4.5-10 10-10s10 4.5 10 10c0 4-2.3 7.4-5.7 9.1L32 44l-4.3-8.9C24.3 33.4 22 30 22 26z" fill="#fff"/>
+        <svg viewBox="0 0 80 54" fill="none" xmlns="http://www.w3.org/2000/svg" width="72" height="48">
+          <path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 7.9 24.5 13 24.1C12.7 23.1 12.5 22.1 12.5 21C12.5 15.2 17.2 10.5 23 10.5C23.8 10.5 24.6 10.6 25.3 10.8C27.2 7.3 31 5 35.5 5C41 5 45.6 8.8 47 14C48.6 13 50.4 12.5 52.5 12.5C58.3 12.5 63 17.2 63 23C63 23.3 63 23.6 62.9 23.9C68.7 24.7 73 29.8 73 36C73 40.4 69.7 44 66 44Z" fill="#FF5C35" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/>
         </svg>
       </div>
       <h1 class="auth-title">Bsky Dreams</h1>
@@ -87,7 +91,11 @@
         </button>
         <!-- Logo visible on mobile only (desktop shows it in sidebar) -->
         <span class="nav-logo-btn mobile-logo" aria-hidden="true">
-          <span class="nav-logo-mark">☁</span>
+          <span class="nav-logo-mark">
+            <svg viewBox="0 0 80 54" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="19" aria-hidden="true">
+              <path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 7.9 24.5 13 24.1C12.7 23.1 12.5 22.1 12.5 21C12.5 15.2 17.2 10.5 23 10.5C23.8 10.5 24.6 10.6 25.3 10.8C27.2 7.3 31 5 35.5 5C41 5 45.6 8.8 47 14C48.6 13 50.4 12.5 52.5 12.5C58.3 12.5 63 17.2 63 23C63 23.3 63 23.6 62.9 23.9C68.7 24.7 73 29.8 73 36C73 40.4 69.7 44 66 44Z" fill="#FF5C35" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/>
+            </svg>
+          </span>
           <span class="nav-logo-text">Bsky Dreams</span>
         </span>
         <!-- Profile avatar — mobile only; desktop shows own profile in sidebar -->
@@ -105,7 +113,11 @@
       <!-- Sidebar header: logo + close button (close visible on mobile only) -->
       <div class="sidebar-header">
         <button class="sidebar-logo-btn" id="nav-home-btn" aria-label="Bsky Dreams home">
-          <span class="nav-logo-mark" aria-hidden="true">☁</span>
+          <span class="nav-logo-mark" aria-hidden="true">
+            <svg viewBox="0 0 80 54" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="22">
+              <path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 7.9 24.5 13 24.1C12.7 23.1 12.5 22.1 12.5 21C12.5 15.2 17.2 10.5 23 10.5C23.8 10.5 24.6 10.6 25.3 10.8C27.2 7.3 31 5 35.5 5C41 5 45.6 8.8 47 14C48.6 13 50.4 12.5 52.5 12.5C58.3 12.5 63 17.2 63 23C63 23.3 63 23.6 62.9 23.9C68.7 24.7 73 29.8 73 36C73 40.4 69.7 44 66 44Z" fill="#FF5C35" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/>
+            </svg>
+          </span>
           <span class="nav-logo-text">Bsky Dreams</span>
         </button>
         <button class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close navigation">
