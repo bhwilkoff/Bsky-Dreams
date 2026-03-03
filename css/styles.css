@@ -1540,13 +1540,14 @@ a.post-timestamp:hover {
   border-color: var(--color-accent);
   border-width: 3px;
   box-shadow: 4px 4px 0 var(--color-accent);
+  margin-bottom: var(--space-md);
 }
 
 /* Replies are nested with a depth-colored left border — no overlapping connectors */
 .reply-group {
   position: relative;       /* for .reply-collapse-btn absolute positioning */
   margin-left: 12px;
-  margin-top: var(--space-xs);
+  margin-top: var(--space-md);
   padding-left: 16px;       /* extra room for the collapse button */
   border-left: 2px solid var(--thread-line-color, var(--color-border));
   border-bottom-left-radius: 3px;
@@ -1566,6 +1567,11 @@ a.post-timestamp:hover {
   border-left-width: 2px;
   max-width: 100%;    /* M46: keep cards within their container width */
   overflow-x: hidden; /* M46: prevent inner content causing horizontal bleed */
+}
+
+/* Spacing between sibling reply cards at the same level */
+.reply-group-body > .post-card + .post-card {
+  margin-top: var(--space-md);
 }
 
 /* Cycle through 8 depth colors */
@@ -1696,14 +1702,14 @@ a.post-timestamp:hover {
    INLINE REPLY COMPOSE BOX (M9)
 ---------------------------------------------------------------- */
 .inline-reply-box {
-  margin-top: var(--space-sm);
-  margin-bottom: var(--space-sm);
-  background: var(--color-surface);
-  border: 2px solid var(--nb-black);
+  margin-top: 0;
+  margin-bottom: 0;
+  background: var(--color-accent-light);
+  border: none;
+  border-top: 3px solid var(--color-accent);
   border-radius: 0;
-  border-left: 4px solid var(--color-accent);
   padding: var(--space-md);
-  box-shadow: 3px 3px 0 var(--nb-black);
+  box-shadow: none;
 }
 
 /* Mini read-only quote of the post being replied to */
@@ -1713,7 +1719,7 @@ a.post-timestamp:hover {
   gap: var(--space-sm);
   padding-bottom: var(--space-sm);
   margin-bottom: var(--space-sm);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(0,0,0,0.12);
 }
 
 .inline-reply-quote-avatar {
@@ -1769,7 +1775,7 @@ a.post-timestamp:hover {
   align-items: center;
   gap: 4px;
   padding: var(--space-xs) 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(0,0,0,0.12);
   margin-top: var(--space-xs);
 }
 
@@ -1779,7 +1785,7 @@ a.post-timestamp:hover {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-sm);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(0,0,0,0.12);
   padding-top: var(--space-xs);
   margin-top: 2px;
 }
@@ -2033,6 +2039,32 @@ a.post-timestamp:hover {
   flex-wrap: wrap;
   gap: var(--space-xs);
   padding-top: var(--space-xs);
+}
+
+/* Accent color swatches */
+.accent-swatch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.accent-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--nb-black);
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  padding: 0;
+}
+
+.accent-swatch:hover {
+  transform: scale(1.15);
+}
+
+.accent-swatch.active {
+  box-shadow: 0 0 0 3px var(--nb-black), 0 0 0 5px currentColor;
+  transform: scale(1.15);
 }
 
 .settings-danger-btn {
@@ -2462,9 +2494,21 @@ a.post-timestamp:hover {
 
 .feed-item {
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border: 2px solid var(--nb-black);
   box-shadow: var(--shadow-card);
   overflow: hidden;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.feed-item:has(.post-card-clickable):hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--nb-black);
+}
+
+/* Inner post card inside feed-item: no independent hover transform */
+.feed-item .post-card:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 /* Repost attribution bar above the post card */
@@ -2485,10 +2529,10 @@ a.post-timestamp:hover {
   height: 14px;
 }
 
-/* Remove the card's own box-shadow when it's inside a feed-item wrapper */
+/* Inside a feed-item wrapper, the card shares the outer border — no double border */
 .feed-item > .post-card {
   box-shadow: none;
-  border-radius: 0;
+  border: none;
   background: transparent;
 }
 
@@ -3900,11 +3944,10 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
-   M44 — Scroll-based read indicator
+   M44 — Scroll-based read indicator (imperceptible — no animation)
 ================================================================ */
 .post-card.post-seen {
-  opacity: 0.72;
-  border-left: 3px solid var(--color-lime);
+  opacity: 0.88;
 }
 
 /* ================================================================
