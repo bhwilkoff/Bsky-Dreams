@@ -4,6 +4,15 @@ A custom web app for the BlueSky social network that gives you more control
 over your experience — better search, clearer conversations, and frictionless
 posting — without requiring the default app or any server infrastructure.
 
+## Why we build this
+
+Every feature in this app is built in service of human learning and growth —
+not to replace thinking, but to deepen it. At each decision point, ask: does
+this design invite the user to engage more fully, think more critically, or
+connect more meaningfully? If a feature makes a person more passive, reconsider
+it. If it opens a door to curiosity or collaboration, prioritize it. The goal
+is never a slick product — it is a tool that makes someone more human.
+
 ## What it does
 
 - **Search** — Full-text and advanced search across BlueSky posts with filters
