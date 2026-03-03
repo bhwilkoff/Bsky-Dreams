@@ -972,6 +972,12 @@ a.post-timestamp:hover {
 .compose-body {
   flex: 1;
   min-width: 0;
+  /* Flex column ensures all children (GIF panel, previews, footer) always
+     stretch to fill the available width, avoiding a Safari/WebKit bug where
+     block children of flex items with min-width:0 may compute width:100% as 0 */
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .compose-textarea {
@@ -1686,6 +1692,9 @@ a.post-timestamp:hover {
 .inline-reply-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 /* Toolbar row — image / video / GIF attach buttons, always visible */
@@ -3942,14 +3951,20 @@ a.post-timestamp:hover {
   border-radius: var(--radius-md);
   margin-top: var(--space-sm);
   background: var(--color-surface-alt);
-  overflow: hidden;
-  /* M55: ensure panel never overflows the compose body on narrow screens */
+  /* Use clip instead of overflow:hidden so width is not constrained by a BFC */
+  overflow: clip;
+  /* Stretch to fill parent width in all browsers/contexts */
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
+  /* Ensure it's always block-level regardless of context */
+  display: block;
 }
 
 .compose-gif-search-row {
   display: flex;
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--space-sm);
   gap: var(--space-sm);
 }
