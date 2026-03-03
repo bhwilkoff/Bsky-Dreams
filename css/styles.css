@@ -3492,6 +3492,14 @@ a.post-timestamp:hover {
   color: var(--color-text);
 }
 
+/* Settings gear only appears in the sidebar on desktop; on mobile it lives in
+   the profile-avatar dropdown in the top bar */
+@media (max-width: 767px) {
+  .sidebar-settings-btn {
+    display: none;
+  }
+}
+
 /* ---- Channel list ---- */
 .channels-list {
   flex: 1;
