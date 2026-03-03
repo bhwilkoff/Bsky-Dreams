@@ -4941,7 +4941,8 @@
         <button type="button" class="btn btn-ghost">Search</button>
       </div>
       <div class="compose-gif-grid"><p class="compose-gif-empty">Type above to search for GIFs</p></div>`;
-    body.appendChild(gifPanel);
+    // gifPanel is NOT appended to body here — it gets appended directly to box
+    // after composeEl so it spans the full reply box width (including avatar column)
     const gifInput     = gifPanel.querySelector('.compose-gif-input');
     const gifSearchBtn = gifPanel.querySelector('.btn');
     const gifGrid      = gifPanel.querySelector('.compose-gif-grid');
@@ -5023,6 +5024,7 @@
 
     composeEl.appendChild(body);
     box.appendChild(composeEl);
+    box.appendChild(gifPanel); // full-width — spans under avatar column
 
     // Insert inline after the post card
     postCard.insertAdjacentElement('afterend', box);

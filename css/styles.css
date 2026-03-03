@@ -972,12 +972,6 @@ a.post-timestamp:hover {
 .compose-body {
   flex: 1;
   min-width: 0;
-  /* Flex column ensures all children (GIF panel, previews, footer) always
-     stretch to fill the available width, avoiding a Safari/WebKit bug where
-     block children of flex items with min-width:0 may compute width:100% as 0 */
-  display: flex;
-  flex-direction: column;
-  gap: 0;
 }
 
 .compose-textarea {
