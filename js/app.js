@@ -503,6 +503,42 @@
   const settingsClearSeen  = $('settings-clear-seen');
   const settingsClearTv    = $('settings-clear-tv');
 
+  /* --- Accent color --- */
+  function applyAccentColor(accent, accentDark, accentLight) {
+    const root = document.documentElement;
+    root.style.setProperty('--color-accent',       accent);
+    root.style.setProperty('--color-accent-dark',  accentDark);
+    root.style.setProperty('--color-accent-light', accentLight);
+  }
+
+  function syncAccentSwatches() {
+    const saved = localStorage.getItem('bsky_accent') || '#FF5C35';
+    document.querySelectorAll('.accent-swatch').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.accent === saved);
+    });
+  }
+
+  // Apply on load
+  const savedAccent = localStorage.getItem('bsky_accent');
+  if (savedAccent) {
+    const savedDark  = localStorage.getItem('bsky_accent_dark')  || savedAccent;
+    const savedLight = localStorage.getItem('bsky_accent_light') || '#FFF0EC';
+    applyAccentColor(savedAccent, savedDark, savedLight);
+  }
+
+  document.getElementById('accent-swatch-row').addEventListener('click', (e) => {
+    const btn = e.target.closest('.accent-swatch');
+    if (!btn) return;
+    const accent      = btn.dataset.accent;
+    const accentDark  = btn.dataset.accentDark;
+    const accentLight = btn.dataset.accentLight;
+    localStorage.setItem('bsky_accent',       accent);
+    localStorage.setItem('bsky_accent_dark',  accentDark);
+    localStorage.setItem('bsky_accent_light', accentLight);
+    applyAccentColor(accent, accentDark, accentLight);
+    syncAccentSwatches();
+  });
+
   function openSettings() {
     const session = AUTH.getSession();
     settingsHandleDisp.textContent = session?.handle ? `@${session.handle}` : '—';
@@ -530,6 +566,7 @@
       settingsTvCount.textContent = '0 videos';
     }
 
+    syncAccentSwatches();
     settingsModal.hidden = false;
     closeSidebar();
   }
