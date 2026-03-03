@@ -4,7 +4,7 @@
   "description": "A better window into BlueSky",
   "start_url": "./index.html?view=feed",
   "display": "standalone",
-  "background_color": "#f4f6f9",
-  "theme_color": "#0085ff",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FF5C35",
   "orientation": "portrait-primary"
 }
