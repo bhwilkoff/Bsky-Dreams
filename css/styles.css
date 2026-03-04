@@ -52,9 +52,9 @@ h1, h2, h3, h4,
 /* ---- Design Tokens — Neubrutalism + Memphis ---- */
 :root {
   /* Brand — Neubrutalism/Memphis palette */
-  --color-accent:         #FF5C35;  /* neon coral  (primary)   */
-  --color-accent-dark:    #D94020;  /* pressed coral           */
-  --color-accent-light:   #FFF0EC;  /* coral tint              */
+  --color-accent:         #0047FF;  /* electric blue (primary) */
+  --color-accent-dark:    #0033CC;  /* pressed blue            */
+  --color-accent-light:   #E6EDFF;  /* blue tint               */
   --color-blue:           #0047FF;  /* electric blue           */
   --color-lime:           #B8E04A;  /* lime                    */
   --nb-black:             #0A0A0A;  /* near-black for outlines */
@@ -100,15 +100,15 @@ h1, h2, h3, h4,
   --top-bar-height: 56px;
   --max-content-width: 640px;
 
-  /* Thread depth line colors (coral / blue / lime cycling) */
-  --td-1: #FF5C35;
-  --td-2: #0047FF;
-  --td-3: #B8E04A;
-  --td-4: #FF5C35;
-  --td-5: #0047FF;
-  --td-6: #B8E04A;
-  --td-7: #FF5C35;
-  --td-8: #0047FF;
+  /* Thread depth line colors (blue / coral / violet cycling) */
+  --td-1: #0047FF;
+  --td-2: #FF5C35;
+  --td-3: #8B00FF;
+  --td-4: #0047FF;
+  --td-5: #FF5C35;
+  --td-6: #8B00FF;
+  --td-7: #0047FF;
+  --td-8: #FF5C35;
 }
 
 /* ---- Utility ---- */
@@ -867,14 +867,16 @@ a.post-timestamp:hover {
   padding: 0;
   margin: 0;
   cursor: pointer;
-  color: inherit;
+  color: var(--color-text);
   font: inherit;
+  font-weight: 800;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
 .repost-author-link:hover {
+  color: var(--color-accent);
   text-decoration: underline;
 }
 
@@ -1548,6 +1550,7 @@ a.post-timestamp:hover {
   position: relative;       /* for .reply-collapse-btn absolute positioning */
   margin-left: 12px;
   margin-top: var(--space-md);
+  margin-bottom: var(--space-md);
   padding-left: 16px;       /* extra room for the collapse button */
   border-left: 2px solid var(--thread-line-color, var(--color-border));
   border-bottom-left-radius: 3px;
@@ -1877,10 +1880,11 @@ a.post-timestamp:hover {
   box-shadow: var(--shadow-elevated);
   width: 100%;
   max-width: 420px;
-  padding: var(--space-lg);
+  padding: var(--space-md);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  box-sizing: border-box;
 }
 
 .modal-header {
@@ -2044,7 +2048,8 @@ a.post-timestamp:hover {
 /* Accent color swatches */
 .accent-swatch-row {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
 }
 
@@ -2511,22 +2516,29 @@ a.post-timestamp:hover {
   box-shadow: none;
 }
 
-/* Repost attribution bar above the post card */
+/* Repost / Reply attribution bar — neubrutalist label strip */
 .feed-repost-bar,
 .feed-reply-bar {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md) 0;
-  font-size: 0.8125rem;
+  gap: 6px;
+  padding: 6px var(--space-md) 6px;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  border-bottom: 2px solid var(--nb-black);
 }
 
 .feed-repost-bar svg,
 .feed-reply-bar svg {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
+  stroke: var(--color-text-muted);
 }
 
 /* Inside a feed-item wrapper, the card shares the outer border — no double border */
@@ -2808,25 +2820,27 @@ a.post-timestamp:hover {
 /* ================================================================
    QUOTED POST (embedded quote card inside a post card)
 ================================================================ */
+/* Quoted post — blockquote treatment with thick accent left bar */
 .quoted-post-card {
-  border: 2px solid var(--nb-black);
+  border-left: 4px solid var(--color-accent);
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
   border-radius: 0;
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-xs) 0 var(--space-xs) var(--space-sm);
   margin-bottom: var(--space-sm);
-  background: var(--color-surface-alt);
+  background: transparent;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-left-color 0.12s;
 }
 
 .quoted-post-card:hover {
-  background: var(--color-accent-light);
-  box-shadow: 2px 2px 0 var(--nb-black);
+  border-left-color: var(--color-accent-dark);
 }
 
 .quoted-post-card:focus-visible {
-  outline: 3px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
 
 .quoted-post-unavailable {
@@ -2834,27 +2848,30 @@ a.post-timestamp:hover {
   font-size: 0.875rem;
   font-style: italic;
   cursor: default;
+  border-left: 4px solid var(--color-border);
+  padding-left: var(--space-sm);
 }
 
 .quoted-post-header {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  margin-bottom: var(--space-xs);
+  gap: 5px;
+  margin-bottom: 3px;
 }
 
 .quoted-post-avatar {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  background: var(--color-surface);
+  background: var(--color-surface-alt);
 }
 
 .quoted-post-author {
-  font-size: 0.8125rem;
-  font-weight: 700;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
@@ -2863,15 +2880,15 @@ a.post-timestamp:hover {
 }
 
 .quoted-post-handle {
-  font-size: 0.8125rem;
+  font-size: 0.78rem;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 
 .quoted-post-text {
   font-size: 0.875rem;
-  color: var(--color-text);
-  line-height: 1.4;
+  color: var(--color-text-muted);
+  line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
@@ -2884,77 +2901,70 @@ a.post-timestamp:hover {
 .feed-repost-avatar {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 2px;
   object-fit: cover;
   flex-shrink: 0;
+  border: 1.5px solid var(--nb-black);
   background: var(--color-surface-alt);
 }
 
 /* ================================================================
-   FEED REPLY CONTEXT — compact parent post preview
+   FEED REPLY CONTEXT — compact parent post preview (blockquote style)
 ================================================================ */
 .feed-parent-preview {
-  padding: var(--space-xs) var(--space-md) 0;
+  padding: var(--space-sm) var(--space-md) 0;
 }
 
+/* "Replying to" label hidden — the blockquote style speaks for itself */
 .feed-reply-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-xs);
+  display: none;
 }
 
-.feed-reply-label svg {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-}
-
+/* Blockquote-style parent card — left accent bar, no box */
 .feed-parent-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--color-surface-alt);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid var(--color-accent);
+  padding: 4px 0 4px var(--space-sm);
+  background: transparent;
   cursor: pointer;
-  margin-bottom: var(--space-xs);
-  transition: border-color 0.15s, background 0.15s;
+  margin-bottom: 0;
+  transition: border-color 0.12s;
 }
 
 .feed-parent-card:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-light);
+  border-left-color: var(--color-accent-dark);
 }
 
 .feed-parent-header {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  margin-bottom: 2px;
+  gap: 5px;
 }
 
 .feed-parent-avatar {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  background: var(--color-surface);
+  background: var(--color-surface-alt);
 }
 
 .feed-parent-author {
-  font-size: 0.8125rem;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  max-width: 140px;
 }
 
 .feed-parent-handle {
-  font-size: 0.8125rem;
+  font-size: 0.72rem;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
@@ -3297,13 +3307,12 @@ a.post-timestamp:hover {
 }
 
 /*
- * Hide the "Bsky Dreams" logo text on small screens to make room for the
- * channels nav button. The cloud icon (☁) alone keeps the logo identifiable.
- * This prevents the nav bar from overflowing, which would cause horizontal
- * scroll and rubber-banding across the entire page on mobile.
+ * Hide the "Bsky Dreams" logo text in the top bar on small screens to prevent
+ * overflow. The sidebar drawer always shows the full name regardless of screen
+ * size, so we scope the hide to outside the sidebar.
  */
 @media (max-width: 479px) {
-  .nav-logo-text {
+  .top-bar .nav-logo-text {
     display: none;
   }
 }
@@ -3853,13 +3862,13 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
-   M30 — Quote post modal preview
+   M30 — Quote post modal preview (blockquote style)
 ================================================================ */
 .quote-modal-preview {
-  border: 2px solid var(--nb-black);
-  border-radius: 0;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-surface-alt);
+  border: none;
+  border-left: 4px solid var(--color-accent);
+  padding: var(--space-xs) 0 var(--space-xs) var(--space-sm);
+  background: transparent;
   margin-top: var(--space-sm);
 }
 
@@ -4134,16 +4143,16 @@ a.post-timestamp:hover {
 
 .compose-gif-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
   padding: 0 var(--space-sm) var(--space-sm);
-  max-height: 240px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
 .compose-gif-item {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4/3;
   object-fit: cover;
   cursor: pointer;
   border-radius: var(--radius-sm);
