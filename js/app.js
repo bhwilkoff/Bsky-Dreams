@@ -512,17 +512,17 @@
   }
 
   function syncAccentSwatches() {
-    const saved = localStorage.getItem('bsky_accent') || '#FF5C35';
+    const saved = localStorage.getItem('bsky_accent') || '#0047FF';
     document.querySelectorAll('.accent-swatch').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.accent === saved);
     });
   }
 
-  // Apply on load
+  // Apply on load (only if user has overridden the CSS default)
   const savedAccent = localStorage.getItem('bsky_accent');
   if (savedAccent) {
     const savedDark  = localStorage.getItem('bsky_accent_dark')  || savedAccent;
-    const savedLight = localStorage.getItem('bsky_accent_light') || '#FFF0EC';
+    const savedLight = localStorage.getItem('bsky_accent_light') || '#E6EDFF';
     applyAccentColor(savedAccent, savedDark, savedLight);
   }
 
@@ -5732,9 +5732,11 @@
         const thumbUrl = item.file?.xs?.jpg?.url || item.file?.xs?.gif?.url;
         // Best available animated URL — no upload needed, so size is not a constraint
         const gifUrl = item.file?.hd?.gif?.url || item.file?.gif?.url || item.file?.xs?.gif?.url;
+        // Use a medium-quality animated preview for the grid (better than xs thumbnail)
+        const previewUrl = item.file?.md?.gif?.url || item.file?.sm?.gif?.url || gifUrl;
         if (!gifUrl) return;
         const img = document.createElement('img');
-        img.src       = thumbUrl || gifUrl;
+        img.src       = previewUrl;
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
