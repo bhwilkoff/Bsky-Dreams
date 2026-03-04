@@ -157,6 +157,17 @@
   let lastSearchOpts     = {};   // M48: last advanced opts for "load more"
   let searchMediaFilters = new Set(); // M49: active media-type filter keys
 
+  // Avatar fallback — SVG with Memphis design + Bsky Dreams cloud logo
+  const AVATAR_FALLBACK = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#0047FF"/><circle cx="4" cy="4" r="2.5" fill="#FF5C35"/><circle cx="36" cy="4" r="2.5" fill="#B8E04A"/><circle cx="4" cy="36" r="2.5" fill="#B8E04A"/><circle cx="36" cy="36" r="2.5" fill="#FF5C35"/><line x1="0" y1="14" x2="14" y2="0" stroke="#0A0A0A" stroke-width="1" opacity="0.25"/><line x1="26" y1="40" x2="40" y2="26" stroke="#0A0A0A" stroke-width="1" opacity="0.25"/><svg x="4" y="11" width="32" height="22" viewBox="0 0 80 54"><path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 7.9 24.5 13 24.1C12.7 23.1 12.5 22.1 12.5 21C12.5 15.2 17.2 10.5 23 10.5C23.8 10.5 24.6 10.6 25.3 10.8C27.2 7.3 31 5 35.5 5C41 5 45.6 8.8 47 14C48.6 13 50.4 12.5 52.5 12.5C58.3 12.5 63 17.2 63 23C63 23.3 63 23.6 62.9 23.9C68.7 24.7 73 29.8 73 36C73 40.4 69.7 44 66 44Z" fill="white" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/></svg></svg>')}`;
+  // Expose for use in innerHTML onerror attributes
+  window._bskyAvatarFallback = AVATAR_FALLBACK;
+
+  // Helper to wire fallback onto a programmatically created <img>
+  function setAvatarSrc(imgEl, src) {
+    imgEl.src = src || AVATAR_FALLBACK;
+    imgEl.onerror = function () { this.onerror = null; this.src = AVATAR_FALLBACK; };
+  }
+
   // M42 — Video upload state
   const VIDEO_DAILY_KEY   = 'bsky_video_daily';
   const DAILY_VIDEO_LIMIT = 25;
@@ -481,6 +492,7 @@
     AUTH.clearCredentials();
     appScreen.hidden  = true;
     authScreen.hidden = false;
+    scrollToTopBtn.hidden = true;
     sidebarOwnProfile.hidden = true;
     ownProfile = null;
     feedLoaded = false;
@@ -904,6 +916,7 @@
     AUTH.clearSession();
     appScreen.hidden  = true;
     authScreen.hidden = false;
+    scrollToTopBtn.hidden = true;
     const savedHandle = session?.handle || creds?.identifier || '';
     if (savedHandle) authForm.handle.value = savedHandle;
     showError(authError, 'Your session expired. Please sign in again.');
@@ -957,11 +970,12 @@
   /* ================================================================
      IMAGE LIGHTBOX — carousel-capable
   ================================================================ */
-  let lightboxImages  = [];   // [{ src, alt }, ...]
-  let lightboxIndex   = 0;
-  let lightboxTouchX  = null; // for horizontal swipe detection
-  let lightboxTouchY  = null; // M54: for vertical swipe-to-dismiss detection
-  let lightboxPost    = null; // post object when opened from gallery; null otherwise
+  let lightboxImages   = [];   // [{ src, alt }, ...]
+  let lightboxIndex    = 0;
+  let lightboxTouchX   = null; // for horizontal swipe detection
+  let lightboxTouchY   = null; // M54: for vertical swipe-to-dismiss detection
+  let lightboxTouches  = 0;    // max simultaneous touch points in current gesture (>1 = pinch)
+  let lightboxPost     = null; // post object when opened from gallery; null otherwise
 
   function openLightbox(images, startIndex = 0, post = null) {
     // Accept either an array of {src,alt} objects or a single {src,alt}
@@ -1056,13 +1070,38 @@
   });
 
   // Touch swipe support (M54: vertical swipe closes; horizontal swipe navigates)
+  // Pinch-to-zoom (multi-touch) is detected and excluded so zoom doesn't trigger dismiss
   imageLightbox.addEventListener('touchstart', (e) => {
-    lightboxTouchX = e.touches[0].clientX;
-    lightboxTouchY = e.touches[0].clientY;
+    lightboxTouches = Math.max(lightboxTouches, e.touches.length);
+    if (e.touches.length === 1) {
+      lightboxTouchX = e.touches[0].clientX;
+      lightboxTouchY = e.touches[0].clientY;
+    } else {
+      // Second finger added — cancel any pending swipe tracking
+      lightboxTouchX = null;
+      lightboxTouchY = null;
+    }
+  }, { passive: true });
+
+  imageLightbox.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) {
+      // Additional finger during move — definitely a pinch, cancel swipe
+      lightboxTouches = Math.max(lightboxTouches, e.touches.length);
+      lightboxTouchX = null;
+      lightboxTouchY = null;
+    }
   }, { passive: true });
 
   imageLightbox.addEventListener('touchend', (e) => {
-    if (lightboxTouchX === null || lightboxTouchY === null) return;
+    if (e.touches.length > 0) return; // more fingers still on screen
+    const wasPinch = lightboxTouches > 1;
+    lightboxTouches = 0; // reset for next gesture
+
+    if (wasPinch || lightboxTouchX === null || lightboxTouchY === null) {
+      lightboxTouchX = null;
+      lightboxTouchY = null;
+      return; // pinch gesture — don't dismiss or navigate
+    }
     const dx = e.changedTouches[0].clientX - lightboxTouchX;
     const dy = e.changedTouches[0].clientY - lightboxTouchY;
     lightboxTouchX = null;
@@ -1305,7 +1344,7 @@
     strip.className = 'gallery-author-strip';
 
     const avatar = document.createElement('img');
-    avatar.src       = author.avatar || '';
+    setAvatarSrc(avatar, author.avatar);
     avatar.alt       = '';
     avatar.className = 'gallery-author-avatar';
     avatar.loading   = 'lazy';
@@ -1521,7 +1560,7 @@
           loadGalleryBatch();
         }
       },
-      { rootMargin: '0px 0px 400px 0px', threshold: 0 }
+      { root: viewGallery, rootMargin: '0px 0px 400px 0px', threshold: 0 }
     );
     if (gallerySentinel) galleryScrollObserver.observe(gallerySentinel);
   }
@@ -1859,6 +1898,7 @@
     AUTH.clearCredentials();
     appScreen.hidden  = true;
     authScreen.hidden = false;
+    scrollToTopBtn.hidden = true;
     profileMenu.hidden = true;
     ownProfile = null;
     feedLoaded = false;
@@ -2082,7 +2122,7 @@
       header.className = 'actor-card-header';
 
       const avatar = document.createElement('img');
-      avatar.src       = actor.avatar || '';
+      setAvatarSrc(avatar, actor.avatar);
       avatar.alt       = '';
       avatar.className = 'post-avatar';
       avatar.loading   = 'lazy';
@@ -2166,7 +2206,7 @@
       header.className = 'actor-card-header';
 
       const av = document.createElement('img');
-      av.src = actor.avatar || ''; av.alt = ''; av.className = 'post-avatar'; av.loading = 'lazy';
+      setAvatarSrc(av, actor.avatar); av.alt = ''; av.className = 'post-avatar'; av.loading = 'lazy';
       header.appendChild(av);
 
       const meta = document.createElement('div');
@@ -2256,8 +2296,7 @@
         renderFeedItems(displayItems, feedResults, append);
       }
 
-      // Show filtered hint when previously-seen posts were skipped
-      if (seenCount > 0) showFeedSeenHint(seenCount);
+      // Seen-posts hint removed — users can clear seen posts in Settings
 
       // M44: visual read indicator only — dedup marking happens at render time
       attachFeedSeenObserver(feedResults);
@@ -2463,7 +2502,7 @@
       (entries) => {
         if (entries[0]?.isIntersecting && feedCursor) loadFeed(true);
       },
-      { rootMargin: '0px 0px 400px 0px', threshold: 0 }
+      { root: viewFeed, rootMargin: '0px 0px 400px 0px', threshold: 0 }
     );
     if (feedSentinel) feedScrollObserver.observe(feedSentinel);
   }
@@ -2497,9 +2536,9 @@
         const authorBtn = document.createElement('button');
         authorBtn.className = 'repost-author-link';
         authorBtn.setAttribute('aria-label', `View profile of ${by.displayName || by.handle || 'reposter'}`);
-        if (by.avatar) {
+        {
           const avatar = document.createElement('img');
-          avatar.src       = by.avatar;
+          setAvatarSrc(avatar, by.avatar);
           avatar.alt       = '';
           avatar.className = 'feed-repost-avatar';
           authorBtn.appendChild(avatar);
@@ -2611,7 +2650,7 @@
     top.className = 'profile-top';
 
     const avatar = document.createElement('img');
-    avatar.src       = profile.avatar || '';
+    setAvatarSrc(avatar, profile.avatar);
     avatar.alt       = '';
     avatar.className = 'profile-avatar-lg';
     top.appendChild(avatar);
@@ -2869,7 +2908,7 @@
 
       // Avatar
       const avatar = document.createElement('img');
-      avatar.src       = author.avatar || '';
+      setAvatarSrc(avatar, author.avatar);
       avatar.alt       = '';
       avatar.className = 'notif-avatar';
       avatar.loading   = 'lazy';
@@ -3159,7 +3198,7 @@
         vid.play().catch(() => {
           // Autoplay blocked (e.g. browser policy); retry muted so video still plays
           vid.muted = true;
-          syncMuteBtn(); // M58: update icon to show muted state
+          if (s === tvSlot) syncMuteBtn(); // M58: only update icon for the currently active slot
           vid.play().catch(() => {});
         });
       });
@@ -3169,7 +3208,7 @@
         tvHlsArr[s] = hls;
       } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
         vid.src = src;
-        vid.play().catch(() => { vid.muted = true; syncMuteBtn(); vid.play().catch(() => {}); }) // M58;
+        vid.play().catch(() => { vid.muted = true; if (s === tvSlot) syncMuteBtn(); vid.play().catch(() => {}); }) // M58;
       }
 
       // M36: Short-clip filter — skip videos shorter than 5 seconds
@@ -3218,6 +3257,9 @@
       tvMuteBtn.querySelectorAll('.tv-muted-x').forEach((l) => {
         l.style.display = muted ? '' : 'none';
       });
+      tvMuteBtn.querySelectorAll('.tv-sound-waves').forEach((l) => {
+        l.style.display = muted ? 'none' : '';
+      });
     }
 
     /* ---- Sync pause-button icon with paused state (M36) ---- */
@@ -3233,7 +3275,7 @@
     function showOverlay(post) {
       tvCurrent = post;
       const author = post.author || {};
-      tvAuthorAvatar.src             = author.avatar || '';
+      setAvatarSrc(tvAuthorAvatar, author.avatar);
       tvAuthorAvatar.alt             = author.displayName || author.handle || '';
       tvAuthorName.textContent       = author.displayName || author.handle || '';
       tvAuthorHandle.textContent     = `@${author.handle || ''}`;
@@ -3282,6 +3324,7 @@
         // Load into the incoming slot, then animate it into view
         loadVideoInSlot(nextSlot(), embed.playlist, embed.thumbnail);
         slideTransition(direction, () => {
+          syncMuteBtn(); // sync button with the new active slot's actual mute state
           updateQueueCount();
           if (tvQueue.length - tvIndex < 5) fetchMore();
         });
@@ -3937,7 +3980,7 @@
       : '';
     card.innerHTML = `
       <div class="post-header">
-        <img src="${escHtml(author.avatar || '')}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}">
+        <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
         <div class="post-meta author-link" title="View @${escHtml(author.handle || '')}">
           <div class="post-display-name">${escHtml(author.displayName || author.handle || '')}</div>
           <div class="post-handle">@${escHtml(author.handle || '')}</div>
@@ -4517,7 +4560,7 @@
     header.className = 'quoted-post-header';
 
     const avatar = document.createElement('img');
-    avatar.src       = author.avatar || '';
+    setAvatarSrc(avatar, author.avatar);
     avatar.alt       = '';
     avatar.className = 'quoted-post-avatar';
     avatar.loading   = 'lazy';
