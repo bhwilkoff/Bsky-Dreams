@@ -302,6 +302,12 @@ button {
   line-height: 1.4;
 }
 
+.auth-password-hint {
+  text-align: center;
+  margin-top: var(--space-sm);
+  font-size: 0.875rem;
+}
+
 /* ---- Buttons ---- */
 .btn {
   display: inline-flex;
@@ -1942,6 +1948,8 @@ a.post-timestamp:hover {
   box-shadow: var(--shadow-elevated);
   width: 100%;
   max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
   padding: var(--space-md);
   display: flex;
   flex-direction: column;
@@ -3921,6 +3929,38 @@ a.post-timestamp:hover {
 
 .repost-sheet-item:hover {
   background: var(--color-surface-alt);
+}
+
+/* ================================================================
+   Quote modal footer — stacked 2-row layout
+================================================================ */
+.compose-footer--quote {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-xs);
+}
+
+.quote-footer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.quote-footer-toolbar .compose-toolbar {
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.quote-footer-actions {
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.quote-footer-actions .error-banner {
+  width: 100%;
+  flex: 1 1 100%;
 }
 
 /* ================================================================

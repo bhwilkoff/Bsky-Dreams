@@ -65,9 +65,9 @@
             autocomplete="current-password"
             required
           >
-          <p class="field-hint">
-            Use an <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">App Password</a>,
-            not your main password. Generate one in BlueSky → Settings → App Passwords.
+          <p class="field-hint auth-password-hint">
+            Use an <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">App Password</a>
+            — not your main password.
           </p>
         </div>
         <div id="auth-error" class="error-banner" hidden role="alert"></div>
@@ -533,7 +533,13 @@
                 <p id="tv-post-text" class="tv-post-text"></p>
                 <div class="tv-playback-btns">
                   <button class="tv-ctrl-icon-btn" id="tv-mute-btn" aria-label="Mute">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/><line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="tv-sound-waves"/>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="tv-sound-waves"/>
+                      <line x1="23" y1="9" x2="17" y2="15" class="tv-muted-x" style="display:none"/>
+                      <line x1="17" y1="9" x2="23" y2="15" class="tv-muted-x" style="display:none"/>
+                    </svg>
                   </button>
                   <button class="tv-ctrl-icon-btn" id="tv-pause-btn" aria-label="Pause">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -791,33 +797,37 @@
       <div id="quote-modal-preview" class="quote-modal-preview">
         <!-- Quoted post preview injected by JS -->
       </div>
-      <!-- Footer: toolbar + char count + actions -->
-      <div class="compose-footer" style="margin-top: var(--space-sm);">
-        <div class="compose-footer-left compose-toolbar">
-          <button type="button" class="compose-attach-btn" id="quote-img-btn"
-                  aria-label="Attach images (up to 4)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          </button>
-          <button type="button" class="compose-attach-btn" id="quote-gif-btn"
-                  aria-label="Attach GIF" title="Search GIFs">
-            <span style="font-size:0.8rem;font-weight:700;letter-spacing:-0.5px">GIF</span>
-          </button>
-          <button type="button" class="compose-attach-btn" id="quote-video-btn"
-                  aria-label="Attach video" title="Attach video (MP4/WebM, max 3 min, 50 MB)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="2" y="7" width="15" height="10" rx="2" ry="2"/><polygon points="22 7 16 12 22 17 22 7"/></svg>
-          </button>
-          <button type="button" class="compose-attach-btn" id="quote-settings-btn"
-                  aria-label="Post settings (thread gate, quote gate)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-          </button>
-          <input type="file" id="quote-img-input" class="sr-only"
-                 accept="image/jpeg,image/png,image/gif,image/webp"
-                 multiple aria-label="Choose images to attach to quote">
-          <input type="file" id="quote-video-input" class="sr-only"
-                 accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach to quote">
+      <!-- Footer: toolbar row + actions row -->
+      <div class="compose-footer compose-footer--quote">
+        <!-- Row 1: media attach buttons + char count -->
+        <div class="quote-footer-toolbar">
+          <div class="compose-toolbar">
+            <button type="button" class="compose-attach-btn" id="quote-img-btn"
+                    aria-label="Attach images (up to 4)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </button>
+            <button type="button" class="compose-attach-btn" id="quote-gif-btn"
+                    aria-label="Attach GIF" title="Search GIFs">
+              <span style="font-size:0.8rem;font-weight:700;letter-spacing:-0.5px">GIF</span>
+            </button>
+            <button type="button" class="compose-attach-btn" id="quote-video-btn"
+                    aria-label="Attach video" title="Attach video (MP4/WebM, max 3 min, 50 MB)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><rect x="2" y="7" width="15" height="10" rx="2" ry="2"/><polygon points="22 7 16 12 22 17 22 7"/></svg>
+            </button>
+            <button type="button" class="compose-attach-btn" id="quote-settings-btn"
+                    aria-label="Post settings (thread gate, quote gate)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+            </button>
+            <input type="file" id="quote-img-input" class="sr-only"
+                   accept="image/jpeg,image/png,image/gif,image/webp"
+                   multiple aria-label="Choose images to attach to quote">
+            <input type="file" id="quote-video-input" class="sr-only"
+                   accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach to quote">
+          </div>
           <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
         </div>
-        <div class="compose-actions">
+        <!-- Row 2: error + submit actions -->
+        <div class="compose-actions quote-footer-actions">
           <div id="quote-modal-error" class="error-banner" hidden role="alert"></div>
           <button class="btn btn-ghost" id="quote-modal-cancel">Cancel</button>
           <button class="btn btn-primary" id="quote-modal-submit">Quote Post</button>
