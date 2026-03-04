@@ -4,7 +4,15 @@
   "description": "A better window into BlueSky",
   "start_url": "./index.html?view=feed",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#FF5C35",
-  "orientation": "portrait-primary"
+  "background_color": "#0047FF",
+  "theme_color": "#0047FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
