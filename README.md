@@ -1,28 +1,28 @@
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║  ██████╗ ███████╗██╗  ██╗██╗   ██╗                          ║
-║  ██╔══██╗██╔════╝██║ ██╔╝╚██╗ ██╔╝                          ║
-║  ██████╔╝███████╗█████╔╝  ╚████╔╝                           ║
-║  ██╔══██╗╚════██║██╔═██╗   ╚██╔╝                            ║
-║  ██████╔╝███████║██║  ██╗   ██║                             ║
-║  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝                             ║
+║  ██████╗ ███████╗██╗  ██╗██╗   ██╗                           ║
+║  ██╔══██╗██╔════╝██║ ██╔╝╚██╗ ██╔╝                           ║
+║  ██████╔╝███████╗█████╔╝  ╚████╔╝                            ║
+║  ██╔══██╗╚════██║██╔═██╗   ╚██╔╝                             ║
+║  ██████╔╝███████║██║  ██╗   ██║                              ║
+║  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝                              ║
 ║                                                              ║
-║  ██████╗ ██████╗ ███████╗ █████╗ ███╗   ███╗███████╗        ║
-║  ██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗ ████║██╔════╝        ║
-║  ██║  ██║██████╔╝█████╗  ███████║██╔████╔██║███████╗        ║
-║  ██║  ██║██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║╚════██║        ║
-║  ██████╔╝██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████║        ║
-║  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝        ║
+║  ██████╗ ██████╗ ███████╗ █████╗ ███╗   ███╗███████╗         ║
+║  ██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗ ████║██╔════╝         ║
+║  ██║  ██║██████╔╝█████╗  ███████║██╔████╔██║███████╗         ║
+║  ██║  ██║██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║╚════██║         ║
+║  ██████╔╝██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████║         ║
+║  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝         ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
 # Bsky Dreams
 
-**A BlueSky client built for people who want to think, not just scroll.**
+**A BlueSky client built for people who want more from their Bluesky experience.**
 
 > *Every feature in this app is built in service of human learning and growth —
-> not to replace thinking, but to deepen it. The goal is never a slick product.
-> It is a tool that makes someone more human.*
+> not to replace thinking or community, but to deepen it. The goal is never a slick product or an exhaustive feature list.
+> It is a tool that helps make social media more human and collaborative.*
 
 ---
 
@@ -32,7 +32,7 @@ Bsky Dreams is a zero-cost, zero-server, zero-dependency alternative interface f
 
 It was built to address the parts of BlueSky that feel unfinished: conversation depth, content discovery, media handling, search power, and cross-device persistence. But more than fixing friction — it was built with a belief that social software should make you *more curious*, not less.
 
-**Live app:** [https://bhwilkoff.github.io/bskydreams](https://bhwilkoff.github.io/bskydreams)
+**Live app:** [https://bskydreams.com](https://bskydreams.com)
 
 ---
 
@@ -59,12 +59,12 @@ Bsky Dreams has **no backend**. This is a deliberate choice, not a limitation.
 ┌─────────────────────────────────────────────────────────┐
 │                    YOUR BROWSER                         │
 │                                                         │
-│  index.html ──► css/styles.css                         │
+│  index.html ──► css/styles.css                          │
 │       │         js/app.js                               │
 │       │         js/api.js         ┌──────────────────┐  │
 │       │         js/auth.js   ───► │  bsky.social     │  │
 │       │         js/hls.min.js     │  AT Protocol API │  │
-│       │                          └──────────────────┘  │
+│       │                           └──────────────────┘  │
 │       └── localStorage                                  │
 │           (session, channels, seen posts, prefs)        │
 └─────────────────────────────────────────────────────────┘
