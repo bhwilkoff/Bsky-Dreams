@@ -168,17 +168,41 @@ button {
   background: var(--color-surface);
   border: 3px solid var(--nb-black);
   box-shadow: var(--shadow-elevated);
-  padding: var(--space-xl) var(--space-lg);
   width: 100%;
   max-width: 400px;
   border-radius: 0;
   position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Branded header block above the form */
+.auth-header {
+  background: var(--color-accent);
+  border-bottom: 3px solid var(--nb-black);
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  /* Memphis diagonal stripe overlay */
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255,255,255,0.06) 0px,
+      rgba(255,255,255,0.06) 6px,
+      transparent 6px,
+      transparent 14px
+    );
+  background-color: var(--color-accent);
 }
 
 .auth-logo {
   display: flex;
   justify-content: center;
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
+  filter: drop-shadow(2px 3px 0 rgba(0,0,0,0.35));
 }
 
 .auth-title {
@@ -186,20 +210,51 @@ button {
   font-size: 2rem;
   font-weight: 800;
   text-align: center;
-  color: var(--color-text);
+  color: #fff;
   letter-spacing: -0.03em;
-  margin-bottom: var(--space-xs);
+  margin: 0;
   text-transform: uppercase;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
 }
 
 .auth-subtitle {
   text-align: center;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-xl);
-  font-size: 0.9rem;
-  font-weight: 600;
+  color: rgba(255,255,255,0.82);
+  margin: 0;
+  font-size: 0.8rem;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+}
+
+/* Form body */
+#auth-form {
+  padding: var(--space-lg);
+}
+
+/* Footer with repo link */
+.auth-footer {
+  border-top: 2px solid var(--nb-black);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-surface-alt);
+  display: flex;
+  justify-content: center;
+}
+
+.auth-repo-link {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.12s;
+}
+
+.auth-repo-link:hover {
+  color: var(--color-accent);
 }
 
 /* ================================================================
@@ -211,8 +266,11 @@ button {
 
 .field-label {
   display: block;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--color-text);
   margin-bottom: var(--space-xs);
 }
@@ -281,6 +339,10 @@ button {
 .btn-primary {
   background: var(--color-accent);
   color: #fff;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .btn-primary:hover {
