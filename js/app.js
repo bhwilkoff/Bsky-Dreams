@@ -2256,19 +2256,29 @@
   }
 
   async function loadFeed(append = false) {
+    // Guard: prevent concurrent append calls. The IntersectionObserver fires immediately
+    // when observe() is called on an already-visible sentinel (e.g. after an all-filtered
+    // batch adds nothing to the DOM), which would exhaust the Discovery cursor silently.
+    if (append && feedLoading) return;
+
     if (!append) {
-      feedCursor     = null;
-      feedLoaded     = false;
-      feedSeenBypass = false; // M40: reset bypass on fresh feed load
+      feedCursor         = null;
+      feedLoaded         = false;
+      feedSeenBypass     = false;    // M40: reset bypass on fresh feed load
+      feedDiscoverLooped = false;    // reset loop-back flag on fresh load / tab switch
       feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
-      document.querySelector('.feed-seen-hint')?.remove(); // M40: clear old hint
+      document.querySelector('.feed-seen-hint')?.remove();
     }
 
+    feedLoading = true;
     showLoading();
     try {
+      // When feedCursor is null during an append (e.g. Discovery loop-back), pass undefined
+      // so the API fetches the first page again (api.js get() skips null/undefined params).
+      const apiCursor = (append && feedCursor) ? feedCursor : undefined;
       const data = feedMode === 'discover'
-        ? await API.getFeed(DISCOVER_FEED_URI, 50, append ? feedCursor : undefined)
-        : await API.getTimeline(50, append ? feedCursor : undefined);
+        ? await API.getFeed(DISCOVER_FEED_URI, 50, apiCursor)
+        : await API.getTimeline(50, apiCursor);
       const items  = data.feed || [];
       feedCursor   = data.cursor || null;
       feedLoaded   = true;
@@ -2296,22 +2306,33 @@
         renderFeedItems(displayItems, feedResults, append);
       }
 
-      // Seen-posts hint removed — users can clear seen posts in Settings
-
       // M44: visual read indicator only — dedup marking happens at render time
       attachFeedSeenObserver(feedResults);
 
-      // M60: sentinel triggers next page automatically; reconnect observer when there's more
+      // M60: sentinel triggers next page automatically.
       if (feedCursor) {
+        // Normal pagination: more pages available. If sentinel is still visible after an
+        // all-filtered batch the observer fires again, safely gated by feedLoading guard.
+        if (feedDiscoverLooped) feedDiscoverLooped = false; // back to normal pagination
         setupFeedScrollObserver();
       } else if (feedScrollObserver) {
         feedScrollObserver.disconnect();
+        // Discovery cursor exhausted: loop back once to fetch fresh hot posts.
+        // The whats-hot feed is finite (~3–5 pages) and rotates over time; a fresh first-page
+        // fetch appends newer trending posts below what the user has already read.
+        if (append && feedMode === 'discover' && !feedDiscoverLooped && items.length > 0) {
+          feedDiscoverLooped = true;  // allow exactly one loop; flag prevents a second
+          feedCursor = null;          // API will receive undefined → fetches first page
+          setupFeedScrollObserver();  // observer fires when sentinel is visible; condition in
+          // setupFeedScrollObserver checks feedDiscoverLooped to allow null-cursor trigger
+        }
       }
     } catch (err) {
       if (!append) {
         feedResults.innerHTML = `<div class="feed-empty"><p>Could not load feed: ${escHtml(err.message)}</p></div>`;
       }
     } finally {
+      feedLoading = false;
       hideLoading();
     }
   }
@@ -2495,12 +2516,18 @@
   })();
 
   /* M60: Infinite scroll for Following/Discover feed */
-  let feedScrollObserver = null;
+  let feedScrollObserver   = null;
+  let feedLoading          = false; // guard: only one append in flight at a time
+  let feedDiscoverLooped   = false; // true after Discovery cursor exhausted once (allows one fresh-start loop)
+
   function setupFeedScrollObserver() {
     if (feedScrollObserver) feedScrollObserver.disconnect();
     feedScrollObserver = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && feedCursor) loadFeed(true);
+        // Fire when sentinel is visible AND there are more pages.
+        // Also fire when Discovery has looped back (feedDiscoverLooped + null cursor = fresh fetch).
+        const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+        if (entries[0]?.isIntersecting && hasMore) loadFeed(true);
       },
       { root: viewFeed, rootMargin: '0px 0px 400px 0px', threshold: 0 }
     );
