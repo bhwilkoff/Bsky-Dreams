@@ -2309,23 +2309,15 @@
       // M44: visual read indicator only — dedup marking happens at render time
       attachFeedSeenObserver(feedResults);
 
-      // M60: sentinel triggers next page automatically.
-      if (feedCursor) {
-        // Normal pagination: more pages available. If sentinel is still visible after an
-        // all-filtered batch the observer fires again, safely gated by feedLoading guard.
-        if (feedDiscoverLooped) feedDiscoverLooped = false; // back to normal pagination
-        setupFeedScrollObserver();
-      } else if (feedScrollObserver) {
-        feedScrollObserver.disconnect();
-        // Discovery cursor exhausted: loop back once to fetch fresh hot posts.
-        // The whats-hot feed is finite (~3–5 pages) and rotates over time; a fresh first-page
-        // fetch appends newer trending posts below what the user has already read.
-        if (append && feedMode === 'discover' && !feedDiscoverLooped && items.length > 0) {
-          feedDiscoverLooped = true;  // allow exactly one loop; flag prevents a second
-          feedCursor = null;          // API will receive undefined → fetches first page
-          setupFeedScrollObserver();  // observer fires when sentinel is visible; condition in
-          // setupFeedScrollObserver checks feedDiscoverLooped to allow null-cursor trigger
-        }
+      // M60: update discovery loop state — observer setup is deferred to finally so that
+      // feedLoading is guaranteed to be false when the observer first fires. Without this,
+      // browsers that deliver the initial IntersectionObserver callback synchronously would
+      // hit the feedLoading guard and never re-fire (no intersection change → stuck scroll).
+      if (feedCursor && feedDiscoverLooped) {
+        feedDiscoverLooped = false; // got a fresh cursor — back to normal pagination
+      } else if (!feedCursor && append && feedMode === 'discover' && !feedDiscoverLooped && items.length > 0) {
+        feedDiscoverLooped = true;  // cursor exhausted — queue one loop-back to fresh page 1
+        feedCursor = null;          // ensure apiCursor resolves to undefined on next call
       }
     } catch (err) {
       if (!append) {
@@ -2334,6 +2326,15 @@
     } finally {
       feedLoading = false;
       hideLoading();
+      // Set up or tear down the scroll observer AFTER feedLoading is cleared.
+      // Doing it here also ensures the observer is restarted after API errors
+      // (previously a failed append would leave the observer dead, requiring a PTR).
+      const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+      if (hasMore) {
+        setupFeedScrollObserver();
+      } else if (feedScrollObserver) {
+        feedScrollObserver.disconnect();
+      }
     }
   }
 
