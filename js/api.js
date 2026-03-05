@@ -188,7 +188,7 @@ const API = (() => {
    * @param {Array}       images   - optional array of { blob, alt } objects
    *                                 where blob is the result of uploadBlob()
    */
-  async function createPost(text, replyRef = null, images = [], embedRef = null, externalEmbed = null, videoEmbed = null) {
+  async function createPost(text, replyRef = null, images = [], embedRef = null, externalEmbed = null, videoEmbed = null, facets = null) {
     const session = AUTH.getSession();
     if (!session) throw new Error('Not authenticated.');
 
@@ -199,6 +199,9 @@ const API = (() => {
       langs:     ['en'],
     };
     if (replyRef) record.reply = replyRef;
+    // Facets make URLs, hashtags, and mentions interactive in native Bluesky clients.
+    // Without them, links appear as plain unclickable text.
+    if (facets?.length) record.facets = facets;
     if (images.length > 0 && embedRef) {
       // Quote post with images → recordWithMedia
       record.embed = {
