@@ -1885,6 +1885,14 @@
         const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
         if (hasMore) setupFeedScrollObserver();
       }
+      if (view === 'gallery') {
+        if (galleryFeed.children.length === 0) {
+          loadGallery();
+        } else if (!galleryAllDone) {
+          // Gallery has content — scroll observer was disconnected on the way out; reconnect it.
+          setupGalleryScrollObserver();
+        }
+      }
       if (view === 'notifications' && !notifLoaded) loadNotifications();
     }
   });
