@@ -18,7 +18,7 @@
 
 # Bsky Dreams
 
-**A BlueSky client built for people who want more from their Bluesky experience.**
+**A Bluesky Web App built for people who want more from their Bluesky experience.**
 
 > *Every feature in this app is built in service of human learning and growth —
 > not to replace thinking or community, but to deepen it. The goal is never a slick product or an exhaustive feature list.
