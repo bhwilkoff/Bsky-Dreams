@@ -3872,7 +3872,15 @@
     if (quoteLinkEmbed) return;
     const matches = quoteModalText.value.match(/https?:\/\/[^\s]+/g);
     if (!matches) return;
-    quoteLinkTimer = setTimeout(() => fetchQuoteLinkPreview(matches[0]), 800);
+    quoteLinkTimer = setTimeout(() => fetchQuoteLinkPreview(matches[0]), 300);
+  });
+  quoteModalText.addEventListener('paste', () => {
+    if (quoteLinkEmbed) return;
+    clearTimeout(quoteLinkTimer);
+    quoteLinkTimer = setTimeout(() => {
+      const matches = quoteModalText.value.match(/https?:\/\/[^\s]+/g);
+      if (matches) fetchQuoteLinkPreview(matches[0]);
+    }, 0);
   });
 
   quoteModalSubmit.addEventListener('click', async () => {
@@ -3928,7 +3936,7 @@
 
       quoteModalSubmit.textContent = 'Posting…';
       const embedRef = { uri: quoteModalPostRef.uri, cid: quoteModalPostRef.cid };
-      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed, videoEmbed);
+      const result = await API.createPost(text, null, uploadedImages, embedRef, linkEmbed, videoEmbed, buildFacets(text));
 
       // Apply gate records if non-default
       const replyGateVal = quoteReplyGate?.value || 'everyone';
@@ -4826,7 +4834,7 @@
     btn.textContent = 'Posting…';
 
     try {
-      await API.createPost(text, replyRef);
+      await API.createPost(text, replyRef, [], null, null, null, buildFacets(text));
       replyForm.reset();
       replyCount.textContent = '300';
       // Reload thread to show the new reply
@@ -5001,9 +5009,11 @@
     const text   = record.text || '';
 
     // ---- Per-instance compose state ----
-    let replyImages   = [];   // [{ file, previewUrl, altText }]
-    let replyGifEmbed = null; // { uri, title, description, _thumbUrl }
-    let replyVideo    = null; // { file, objectUrl, duration, altText }
+    let replyImages      = [];   // [{ file, previewUrl, altText }]
+    let replyGifEmbed    = null; // { uri, title, description, _thumbUrl }
+    let replyLinkEmbed   = null; // { uri, title, description, _thumbUrl } — link preview card
+    let replyLinkTimer   = null;
+    let replyVideo       = null; // { file, objectUrl, duration, altText }
 
     const box = document.createElement('div');
     box.className     = 'inline-reply-box';
@@ -5080,11 +5090,16 @@
     const videoDurEl   = videoPreviewEl.querySelector('.compose-video-dur');
     const videoAltEl   = videoPreviewEl.querySelector('.compose-alt-input');
 
-    // GIF/link preview area
+    // GIF preview area
     const gifPreviewEl = document.createElement('div');
     gifPreviewEl.className = 'inline-reply-gif-preview';
     gifPreviewEl.hidden = true;
     body.appendChild(gifPreviewEl);
+
+    // Link preview card area
+    const linkPreviewEl = document.createElement('div');
+    linkPreviewEl.className = 'compose-link-preview-wrap';
+    body.appendChild(linkPreviewEl);
 
     // GIF picker panel
     const gifPanel = document.createElement('div');
@@ -5229,11 +5244,70 @@
       gifPreviewEl.innerHTML = ''; gifPreviewEl.hidden = true;
     }
 
+    function clearReplyLinkPreview() {
+      replyLinkEmbed = null;
+      clearTimeout(replyLinkTimer);
+      linkPreviewEl.innerHTML = '';
+    }
+
+    function renderReplyLinkPreviewCard(hostname) {
+      const { title, description, _thumbUrl } = replyLinkEmbed;
+      linkPreviewEl.innerHTML = `
+        <div class="compose-link-preview">
+          ${_thumbUrl ? `
+            <div style="position:relative;">
+              <img class="compose-link-preview-thumb" src="${escHtml(_thumbUrl)}" alt="" loading="lazy">
+              <button type="button" class="compose-link-preview-change-thumb" title="Change thumbnail"
+                      style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;">
+                Change
+              </button>
+            </div>` : `
+            <button type="button" class="compose-link-preview-change-thumb" title="Set thumbnail"
+                    style="display:block;width:100%;padding:8px;background:none;border:none;color:var(--color-accent);font-size:0.8rem;cursor:pointer;text-align:left;">
+              + Set thumbnail image
+            </button>`}
+          <div class="compose-link-preview-body">
+            <input class="compose-link-preview-input compose-link-preview-title"
+                   value="${escHtml(title)}" placeholder="Title" maxlength="300" aria-label="Link title">
+            <input class="compose-link-preview-input compose-link-preview-desc"
+                   value="${escHtml(description)}" placeholder="Description (optional)" maxlength="500" aria-label="Link description">
+            <span class="compose-link-preview-host">${escHtml(hostname)}</span>
+          </div>
+          <button type="button" class="compose-link-preview-dismiss" aria-label="Remove link preview">✕</button>
+        </div>
+      `;
+      linkPreviewEl.querySelector('.compose-link-preview-title').addEventListener('input', (e) => { replyLinkEmbed.title = e.target.value; });
+      linkPreviewEl.querySelector('.compose-link-preview-desc').addEventListener('input', (e) => { replyLinkEmbed.description = e.target.value; });
+      linkPreviewEl.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearReplyLinkPreview);
+      linkPreviewEl.querySelector('.compose-link-preview-change-thumb')?.addEventListener('click', () => {
+        const newUrl = prompt('Enter image URL for thumbnail:', replyLinkEmbed._thumbUrl || '');
+        if (newUrl !== null) { replyLinkEmbed._thumbUrl = newUrl.trim() || null; renderReplyLinkPreviewCard(hostname); }
+      });
+    }
+
+    async function fetchReplyLinkPreview(url) {
+      if (replyLinkEmbed || replyGifEmbed) return;
+      try {
+        const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (!data.contents) return;
+        const doc    = new DOMParser().parseFromString(data.contents, 'text/html');
+        const getOg  = (name) => doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute('content') || '';
+        const title    = (getOg('og:title') || doc.title || '').trim();
+        const desc     = (getOg('og:description') || getOg('description') || '').trim();
+        const thumb    = getOg('og:image') || getOg('twitter:image') || '';
+        const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+        replyLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
+        renderReplyLinkPreviewCard(hostname);
+      } catch { /* silently ignore */ }
+    }
+
     function selectGifEmbed(gifUrl, thumbUrl, alt) {
       replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
       replyImages = [];
       refreshImgPreview();
       clearReplyVideo();
+      clearReplyLinkPreview();
       replyGifEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
       gifPanel.hidden = true;
       gifPreviewEl.innerHTML = `
@@ -5251,6 +5325,19 @@
       const rem = 300 - textarea.value.length;
       countSpan.textContent = rem;
       countSpan.style.color = rem < 20 ? 'var(--color-error-text)' : '';
+      clearTimeout(replyLinkTimer);
+      if (replyLinkEmbed || replyGifEmbed) return;
+      const matches = textarea.value.match(/https?:\/\/[^\s]+/g);
+      if (!matches) return;
+      replyLinkTimer = setTimeout(() => fetchReplyLinkPreview(matches[0]), 300);
+    });
+    textarea.addEventListener('paste', () => {
+      if (replyLinkEmbed || replyGifEmbed) return;
+      clearTimeout(replyLinkTimer);
+      replyLinkTimer = setTimeout(() => {
+        const matches = textarea.value.match(/https?:\/\/[^\s]+/g);
+        if (matches) fetchReplyLinkPreview(matches[0]);
+      }, 0);
     });
 
     imgBtn.addEventListener('click', () => {
@@ -5315,6 +5402,7 @@
     function cleanup() {
       replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
       if (replyVideo?.objectUrl) URL.revokeObjectURL(replyVideo.objectUrl);
+      clearTimeout(replyLinkTimer);
     }
 
     cancelBtn.addEventListener('click', () => { cleanup(); box.remove(); });
@@ -5353,9 +5441,11 @@
           if (replyVideo.aspectRatio) videoEmbed.aspectRatio    = replyVideo.aspectRatio;
         }
 
+        // Use GIF embed or link preview card as the external embed (mutually exclusive)
         let externalEmbed = null;
-        if (replyGifEmbed) {
-          externalEmbed = { ...replyGifEmbed };
+        const embedSource = replyGifEmbed || (uploadedImages.length === 0 && !videoEmbed ? replyLinkEmbed : null);
+        if (embedSource) {
+          externalEmbed = { ...embedSource };
           if (externalEmbed._thumbUrl) {
             try {
               const thumbRes  = await fetch(externalEmbed._thumbUrl);
@@ -5366,7 +5456,7 @@
           }
         }
 
-        await API.createPost(replyText, replyRef, uploadedImages, null, externalEmbed, videoEmbed);
+        await API.createPost(replyText, replyRef, uploadedImages, null, externalEmbed, videoEmbed, buildFacets(replyText));
         cleanup(); box.remove();
         if (onSuccess) {
           onSuccess();
@@ -5866,6 +5956,40 @@
     composeGifInput.value = '';
   }
 
+  /**
+   * Build AT Protocol facets for a post body.
+   * Generates `app.bsky.richtext.facet#link` entries for every HTTP/HTTPS URL and
+   * `app.bsky.richtext.facet#tag` entries for #hashtags using correct UTF-8 byte offsets.
+   * Without facets, URLs appear as plain unclickable text in the native Bluesky app.
+   */
+  function buildFacets(text) {
+    if (!text) return undefined;
+    const encoder = new TextEncoder();
+    const facets  = [];
+
+    // URL facets — strip trailing punctuation that isn't part of the URL
+    const urlRe = /https?:\/\/[^\s\u0000-\u001f<>"{}|\\^`[\]]+/g;
+    let m;
+    while ((m = urlRe.exec(text)) !== null) {
+      let url = m[0].replace(/[.,;:!?)"']+$/, ''); // trim trailing punctuation
+      const byteStart = encoder.encode(text.slice(0, m.index)).length;
+      const byteEnd   = byteStart + encoder.encode(url).length;
+      facets.push({ index: { byteStart, byteEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: url }] });
+    }
+
+    // Hashtag facets
+    const tagRe = /(?<![&\w])#([a-zA-Z][a-zA-Z0-9_]*)/g;
+    while ((m = tagRe.exec(text)) !== null) {
+      const full      = m[0];
+      const byteStart = encoder.encode(text.slice(0, m.index)).length;
+      const byteEnd   = byteStart + encoder.encode(full).length;
+      facets.push({ index: { byteStart, byteEnd }, features: [{ $type: 'app.bsky.richtext.facet#tag', tag: m[1] }] });
+    }
+
+    facets.sort((a, b) => a.index.byteStart - b.index.byteStart);
+    return facets.length ? facets : undefined;
+  }
+
   // Link preview helpers
   function clearLinkPreview() {
     composeLinkEmbed = null;
@@ -5945,12 +6069,20 @@
   ================================================================ */
   composeText.addEventListener('input', () => {
     updateCharCount(composeText, composeCount);
-    // M41: debounced link preview detection
     clearTimeout(linkPreviewTimer);
     if (composeLinkEmbed) return;
     const matches = composeText.value.match(/https?:\/\/[^\s]+/g);
     if (!matches) return;
-    linkPreviewTimer = setTimeout(() => fetchLinkPreview(matches[0]), 800);
+    linkPreviewTimer = setTimeout(() => fetchLinkPreview(matches[0]), 300);
+  });
+  // Trigger immediately on paste so the card appears as soon as the URL lands
+  composeText.addEventListener('paste', () => {
+    if (composeLinkEmbed) return;
+    clearTimeout(linkPreviewTimer);
+    linkPreviewTimer = setTimeout(() => {
+      const matches = composeText.value.match(/https?:\/\/[^\s]+/g);
+      if (matches) fetchLinkPreview(matches[0]);
+    }, 0);
   });
 
   composeForm.addEventListener('submit', async (e) => {
@@ -6010,7 +6142,7 @@
       }
 
       btn.textContent = 'Posting…';
-      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed, videoEmbed);
+      const result = await API.createPost(text, null, uploadedImages, null, linkEmbed, videoEmbed, buildFacets(text));
 
       // M41: apply thread gate and quote gate records if non-default
       const replyGateVal = composeReplyGate.value;
