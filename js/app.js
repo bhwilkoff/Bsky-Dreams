@@ -1836,7 +1836,13 @@
 
   navFeedBtn.addEventListener('click', () => {
     showView('feed');
-    if (!feedLoaded) loadFeed();
+    if (!feedLoaded) {
+      loadFeed();
+    } else {
+      // Feed already loaded — restore the scroll observer that showView disconnected.
+      const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+      if (hasMore) setupFeedScrollObserver();
+    }
   });
   navSearchBtn.addEventListener('click', () => showView('search'));
   navComposeBtn.addEventListener('click', () => showView('compose'));
@@ -1871,7 +1877,14 @@
       showView(view, true);
       const q = state?.query || params.get('q');
       if (view === 'search' && q) searchInput.value = q;
-      if (view === 'feed' && !feedLoaded) loadFeed();
+      if (view === 'feed' && !feedLoaded) {
+        loadFeed();
+      } else if (view === 'feed' && feedLoaded) {
+        // Feed already has content — the scroll observer was disconnected on the way
+        // out (showView tears it down) so reconnect it without reloading the feed.
+        const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+        if (hasMore) setupFeedScrollObserver();
+      }
       if (view === 'notifications' && !notifLoaded) loadNotifications();
     }
   });
