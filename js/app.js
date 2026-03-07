@@ -144,7 +144,7 @@
   let lastSearchType     = null; // 'posts' | 'actors'
   const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
   // iOS Shortcut share-to-compose — update this URL after publishing the shortcut to iCloud
-  const IPHONE_SHORTCUT_URL = null; // e.g. 'https://www.icloud.com/shortcuts/...'
+  const IPHONE_SHORTCUT_URL = 'https://www.icloud.com/shortcuts/334a8826fb2b447da09fd342006d9d83';
   let feedMode           = 'discover';  // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
@@ -1687,8 +1687,10 @@
       if (shareText) {
         composeText.value = shareText;
         updateCharCount(composeText, composeCount);
-        // Trigger link-preview detection in case shareText contains a URL
-        composeText.dispatchEvent(new Event('input', { bubbles: true }));
+        // Trigger link-preview immediately (no debounce) for share-to-compose
+        const urlMatch = shareText.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) fetchLinkPreview(urlMatch[0]);
+        else composeText.dispatchEvent(new Event('input', { bubbles: true }));
       }
       // Strip share params from URL so Back doesn't re-trigger compose pre-fill
       history.replaceState({ view: 'compose' }, '', '?view=compose');
@@ -1777,6 +1779,8 @@
       clearComposeImages();
       clearComposeVideo();
       // M41: clear link preview and toggle panels
+      composeLinkEmbed = null;
+      clearTimeout(linkPreviewTimer);
       const lpWrap = $('compose-link-preview-wrap');
       if (lpWrap) lpWrap.innerHTML = '';
       const gifP  = $('compose-gif-panel');
