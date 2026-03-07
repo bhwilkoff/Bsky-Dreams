@@ -143,6 +143,8 @@
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
   const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
+  // iOS Shortcut share-to-compose — update this URL after publishing the shortcut to iCloud
+  const IPHONE_SHORTCUT_URL = null; // e.g. 'https://www.icloud.com/shortcuts/...'
   let feedMode           = 'discover';  // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
@@ -579,6 +581,18 @@
     }
 
     syncAccentSwatches();
+
+    // iPhone shortcut link — show install button if URL is configured
+    const shortcutRow  = $('settings-iphone-shortcut-row');
+    const shortcutLink = $('settings-iphone-shortcut-link');
+    if (shortcutRow && shortcutLink) {
+      if (IPHONE_SHORTCUT_URL) {
+        shortcutLink.href   = IPHONE_SHORTCUT_URL;
+        shortcutRow.hidden  = false;
+      } else {
+        shortcutRow.hidden  = true;
+      }
+    }
     settingsModal.hidden = false;
     closeSidebar();
   }
@@ -1667,6 +1681,17 @@
     } else if (urlView === 'gallery') {
       showView('gallery', true);
       loadGallery();
+    } else if (urlView === 'compose') {
+      showView('compose', true);
+      const shareText = p.get('shareText');
+      if (shareText) {
+        composeText.value = shareText;
+        updateCharCount(composeText, composeCount);
+        // Trigger link-preview detection in case shareText contains a URL
+        composeText.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // Strip share params from URL so Back doesn't re-trigger compose pre-fill
+      history.replaceState({ view: 'compose' }, '', '?view=compose');
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;

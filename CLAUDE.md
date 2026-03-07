@@ -49,7 +49,7 @@ No build step required. The app runs as a static file.
 
 1. Push changes to `main` branch
 2. GitHub Pages serves from root of `main` automatically
-3. Live URL: https://bhwilkoff.github.io/bskydreams
+3. Live URL: https://bskydreams.com
 
 ## Conventions
 

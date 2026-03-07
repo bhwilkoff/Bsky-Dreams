@@ -2151,6 +2151,36 @@ a.post-timestamp:hover {
 }
 .settings-danger-btn:hover { background: rgba(220, 38, 38, 0.08); border-color: #dc2626; }
 
+.settings-description {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+.settings-description-muted {
+  font-size: 0.8rem;
+  margin-top: var(--space-xs);
+}
+
+.settings-shortcut-steps {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  line-height: 1.6;
+  padding-left: 1.25rem;
+  margin: var(--space-xs) 0;
+}
+.settings-shortcut-steps li { margin-bottom: 2px; }
+
+.settings-shortcut-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-xs);
+  font-size: 0.9rem;
+  padding: 8px 16px;
+  text-decoration: none;
+}
+
 .report-action-btn {
   opacity: 0;
   transition: opacity 0.15s;
