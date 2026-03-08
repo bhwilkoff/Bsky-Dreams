@@ -1263,6 +1263,13 @@
   }
 
   /* ================================================================
+     M22 — ANALYTICS DASHBOARD + M13 — TIMELINE SCRUBBER (DOM refs)
+  ================================================================ */
+  const navAnalyticsBtn = $('nav-analytics-btn');
+  const viewAnalytics   = $('view-analytics');
+  const viewTimeline    = $('view-timeline');
+
+  /* ================================================================
      M37 — IMAGE GALLERY VIEW
   ================================================================ */
   const navGalleryBtn  = $('nav-gallery-btn');
@@ -1586,6 +1593,13 @@
     });
   }
 
+  if (navAnalyticsBtn) {
+    navAnalyticsBtn.addEventListener('click', () => {
+      showView('analytics');
+      loadAnalytics();
+    });
+  }
+
   /* ================================================================
      INIT — check stored session on page load
   ================================================================ */
@@ -1681,6 +1695,9 @@
     } else if (urlView === 'gallery') {
       showView('gallery', true);
       loadGallery();
+    } else if (urlView === 'analytics') {
+      showView('analytics', true);
+      loadAnalytics();
     } else if (urlView === 'compose') {
       showView('compose', true);
       const shareText = p.get('shareText');
@@ -1742,6 +1759,8 @@
       notifications: viewNotifications,
       tv:            viewTv,
       gallery:       viewGallery,
+      analytics:     viewAnalytics,
+      timeline:      viewTimeline,
     };
     const navBtns = {
       feed:          navFeedBtn,
@@ -1750,6 +1769,7 @@
       notifications: navNotifBtn,
       tv:            navTvBtn,
       gallery:       navGalleryBtn,
+      analytics:     navAnalyticsBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -1812,6 +1832,8 @@
         url = '?view=tv';
       } else if (name === 'gallery') {
         url = '?view=gallery';
+      } else if (name === 'analytics') {
+        url = '?view=analytics';
       }
       history.pushState(state, '', url);
     }
@@ -2550,7 +2572,7 @@
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery]; // M57: added viewGallery
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics/timeline
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -6400,6 +6422,521 @@
     if (s.endsWith('M')) return Math.round(n * 1_000_000);
     return isNaN(n) ? 0 : n;
   }
+
+  /* ================================================================
+     M22 — ANALYTICS DASHBOARD
+  ================================================================ */
+  (() => {
+    let analyticsActor    = null; // handle/DID currently shown
+    let analyticsPosts    = [];   // raw post objects fetched
+    let analyticsSort     = 'likes'; // current top-posts sort key
+    let analyticsChart    = null; // active canvas rendering context
+
+    const actorForm       = $('analytics-actor-form');
+    const actorInput      = $('analytics-actor-input');
+    const ownBtn          = $('analytics-own-btn');
+    const profileStrip    = $('analytics-profile-strip');
+    const errEl           = $('analytics-error');
+    const loadingEl       = $('analytics-loading');
+    const contentEl       = $('analytics-content');
+    const heatmapEl       = $('analytics-heatmap');
+    const topPostsEl      = $('analytics-top-posts');
+    const engCanvas       = $('analytics-engagement-chart');
+
+    function showAnalyticsError(msg) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+      loadingEl.hidden = true;
+      contentEl.hidden = true;
+      profileStrip.hidden = true;
+    }
+
+    /* -- Canvas bar chart -- */
+    function drawEngagementChart(posts) {
+      if (!engCanvas) return;
+      const ctx = engCanvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const W   = engCanvas.offsetWidth  || 300;
+      const H   = 180;
+      engCanvas.width  = W * dpr;
+      engCanvas.height = H * dpr;
+      ctx.scale(dpr, dpr);
+
+      const data = posts.slice(0, 25).map((p) => ({
+        likes:   p.likeCount   || 0,
+        reposts: p.repostCount || 0,
+        date:    p.record?.createdAt || p.indexedAt || '',
+      })).reverse(); // oldest first → left to right
+
+      const maxVal = Math.max(...data.map((d) => d.likes + d.reposts), 1);
+      const padL = 32, padR = 8, padT = 8, padB = 28;
+      const chartW = W - padL - padR;
+      const chartH = H - padT - padB;
+      const barGroup = chartW / data.length;
+      const barW     = Math.max(barGroup * 0.38, 2);
+      const gap      = Math.max(barGroup * 0.05, 1);
+
+      // Background
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim() || '#fff';
+      ctx.fillRect(0, 0, W, H);
+
+      // Y gridlines
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim() || '#e0e0e0';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + chartH - (chartH * i / 4);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-muted').trim() || '#555';
+        ctx.font = '9px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(formatCount(Math.round(maxVal * i / 4)), padL - 3, y + 3);
+      }
+
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#0047FF';
+      const green  = '#00B37D';
+
+      data.forEach((d, i) => {
+        const x      = padL + i * barGroup + gap;
+        const likeH  = (d.likes   / maxVal) * chartH;
+        const rpH    = (d.reposts / maxVal) * chartH;
+        const totalH = ((d.likes + d.reposts) / maxVal) * chartH;
+
+        // Repost bar (bottom)
+        ctx.fillStyle = green;
+        ctx.fillRect(x, padT + chartH - rpH, barW, rpH);
+        // Like bar (stacked on top)
+        ctx.fillStyle = accent;
+        ctx.fillRect(x, padT + chartH - totalH, barW, likeH);
+
+        // X label (every 5th)
+        if (i % 5 === 0 && d.date) {
+          const label = new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-muted').trim() || '#555';
+          ctx.font = '8px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, x + barW / 2, H - 4);
+        }
+      });
+
+      // Legend
+      const legendX = W - padR - 120;
+      ctx.fillStyle = accent;
+      ctx.fillRect(legendX, padT, 10, 8);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() || '#0a0a0a';
+      ctx.font = '9px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Likes', legendX + 13, padT + 8);
+      ctx.fillStyle = green;
+      ctx.fillRect(legendX + 50, padT, 10, 8);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() || '#0a0a0a';
+      ctx.fillText('Reposts', legendX + 63, padT + 8);
+    }
+
+    /* -- GitHub-style heatmap -- */
+    function renderHeatmap(posts) {
+      if (!heatmapEl) return;
+      heatmapEl.innerHTML = '';
+
+      const now     = new Date();
+      const days    = 84; // 12 weeks
+      const counts  = {};
+
+      posts.forEach((p) => {
+        const d = p.record?.createdAt || p.indexedAt;
+        if (!d) return;
+        const key = new Date(d).toISOString().slice(0, 10);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+
+      const maxCount = Math.max(...Object.values(counts), 1);
+
+      // Day-of-week labels (Mon first column)
+      const dowLabels = ['M', '', 'W', '', 'F', '', ''];
+      const labelCol  = document.createElement('div');
+      labelCol.className = 'heatmap-dow-labels';
+      dowLabels.forEach((l) => {
+        const s = document.createElement('span');
+        s.textContent = l;
+        labelCol.appendChild(s);
+      });
+      heatmapEl.appendChild(labelCol);
+
+      // Grid: weeks × 7 days
+      const grid = document.createElement('div');
+      grid.className = 'heatmap-grid';
+
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - days + 1);
+
+      for (let w = 0; w < 12; w++) {
+        const col = document.createElement('div');
+        col.className = 'heatmap-col';
+        for (let d = 0; d < 7; d++) {
+          const cellDate = new Date(startDate);
+          cellDate.setDate(startDate.getDate() + w * 7 + d);
+          const key   = cellDate.toISOString().slice(0, 10);
+          const count = counts[key] || 0;
+          const cell  = document.createElement('span');
+          cell.className = 'analytics-heatmap-cell heatmap-cell';
+          cell.title = `${key}: ${count} post${count !== 1 ? 's' : ''}`;
+          const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
+          cell.dataset.level = level;
+          col.appendChild(cell);
+        }
+        grid.appendChild(col);
+      }
+      heatmapEl.appendChild(grid);
+    }
+
+    /* -- Top posts table -- */
+    function renderTopPosts(posts, sort) {
+      if (!topPostsEl) return;
+      topPostsEl.innerHTML = '';
+      const sorted = [...posts].sort((a, b) => {
+        if (sort === 'reposts') return (b.repostCount || 0) - (a.repostCount || 0);
+        if (sort === 'replies') return (b.replyCount  || 0) - (a.replyCount  || 0);
+        return (b.likeCount || 0) - (a.likeCount || 0);
+      }).slice(0, 15);
+
+      if (!sorted.length) {
+        topPostsEl.innerHTML = '<p class="feed-empty-text">No posts found.</p>';
+        return;
+      }
+
+      sorted.forEach((post) => {
+        const text = post.record?.text || '';
+        const row  = document.createElement('div');
+        row.className = 'analytics-top-row';
+        row.setAttribute('role', 'listitem');
+        row.innerHTML = `
+          <div class="analytics-top-text">${escHtml(text.slice(0, 120))}${text.length > 120 ? '…' : ''}</div>
+          <div class="analytics-top-stats">
+            <span class="analytics-top-stat" title="Likes">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              ${formatCount(post.likeCount || 0)}
+            </span>
+            <span class="analytics-top-stat" title="Reposts">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              ${formatCount(post.repostCount || 0)}
+            </span>
+            <span class="analytics-top-stat" title="Replies">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              ${formatCount(post.replyCount || 0)}
+            </span>
+            <span class="analytics-top-date">${formatTimestamp(post.record?.createdAt || post.indexedAt)}</span>
+          </div>`;
+        row.addEventListener('click', () => {
+          const author = post.author?.handle || '';
+          openThread(post.uri, post.cid, author);
+        });
+        topPostsEl.appendChild(row);
+      });
+    }
+
+    /* -- Main load function -- */
+    window.loadAnalytics = async function loadAnalytics(actorOverride) {
+      const actor = actorOverride || analyticsActor || ownProfile?.handle;
+      if (!actor) return;
+      analyticsActor = actor;
+
+      errEl.hidden     = true;
+      contentEl.hidden = true;
+      profileStrip.hidden = true;
+      loadingEl.hidden = false;
+
+      try {
+        const [profileData, feedData] = await Promise.all([
+          API.getActorProfile(actor),
+          API.getAuthorFeed(actor, 100),
+        ]);
+
+        analyticsPosts = feedData.feed?.map((item) => item.post).filter(Boolean) || [];
+
+        // Populate profile strip
+        $('analytics-profile-avatar').src = profileData.avatar || '';
+        $('analytics-profile-avatar').alt = profileData.displayName || profileData.handle || '';
+        $('analytics-profile-name').textContent   = profileData.displayName || profileData.handle || '';
+        $('analytics-profile-handle').textContent = `@${profileData.handle || ''}`;
+        $('analytics-followers').textContent   = formatCount(profileData.followersCount || 0);
+        $('analytics-following').textContent   = formatCount(profileData.followsCount   || 0);
+        $('analytics-posts-count').textContent = formatCount(profileData.postsCount     || 0);
+        profileStrip.hidden = false;
+
+        loadingEl.hidden = true;
+        contentEl.hidden = false;
+
+        drawEngagementChart(analyticsPosts);
+        renderHeatmap(analyticsPosts);
+        renderTopPosts(analyticsPosts, analyticsSort);
+      } catch (err) {
+        showAnalyticsError(`Could not load analytics: ${err.message}`);
+      }
+    };
+
+    // Own profile button
+    if (ownBtn) {
+      ownBtn.addEventListener('click', () => {
+        if (ownProfile) loadAnalytics(ownProfile.handle);
+      });
+    }
+
+    // Actor search form
+    if (actorForm) {
+      actorForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const val = actorInput.value.trim();
+        if (val) loadAnalytics(val);
+      });
+    }
+
+    // Sort buttons
+    if (contentEl) {
+      contentEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('.analytics-sort-btn');
+        if (!btn) return;
+        contentEl.querySelectorAll('.analytics-sort-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        analyticsSort = btn.dataset.sort;
+        renderTopPosts(analyticsPosts, analyticsSort);
+      });
+    }
+
+    // Redraw canvas on resize
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (!viewAnalytics.hidden && analyticsPosts.length) {
+          drawEngagementChart(analyticsPosts);
+        }
+      }, 150);
+    });
+  })();
+
+  /* ================================================================
+     M13 — HORIZONTAL EVENT TIMELINE SCRUBBER
+  ================================================================ */
+  (() => {
+    let timelinePosts  = [];
+    let timelineZoom   = 'hours'; // 'hours' | 'days'
+    let timelineQuery  = '';
+
+    const rail        = $('timeline-rail');
+    const axis        = $('timeline-axis');
+    const emptyEl     = $('timeline-empty');
+    const loadingTl   = $('timeline-loading');
+    const backBtn     = $('timeline-back-btn');
+    const titleEl     = $('timeline-heading');
+    const zoomBtns    = document.querySelectorAll('.timeline-zoom-btn');
+
+    // Timeline toggle buttons in search view
+    const viewToggles  = $('search-view-toggles');
+    const listBtn      = $('search-view-list');
+    const tlBtn        = $('search-view-timeline');
+
+    // Show/hide the view toggle bar after a post search
+    function showSearchViewToggles(show) {
+      if (viewToggles) viewToggles.hidden = !show;
+      if (listBtn) listBtn.classList.toggle('active', show);
+      if (tlBtn)   tlBtn.setAttribute('aria-pressed', 'false');
+    }
+
+    // Hook into search form submit: show toggles on post search results
+    const origSearchHandler = searchForm._tlHooked;
+    if (!origSearchHandler) {
+      searchForm._tlHooked = true;
+      searchForm.addEventListener('submit', () => {
+        // Hide toggles initially; show after results render
+        if (viewToggles) viewToggles.hidden = true;
+      });
+    }
+
+    // Override the search form to show toggles after post search
+    const origSearchSubmit = searchForm.onsubmit;
+    // After renderPostFeed is called from the search handler, show the toggles
+    // We intercept by patching showSaveChannelBtn which is called right after rendering
+    const _origShowSaveChannelBtn = window._showSaveChannelBtnPatched;
+    if (!_origShowSaveChannelBtn) {
+      window._showSaveChannelBtnPatched = true;
+      // Watch for changes to searchResults to detect post search completion
+      new MutationObserver(() => {
+        const hasPostCards = searchResults.querySelector('.post-card');
+        if (viewToggles) {
+          viewToggles.hidden = !hasPostCards || lastSearchType !== 'posts';
+        }
+      }).observe(searchResults, { childList: true });
+    }
+
+    if (listBtn) {
+      listBtn.addEventListener('click', () => {
+        listBtn.classList.add('active');
+        listBtn.setAttribute('aria-pressed', 'true');
+        tlBtn.classList.remove('active');
+        tlBtn.setAttribute('aria-pressed', 'false');
+        searchResults.hidden = false;
+      });
+    }
+
+    if (tlBtn) {
+      tlBtn.addEventListener('click', () => {
+        tlBtn.classList.add('active');
+        tlBtn.setAttribute('aria-pressed', 'true');
+        listBtn.classList.remove('active');
+        listBtn.setAttribute('aria-pressed', 'false');
+        openTimeline(lastSearchQuery, lastSearchResults);
+      });
+    }
+
+    function openTimeline(query, posts) {
+      timelinePosts = (posts || []).slice();
+      timelineQuery = query || '';
+      if (titleEl) titleEl.textContent = `Timeline: ${timelineQuery}`;
+      showView('timeline');
+      renderTimeline();
+    }
+
+    window.openTimeline = openTimeline;
+
+    function renderTimeline() {
+      if (!rail) return;
+      rail.innerHTML   = '';
+      if (axis) axis.innerHTML = '';
+      emptyEl.hidden   = true;
+      loadingTl.hidden = true;
+
+      // Filter to posts with valid dates, sort chronologically
+      const dated = timelinePosts
+        .filter((p) => p.record?.createdAt || p.indexedAt)
+        .sort((a, b) => {
+          const ta = new Date(a.record?.createdAt || a.indexedAt).getTime();
+          const tb = new Date(b.record?.createdAt || b.indexedAt).getTime();
+          return ta - tb;
+        });
+
+      if (!dated.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+
+      const firstMs = new Date(dated[0].record?.createdAt || dated[0].indexedAt).getTime();
+      const lastMs  = new Date(dated[dated.length - 1].record?.createdAt || dated[dated.length - 1].indexedAt).getTime();
+      const spanMs  = Math.max(lastMs - firstMs, 1);
+
+      // Card width + min spacing
+      const CARD_W   = 200;
+      const MIN_STEP = 220;
+      const PAD      = 24;
+      const RAIL_H   = 220;
+
+      // Total rail width: proportional to time span, or min-step × posts
+      const railW = Math.max(MIN_STEP * dated.length, 600);
+      rail.style.width  = `${railW + PAD * 2}px`;
+      rail.style.height = `${RAIL_H}px`;
+      rail.style.position = 'relative';
+
+      dated.forEach((post, i) => {
+        const postMs = new Date(post.record?.createdAt || post.indexedAt).getTime();
+        const frac   = spanMs > 0 ? (postMs - firstMs) / spanMs : i / Math.max(dated.length - 1, 1);
+        const x      = PAD + Math.round(frac * (railW - CARD_W));
+
+        const card = document.createElement('article');
+        card.className   = 'timeline-card';
+        card.setAttribute('role', 'listitem');
+        card.style.left  = `${x}px`;
+
+        const author  = post.author || {};
+        const text    = post.record?.text || '';
+        const dateStr = formatTimestamp(post.record?.createdAt || post.indexedAt);
+
+        card.innerHTML = `
+          <div class="timeline-card-header">
+            <img src="${escHtml(author.avatar || '')}" alt="" class="timeline-card-avatar"
+                 onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+            <span class="timeline-card-handle">@${escHtml(author.handle || '')}</span>
+            <span class="timeline-card-time">${escHtml(dateStr)}</span>
+          </div>
+          <p class="timeline-card-text">${escHtml(text.slice(0, 140))}${text.length > 140 ? '…' : ''}</p>
+          <div class="timeline-card-stats">
+            <span>${formatCount(post.likeCount || 0)} ♥</span>
+            <span>${formatCount(post.repostCount || 0)} ↺</span>
+          </div>`;
+
+        card.addEventListener('click', () => {
+          openThread(post.uri, post.cid, author.handle || '');
+        });
+
+        // Connector line down to axis
+        const line = document.createElement('div');
+        line.className = 'timeline-connector';
+        line.style.left = `${x + CARD_W / 2}px`;
+        rail.appendChild(line);
+
+        rail.appendChild(card);
+      });
+
+      // Render time axis
+      if (axis) {
+        axis.style.width = `${railW + PAD * 2}px`;
+        renderTimeAxis(dated, firstMs, lastMs, railW, PAD, CARD_W);
+      }
+    }
+
+    function renderTimeAxis(dated, firstMs, lastMs, railW, PAD, CARD_W) {
+      if (!axis) return;
+      axis.innerHTML = '';
+      const spanMs = Math.max(lastMs - firstMs, 1);
+
+      // Choose tick interval based on zoom and span
+      let tickMs;
+      if (timelineZoom === 'hours') {
+        tickMs = 60 * 60 * 1000; // 1 hour
+        if (spanMs > 24 * 60 * 60 * 1000) tickMs = 3 * 60 * 60 * 1000;
+      } else {
+        tickMs = 24 * 60 * 60 * 1000; // 1 day
+      }
+
+      const tickStart = Math.ceil(firstMs / tickMs) * tickMs;
+      for (let t = tickStart; t <= lastMs; t += tickMs) {
+        const frac = (t - firstMs) / spanMs;
+        const x    = PAD + Math.round(frac * (railW - CARD_W)) + CARD_W / 2;
+
+        const tick = document.createElement('div');
+        tick.className = 'timeline-axis-tick';
+        tick.style.left = `${x}px`;
+
+        const label = document.createElement('span');
+        label.className = 'timeline-axis-label';
+        const d = new Date(t);
+        if (timelineZoom === 'hours') {
+          label.textContent = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        } else {
+          label.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+        tick.appendChild(label);
+        axis.appendChild(tick);
+      }
+    }
+
+    // Zoom button toggle
+    zoomBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        zoomBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        timelineZoom = btn.dataset.zoom;
+        renderTimeline();
+      });
+    });
+
+    // Back button
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        showView('search', true);
+        // Re-activate list view state
+        if (listBtn) listBtn.classList.add('active');
+        if (tlBtn)   tlBtn.classList.remove('active');
+      });
+    }
+  })();
 
   /* ================================================================
      BOOT

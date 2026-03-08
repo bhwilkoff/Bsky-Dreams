@@ -2,12 +2,14 @@
 
 ## Current Status
 
-The app is fully functional for daily Bluesky use. Milestones 1–12, 19–65, 37, 39, 42, and 62 are complete,
+The app is fully functional for daily Bluesky use. Milestones 1–13, 19–65, 22, 37, 39, 42, and 62 are complete,
 along with a GIF provider migration (Tenor → Klipy), several polish/bug-fix passes, two session-level
 updates (seen-posts virality threshold removed; silent iOS re-login via saved credentials), a full UX polish
-batch (M52–M65), and mobile zoom prevention (viewport + input font-size fix).
+batch (M52–M65), mobile zoom prevention (viewport + input font-size fix), iOS Share-to-Compose (iCloud Shortcut
++ URL param routing), accent color picker in Settings, Klipy brand attribution, and M22 Analytics Dashboard +
+M13 Horizontal Timeline Scrubber.
 
-**Next focus:** M22 (analytics), M13, M14, M16.
+**Next focus:** M14 (Network Constellation), M16 (Direct Messages).
 
 ---
 
@@ -323,6 +325,50 @@ batch (M52–M65), and mobile zoom prevention (viewport + input font-size fix).
 
 ---
 
+### Unnumbered: iOS Share-to-Compose ✅
+- **Settings section**: "iPhone Sharing" panel in Settings modal with iOS Shortcut install link + step-by-step instructions
+- **URL param routing**: `?view=compose&shareText=...` URL scheme; `init()` pre-fills compose textarea and fires link-preview on share text
+- **IPHONE_SHORTCUT_URL** constant in `app.js`; displayed as button when non-empty; `settings-iphone-shortcut-row` shown/hidden on load
+- **Share params stripped** from URL after pre-fill via `history.replaceState` so Back doesn't re-trigger
+
+### Unnumbered: Accent Color Picker ✅
+- **Settings → Appearance section**: row of 6 accent-color swatches (Coral, Electric Blue, Violet, Hot Pink, Emerald, Amber)
+- Swatch click applies `--color-accent`, `--color-accent-dark`, `--color-accent-light` CSS custom properties immediately via `applyAccentColor()`
+- Persisted to `localStorage` under `bsky_accent`, `bsky_accent_dark`, `bsky_accent_light`; restored on load
+- Active swatch highlighted with `.active` class; `syncAccentSwatches()` called after login
+
+### Unnumbered: Klipy Brand Attribution Compliance ✅
+- GIF search panels (main compose, inline reply, quote modal) display "Powered by KLIPY" logo (`assets/klipy-powered-by.svg`) alongside search input
+- GIF search input placeholder changed to "Search KLIPY…"
+- Logo links to `https://klipy.com` with `target="_blank" rel="noopener noreferrer"`
+
+### Unnumbered: Gallery Infinite Scroll (Additional Fix) ✅
+- Gallery sentinel `IntersectionObserver` correctly wired to trigger `loadGallery(true)` (append mode)
+- `galleryAllDone` flag set when both timeline + Discover cursors are exhausted
+- `gallery-end` message shown when no more posts remain; hidden on fresh load
+
+### M22: Analytics Dashboard ✅
+- **Entry**: "Analytics" nav item in sidebar (bar-chart icon); `?view=analytics` deep-link supported
+- **Actor switcher**: "My profile" button + handle/DID search form; loads any public profile
+- **Profile strip**: avatar, display name, handle, follower/following/posts counts
+- **Engagement chart**: Canvas API bar chart (no external library); last 25 posts chronologically left to right; stacked bars for likes (accent color) and reposts (emerald); Y-axis labels with `formatCount`; date labels every 5 posts; legend
+- **Post frequency heatmap**: GitHub-style CSS grid (12 weeks × 7 days); 5 green intensity levels; day-of-week labels; color legend; responsive horizontal scroll
+- **Top posts table**: sortable by Likes / Reposts / Replies; click row opens thread; truncated post text + per-stat icons + relative timestamp
+- **Canvas redraw on resize**: debounced `window.resize` listener redraws chart when analytics view is active
+- **No Chart.js dependency**: all chart rendering uses native Canvas 2D API
+
+### M13: Horizontal Event Timeline Scrubber ✅
+- **Entry**: "List / Timeline" toggle bar appears above search results after a post search; hidden for user/actor searches
+- Toggle bar watched via `MutationObserver` on `#search-results` — shows when `.post-card` elements are present and `lastSearchType === 'posts'`
+- **Timeline view** (`view-timeline`): separate section with back button, heading, zoom controls
+- **Horizontal rail**: posts sorted chronologically oldest → newest, positioned absolutely within the rail using fractional time offset (no overlapping — minimum 220px step enforced)
+- **Post cards**: 200px wide, neubrutalist border + shadow, author avatar/handle/time + text snippet + like/repost counts; click opens thread
+- **Connector lines**: thin vertical dividers from card base to time axis
+- **Time axis**: date/time tick marks with labels; "Hours" zoom uses 1h intervals (3h when span > 24h), "Days" zoom uses 1-day intervals
+- **Zoom toggle**: Hours / Days buttons; re-renders rail and axis on change
+- **Back button**: returns to search view and resets toggle button state
+- **`openTimeline(query, posts)`** exported to `window` for future programmatic use
+
 ## Planned Milestones
 
 Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost investigation.
@@ -335,7 +381,7 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 
 ### Medium-Term
 
-#### M22: Analytics Dashboard
+#### M22: Analytics Dashboard ✅ (completed — see above)
 
 - **Entry**: "Analytics" nav tab (bar-chart icon)
 - **Charts** via Chart.js served locally as `/js/chart.min.js`:
@@ -346,12 +392,7 @@ Ordered by implementation priority. Items marked **[RESEARCH]** need API/cost in
 - **Actor switcher**: search bar to switch dashboard to any public profile
 - **Topic mode**: hashtag/query → aggregate engagement stats across all matching posts
 
-#### M13: Horizontal Event Timeline Scrubber
-
-- **Entry**: "Timeline" toggle in search results
-- **Layout**: posts arranged horizontally on a scrollable rail, chronologically left to right; timestamp large at top, author + text snippet below
-- **Axis**: date/time axis below cards; "hours" and "days" zoom levels
-- **Interaction**: mouse drag / trackpad / touch swipe scrolls; clicking a card opens the full thread
+#### M13: Horizontal Event Timeline Scrubber ✅ (completed — see above)
 
 #### M14: Network Constellation Visualization
 
