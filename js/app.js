@@ -4493,6 +4493,18 @@
     img.className = 'post-gif';
     img.loading   = 'lazy';
     wrap.appendChild(img);
+    // Add KLIPY watermark for Klipy-sourced GIFs
+    try {
+      const host = new URL(external.uri).hostname;
+      if (host === 'klipy.com' || host.endsWith('.klipy.com')) {
+        const wm = document.createElement('img');
+        wm.src       = 'assets/klipy-watermark.svg';
+        wm.alt       = '';
+        wm.className = 'post-gif-watermark';
+        wm.setAttribute('aria-hidden', 'true');
+        wrap.appendChild(wm);
+      }
+    } catch { /* invalid URL — skip watermark */ }
     return wrap;
   }
 
@@ -5159,6 +5171,9 @@
       <div class="compose-gif-search-row">
         <input type="search" class="compose-gif-input" placeholder="Search GIFs…" autocomplete="off" spellcheck="false">
         <button type="button" class="btn btn-ghost">Search</button>
+        <a href="https://klipy.com" target="_blank" rel="noopener noreferrer" class="klipy-attribution" aria-label="Powered by KLIPY">
+          <img src="assets/klipy-powered-by.svg" alt="Powered by KLIPY" class="klipy-attribution-logo">
+        </a>
       </div>
       <div class="compose-gif-grid"><p class="compose-gif-empty">Type above to search for GIFs</p></div>`;
     // gifPanel is NOT appended to body here — it gets appended directly to box
@@ -5946,13 +5961,22 @@
         // Use a medium-quality animated preview for the grid (better than xs thumbnail)
         const previewUrl = item.file?.md?.gif?.url || item.file?.sm?.gif?.url || gifUrl;
         if (!gifUrl) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'compose-gif-item-wrap';
         const img = document.createElement('img');
         img.src       = previewUrl;
         img.alt       = item.title || '';
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
-        img.addEventListener('click', () => onSelect(gifUrl, thumbUrl, item.title || ''));
-        gridEl.appendChild(img);
+        const watermark = document.createElement('img');
+        watermark.src       = 'assets/klipy-watermark.svg';
+        watermark.alt       = '';
+        watermark.className = 'compose-gif-item-watermark';
+        watermark.setAttribute('aria-hidden', 'true');
+        wrap.appendChild(img);
+        wrap.appendChild(watermark);
+        wrap.addEventListener('click', () => onSelect(gifUrl, thumbUrl, item.title || ''));
+        gridEl.appendChild(wrap);
       });
     } catch (err) {
       gridEl.innerHTML = `<p class="compose-gif-empty">Search failed: ${escHtml(err.message)}</p>`;
