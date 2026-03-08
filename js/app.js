@@ -5169,7 +5169,7 @@
     gifPanel.hidden    = true;
     gifPanel.innerHTML = `
       <div class="compose-gif-search-row">
-        <input type="search" class="compose-gif-input" placeholder="Search GIFs…" autocomplete="off" spellcheck="false">
+        <input type="search" class="compose-gif-input" placeholder="Search KLIPY…" autocomplete="off" spellcheck="false">
         <button type="button" class="btn btn-ghost">Search</button>
         <a href="https://klipy.com" target="_blank" rel="noopener noreferrer" class="klipy-attribution" aria-label="Powered by KLIPY">
           <img src="assets/klipy-powered-by.svg" alt="Powered by KLIPY" class="klipy-attribution-logo">
