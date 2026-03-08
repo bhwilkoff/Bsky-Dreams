@@ -464,3 +464,35 @@ the current state of each topic is captured in the most recent relevant entry.
 - **Decision:** Three proposed milestones are deferred pending research into zero-cost implementation paths: fact-checking (M27a), political bias analysis (M27b), and AI-generated content detection (M27c).
 - **Rationale:** Each requires a paid third-party API (ClaimBuster, Ground News, Hive, etc.). The zero-cost constraint rules these out. Partial implementations are possible (static datasets for domain-level bias; C2PA metadata check for AI detection) and are noted in SCRATCHPAD.md.
 - **Revisit if:** The user decides to fund specific API keys, or an open/free alternative emerges.
+
+---
+
+## Analytics Charts — Native Canvas API (no Chart.js)
+
+- **Date:** 2026-03-08
+- **Decision:** M22 Analytics Dashboard implements all charts using the browser's native Canvas 2D API rather than Chart.js or any external charting library.
+- **Rationale:** Chart.js cannot be fetched from a CDN (`script-src 'self'` CSP blocks it) and the repo has no npm/build pipeline. A locally-bundled Chart.js (≥ 60 KB) adds significant bulk for what amounts to one bar chart. Canvas-native drawing is sufficient and keeps the dependency count at zero.
+- **Alternatives considered:** Chart.js (blocked by CSP + no build pipeline); D3.js (overkill for simple bars); `<canvas>` with a micro-library (no suitable zero-dependency option available offline).
+- **Trade-offs:** Custom canvas rendering is more verbose than a high-level chart API. Accessibility (ARIA labels) must be managed manually. Animations are not implemented.
+- **Revisit if:** Multiple new chart types are added that would justify the bundling overhead.
+
+---
+
+## Timeline Scrubber — Absolute Positioning with Fractional Time Offset
+
+- **Date:** 2026-03-08
+- **Decision:** M13 Timeline Scrubber positions cards absolutely within a fixed-width rail using a normalized time fraction `(postMs - firstMs) / spanMs`. A minimum per-card step of 220px is enforced so cards never overlap even when posts are clustered in time.
+- **Rationale:** A pure proportional layout collapses clustered posts to a tiny region, making them unclickable. The minimum step ensures visual separation while preserving the left-to-right temporal order. Cards wider than the viewport cause the rail to exceed window width, enabling horizontal scroll.
+- **Alternatives considered:** Fixed-width grid ignoring time (loses temporal meaning); CSS flexbox with equal spacing (not proportional); virtualised scroll (overkill for ≤ 100 posts).
+- **Trade-offs:** The minimum-step enforcement means the apparent x-position of a card may not accurately reflect its exact time when posts are clustered closely. The axis ticks remain accurate regardless.
+- **Revisit if:** Users report confusion between visual position and actual posting time.
+
+---
+
+## Timeline Scrubber — MutationObserver Toggle Visibility
+
+- **Date:** 2026-03-08
+- **Decision:** The "List / Timeline" toggle bar in the search view uses a `MutationObserver` on `#search-results` to detect when post cards have been rendered, then shows the toggle. It hides when results contain no `.post-card` elements or when `lastSearchType !== 'posts'`.
+- **Rationale:** The search handler is asynchronous and the toggle must appear only after a successful post search (not user/actor searches). Hooking into the existing search flow via mutation observation avoids modifying the search submit handler's control flow, keeping the change minimal and non-breaking.
+- **Alternatives considered:** Modifying the search submit handler directly to set toggle visibility (tighter coupling); polling `setInterval` (wasteful); custom event dispatch from search handler (more ceremony).
+- **Trade-offs:** MutationObserver fires on every DOM change to `#search-results`, including intermediate loading states. The `hasPostCards` check gates the show/hide correctly.
