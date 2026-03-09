@@ -7061,13 +7061,19 @@
     const containerW = Math.max(wrapW, minW);
     const pxPerMs    = containerW / totalSpan;
 
-    const CARD_W  = 160;
-    const CARD_H  = 92;  // matches actual rendered height (padding + author + text + footer)
-    const GAP     = 10;  // gap between card bottom/top and axis line
-    const LANE_H  = CARD_H + 6; // vertical step per lane — must be > CARD_H to prevent overlap
-    const AXIS_Y  = Math.round(wrapH / 2);
-    // Max lanes: how many card rows fit above (or below) the axis
-    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - GAP - 20) / LANE_H));
+    const CARD_W   = 158;
+    // CARD_H must match the actual CSS-rendered card height exactly.
+    // Card = border(4) + padding(8) + author-row(18) + gap(2) + text-2lines(28) + footer(12) = 72px
+    const CARD_H   = 72;
+    const LANE_H   = CARD_H + 4;  // 76px per lane — 4px breathing room between adjacent lanes
+    const GAP_AXIS = 6;            // gap between axis line and nearest card edge
+    // Tick labels sit at AXIS_Y+18; allow 26px below axis before cards start
+    const TICK_H   = 26;
+    const AXIS_Y   = Math.round(wrapH / 2);
+
+    // Compute max lanes separately for above vs below, using actual available space
+    const MAX_LANES_ABOVE = Math.max(1, Math.floor((AXIS_Y - GAP_AXIS) / LANE_H));
+    const MAX_LANES_BELOW = Math.max(1, Math.floor((wrapH - AXIS_Y - TICK_H) / LANE_H));
 
     scrollInner.style.width  = containerW + 'px';
     scrollInner.style.height = wrapH + 'px';
@@ -7125,30 +7131,27 @@
 
     scrollInner.appendChild(svg);
 
-    // ── Cards with strict overlap-prevention ──
-    // Each lane tracks the right edge of the last card placed there.
-    // Cards are placed chronologically. Lane assignment alternates above/below
-    // so the timeline looks balanced. A card is skipped if no lane has room.
-    const laneAboveEnd = new Array(MAX_LANES).fill(-Infinity);
-    const laneBelowEnd = new Array(MAX_LANES).fill(-Infinity);
-    const CARD_MARGIN  = 8; // min px gap between cards in the same lane
-    let preferAbove = true; // alternates per card to balance distribution
+    // ── Cards: strict non-overlap placement ──
+    // Each lane tracks the x right-edge of its last placed card.
+    // Above and below have independent lane counts from available space.
+    const laneAboveEnd = new Array(MAX_LANES_ABOVE).fill(-Infinity);
+    const laneBelowEnd = new Array(MAX_LANES_BELOW).fill(-Infinity);
+    const CARD_MARGIN  = 6; // min px gap between horizontally adjacent cards in same lane
+    let preferAbove = true;
 
     posts.forEach(post => {
       const t   = new Date(post.record?.createdAt || 0).getTime();
       const cx  = Math.round((t - timeStart) * pxPerMs);
-      // Centre card on cx, clamped so card stays within container
       const cardLeft  = Math.max(0, Math.min(cx - Math.floor(CARD_W / 2), containerW - CARD_W));
       const cardRight = cardLeft + CARD_W;
 
-      // Find lowest-index free lane in each half
       const freeAbove = () => {
-        for (let i = 0; i < MAX_LANES; i++)
+        for (let i = 0; i < MAX_LANES_ABOVE; i++)
           if (cardLeft >= laneAboveEnd[i] + CARD_MARGIN) return i;
         return -1;
       };
       const freeBelow = () => {
-        for (let i = 0; i < MAX_LANES; i++)
+        for (let i = 0; i < MAX_LANES_BELOW; i++)
           if (cardLeft >= laneBelowEnd[i] + CARD_MARGIN) return i;
         return -1;
       };
@@ -7165,14 +7168,15 @@
       }
       preferAbove = !preferAbove;
 
-      if (laneIdx < 0) return; // no room — skip this post at current zoom
+      if (laneIdx < 0) return; // no lanes free — skip (zoom in to see this post)
 
       if (isAbove) laneAboveEnd[laneIdx] = cardRight;
       else         laneBelowEnd[laneIdx] = cardRight;
 
+      // Y position: above counts from axis upward, below starts after tick-label zone
       const cardY = isAbove
-        ? AXIS_Y - GAP - CARD_H - laneIdx * LANE_H
-        : AXIS_Y + GAP + laneIdx * LANE_H;
+        ? AXIS_Y - GAP_AXIS - CARD_H - laneIdx * LANE_H   // above: grows upward
+        : AXIS_Y + TICK_H + laneIdx * LANE_H;              // below: starts after tick labels
 
       // Connector and dot — only for this card
       const connY = isAbove ? cardY + CARD_H : cardY;
