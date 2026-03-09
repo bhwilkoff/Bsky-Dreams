@@ -5496,18 +5496,16 @@ a.post-timestamp:hover {
 }
 .timeline-card-eng { color: var(--color-accent); font-weight: 600; }
 
-/* Timeline: fixed-height, horizontal-only */
+/* Timeline: full-height flex column, no vertical scrolling */
 #view-timeline.view {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   padding: 0 !important;
-  position: relative;
 }
 #view-timeline .view-inner.timeline-view-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5516,8 +5514,7 @@ a.post-timestamp:hover {
   margin: 0;
 }
 @media (min-width: 768px) {
-  /* Push past the fixed sidebar */
   #view-timeline .view-inner.timeline-view-inner {
-    left: var(--sidebar-width);
+    padding-left: var(--sidebar-width);
   }
 }
