@@ -6895,10 +6895,8 @@
     if (!tlQuery) return;
     if (tlZoomLevel < TL_ZOOM_LEVELS.length - 1) {
       tlZoomLevel++;
-      const newSpan = TL_ZOOM_LEVELS[tlZoomLevel][0];
-      const centre = (tlWindowStart + tlWindowEnd) / 2;
-      tlWindowStart = centre - newSpan / 2;
-      tlWindowEnd   = centre + newSpan / 2;
+      // Keep the right (most-recent) edge fixed so we stay in daytime hours
+      tlWindowStart = tlWindowEnd - TL_ZOOM_LEVELS[tlZoomLevel][0];
       tlUpdateZoomLabel();
       tlSyncDateInputs();
       tlFetch();
@@ -6909,17 +6907,15 @@
     if (!tlQuery) return;
     if (tlZoomLevel > 0) {
       tlZoomLevel--;
-      const newSpan = TL_ZOOM_LEVELS[tlZoomLevel][0];
-      const centre = (tlWindowStart + tlWindowEnd) / 2;
-      tlWindowStart = centre - newSpan / 2;
-      tlWindowEnd   = centre + newSpan / 2;
+      tlWindowStart = tlWindowEnd - TL_ZOOM_LEVELS[tlZoomLevel][0];
       tlUpdateZoomLabel();
       tlSyncDateInputs();
       tlFetch();
     }
   });
 
-  $('timeline-range-btn').addEventListener('click', () => {
+  // Auto-apply when either datetime input changes
+  const tlApplyRange = () => {
     const s = new Date($('timeline-start-input').value).getTime();
     const e = new Date($('timeline-end-input').value).getTime();
     if (!isNaN(s) && !isNaN(e) && s < e && tlQuery) {
@@ -6934,7 +6930,9 @@
       tlUpdateZoomLabel();
       tlFetch();
     }
-  });
+  };
+  $('timeline-start-input').addEventListener('change', tlApplyRange);
+  $('timeline-end-input').addEventListener('change',   tlApplyRange);
 
   $('timeline-search-btn').addEventListener('click', tlDoSearch);
   $('timeline-search-input').addEventListener('keydown', (e) => {
@@ -7064,12 +7062,12 @@
     const pxPerMs    = containerW / totalSpan;
 
     const CARD_W  = 160;
-    const CARD_H  = 72;
-    const GAP     = 8;   // gap between card edge and axis
-    const LANE_H  = CARD_H + 4; // vertical step per lane
+    const CARD_H  = 92;  // matches actual rendered height (padding + author + text + footer)
+    const GAP     = 10;  // gap between card bottom/top and axis line
+    const LANE_H  = CARD_H + 6; // vertical step per lane — must be > CARD_H to prevent overlap
     const AXIS_Y  = Math.round(wrapH / 2);
-    // Max lanes: how many cards can stack above (or below) the axis
-    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - GAP - 24) / LANE_H));
+    // Max lanes: how many card rows fit above (or below) the axis
+    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - GAP - 20) / LANE_H));
 
     scrollInner.style.width  = containerW + 'px';
     scrollInner.style.height = wrapH + 'px';
@@ -7128,38 +7126,46 @@
     scrollInner.appendChild(svg);
 
     // ── Cards with strict overlap-prevention ──
-    // Tracks the right edge of the last placed card in each lane
+    // Each lane tracks the right edge of the last card placed there.
+    // Cards are placed chronologically. Lane assignment alternates above/below
+    // so the timeline looks balanced. A card is skipped if no lane has room.
     const laneAboveEnd = new Array(MAX_LANES).fill(-Infinity);
     const laneBelowEnd = new Array(MAX_LANES).fill(-Infinity);
-    const CARD_MARGIN  = 6; // min horizontal gap between cards in same lane
+    const CARD_MARGIN  = 8; // min px gap between cards in the same lane
+    let preferAbove = true; // alternates per card to balance distribution
 
     posts.forEach(post => {
       const t   = new Date(post.record?.createdAt || 0).getTime();
       const cx  = Math.round((t - timeStart) * pxPerMs);
-      // Centre card on cx, clamp to container
-      const cardLeft = Math.max(0, Math.min(cx - Math.floor(CARD_W / 2), containerW - CARD_W));
+      // Centre card on cx, clamped so card stays within container
+      const cardLeft  = Math.max(0, Math.min(cx - Math.floor(CARD_W / 2), containerW - CARD_W));
       const cardRight = cardLeft + CARD_W;
 
-      // Find first lane above that has room (cardLeft > laneEnd + margin)
-      let laneAboveIdx = -1;
-      for (let i = 0; i < MAX_LANES; i++) {
-        if (cardLeft >= laneAboveEnd[i] + CARD_MARGIN) { laneAboveIdx = i; break; }
-      }
-      // Find first lane below that has room
-      let laneBelowIdx = -1;
-      for (let i = 0; i < MAX_LANES; i++) {
-        if (cardLeft >= laneBelowEnd[i] + CARD_MARGIN) { laneBelowIdx = i; break; }
-      }
+      // Find lowest-index free lane in each half
+      const freeAbove = () => {
+        for (let i = 0; i < MAX_LANES; i++)
+          if (cardLeft >= laneAboveEnd[i] + CARD_MARGIN) return i;
+        return -1;
+      };
+      const freeBelow = () => {
+        for (let i = 0; i < MAX_LANES; i++)
+          if (cardLeft >= laneBelowEnd[i] + CARD_MARGIN) return i;
+        return -1;
+      };
 
-      if (laneAboveIdx < 0 && laneBelowIdx < 0) return; // skip — no room at this zoom
-
-      // Pick above first (alternating doesn't help — always prefer above first, then below)
       let isAbove, laneIdx;
-      if (laneAboveIdx >= 0 && (laneBelowIdx < 0 || laneAboveIdx <= laneBelowIdx)) {
-        isAbove = true; laneIdx = laneAboveIdx;
+      if (preferAbove) {
+        laneIdx = freeAbove();
+        if (laneIdx >= 0) { isAbove = true; }
+        else { laneIdx = freeBelow(); isAbove = false; }
       } else {
-        isAbove = false; laneIdx = laneBelowIdx;
+        laneIdx = freeBelow();
+        if (laneIdx >= 0) { isAbove = false; }
+        else { laneIdx = freeAbove(); isAbove = true; }
       }
+      preferAbove = !preferAbove;
+
+      if (laneIdx < 0) return; // no room — skip this post at current zoom
 
       if (isAbove) laneAboveEnd[laneIdx] = cardRight;
       else         laneBelowEnd[laneIdx] = cardRight;
