@@ -6983,7 +6983,8 @@
     const totalSpan = timeEnd - timeStart;
 
     const wrapW      = wrapEl.clientWidth  || 600;
-    const wrapH      = wrapEl.clientHeight || 320;
+    // Use actual clientHeight; if still 0 (layout not ready) fall back to viewport estimate
+    const wrapH      = wrapEl.clientHeight || Math.max(300, Math.round(window.innerHeight * 0.65));
     const containerW = Math.max(wrapW, Math.round(totalSpan * pxPerMs));
 
     // Fixed layout constants relative to actual wrap height
@@ -6993,8 +6994,8 @@
     const LANE_H    = CARD_H + 6;
     const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - 28) / LANE_H));
 
-    scrollInner.style.width    = containerW + 'px';
-    // height comes from CSS (height: 100% on scroll-inner)
+    scrollInner.style.width  = containerW + 'px';
+    scrollInner.style.height = wrapH + 'px'; // explicit — no reliance on CSS height: 100%
 
     // ── SVG layer: axis line + tick marks + connectors + dots ──
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -7162,6 +7163,14 @@
     channelsSave(list);
     renderChannelsSidebar();
     showBanner('Saved to channels!');
+  });
+
+  // Re-render timeline on resize (recalculates wrapH and containerW)
+  let tlResizeTimer;
+  window.addEventListener('resize', () => {
+    if (!tlAllPosts.length) return;
+    clearTimeout(tlResizeTimer);
+    tlResizeTimer = setTimeout(tlRender, 150);
   });
 
   // Attach autocomplete to timeline search
