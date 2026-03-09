@@ -19,12 +19,14 @@
   const authError      = $('auth-error');
   const authSubmit     = $('auth-submit');
 
-  const navFeedBtn     = $('nav-feed-btn');
-  const navSearchBtn   = $('nav-search-btn');
-  const navComposeBtn  = $('nav-compose-btn');
-  const navNotifBtn    = $('nav-notif-btn');
-  const navTvBtn       = $('nav-tv-btn');
-  const navProfileBtn  = $('nav-profile-btn');
+  const navFeedBtn      = $('nav-feed-btn');
+  const navSearchBtn    = $('nav-search-btn');
+  const navComposeBtn   = $('nav-compose-btn');
+  const navNotifBtn     = $('nav-notif-btn');
+  const navTvBtn        = $('nav-tv-btn');
+  const navProfileBtn   = $('nav-profile-btn');
+  const navAnalyticsBtn = $('nav-analytics-btn');
+  const navTimelineBtn  = $('nav-timeline-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
 
@@ -35,6 +37,8 @@
   const viewProfile       = $('view-profile');
   const viewNotifications = $('view-notifications');
   const viewTv            = $('view-tv');
+  const viewAnalytics     = $('view-analytics');
+  const viewTimeline      = $('view-timeline');
 
   const feedResults    = $('feed-results');
   const ptrIndicator   = $('ptr-indicator');
@@ -282,9 +286,19 @@
       btn.className = 'channel-btn';
       btn.setAttribute('aria-label', `Open channel: ${ch.name}${ch.unreadCount ? ` (${ch.unreadCount} new)` : ''}`);
 
+      const glyphEl = document.createElement('span');
+      glyphEl.className = 'channel-glyph';
+      glyphEl.setAttribute('aria-hidden', 'true');
+      if (ch.type === 'timeline') {
+        glyphEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>`;
+      } else {
+        glyphEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`;
+      }
+
       const nameEl = document.createElement('span');
       nameEl.className   = 'channel-name';
       nameEl.textContent = ch.name;
+      btn.insertBefore(glyphEl, btn.firstChild);
       btn.appendChild(nameEl);
 
       if (ch.unreadCount > 0) {
@@ -362,16 +376,23 @@
     // Close mobile drawer
     closeSidebar();
 
-    // Populate search input and set filter to "latest"
-    searchInput.value = ch.query;
-    filterChips.forEach((c) => c.classList.remove('active'));
-    activeFilter = 'latest';
-    const latestChip = document.querySelector('.filter-chip[data-filter="latest"]');
-    if (latestChip) latestChip.classList.add('active');
+    if (ch.type === 'timeline') {
+      showView('timeline');
+      $('timeline-search-input').value = ch.query;
+      tlQuery = ch.query;
+      tlDoSearch();
+    } else {
+      // Populate search input and set filter to "latest"
+      searchInput.value = ch.query;
+      filterChips.forEach((c) => c.classList.remove('active'));
+      activeFilter = 'latest';
+      const latestChip = document.querySelector('.filter-chip[data-filter="latest"]');
+      if (latestChip) latestChip.classList.add('active');
 
-    // Switch to search view and run the search
-    showView('search');
-    searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      // Switch to search view and run the search
+      showView('search');
+      searchForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
 
     // Mark channel as seen (clear badge)
     channelsMarkSeen(ch.id);
@@ -686,6 +707,129 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !reportModal.hidden) closeReportModal();
   });
+
+  /* ================================================================
+     BANNER HELPER
+  ================================================================ */
+  function showBanner(text, isError = false) {
+    const banner = document.createElement('div');
+    banner.className = 'report-success-banner' + (isError ? ' banner-error' : '');
+    banner.textContent = text;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 3000);
+  }
+
+  /* ================================================================
+     POST ACTIONS MENU (Mute/Block/Report)
+  ================================================================ */
+  function showPostActionsMenu(btn, post, author) {
+    // Remove any existing post-action dropdowns
+    document.querySelectorAll('.post-action-dropdown').forEach(m => m.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'post-action-dropdown channel-dropdown';
+    menu.setAttribute('role', 'menu');
+
+    // Report post (only shown when a real post URI is provided)
+    if (post.uri) {
+      const reportPostItem = document.createElement('button');
+      reportPostItem.type = 'button';
+      reportPostItem.className = 'channel-dropdown-item';
+      reportPostItem.setAttribute('role', 'menuitem');
+      reportPostItem.textContent = 'Report post';
+      reportPostItem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+        openReportModal({
+          subject: { $type: 'com.atproto.repo.strongRef', uri: post.uri, cid: post.cid },
+          subtitle: `Post by @${author.handle || ''}`,
+        });
+      });
+      menu.appendChild(reportPostItem);
+    }
+
+    // Report account
+    if (author.did) {
+      const reportAccItem = document.createElement('button');
+      reportAccItem.type = 'button';
+      reportAccItem.className = 'channel-dropdown-item';
+      reportAccItem.setAttribute('role', 'menuitem');
+      reportAccItem.textContent = `Report @${author.handle || 'account'}`;
+      reportAccItem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+        openReportModal({
+          subject: { $type: 'com.atproto.admin.defs#repoRef', did: author.did },
+          subtitle: `Account @${author.handle || ''}`,
+        });
+      });
+      menu.appendChild(reportAccItem);
+
+      // Separator
+      const sep = document.createElement('div');
+      sep.className = 'channel-dropdown-sep';
+      menu.appendChild(sep);
+
+      // Mute/Unmute
+      const isMuted = !!author.viewer?.muted;
+      const muteItem = document.createElement('button');
+      muteItem.type = 'button';
+      muteItem.className = 'channel-dropdown-item';
+      muteItem.setAttribute('role', 'menuitem');
+      muteItem.textContent = isMuted ? `Unmute @${author.handle || ''}` : `Mute @${author.handle || ''}`;
+      muteItem.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        menu.remove();
+        try {
+          if (isMuted) {
+            await API.unmuteActor(author.did);
+            showBanner('Unmuted @' + (author.handle || ''));
+          } else {
+            await API.muteActor(author.did);
+            showBanner('Muted @' + (author.handle || '') + '. You won\'t see their posts in your feed.');
+          }
+        } catch (err) {
+          showBanner('Error: ' + err.message, true);
+        }
+      });
+      menu.appendChild(muteItem);
+
+      // Block/Unblock
+      const isBlocked = !!author.viewer?.blocking;
+      const blockItem = document.createElement('button');
+      blockItem.type = 'button';
+      blockItem.className = 'channel-dropdown-item channel-dropdown-delete';
+      blockItem.setAttribute('role', 'menuitem');
+      blockItem.textContent = isBlocked ? `Unblock @${author.handle || ''}` : `Block @${author.handle || ''}`;
+      blockItem.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        menu.remove();
+        try {
+          if (isBlocked) {
+            await API.unblockActor(author.viewer.blocking);
+            showBanner('Unblocked @' + (author.handle || ''));
+          } else {
+            await API.blockActor(author.did);
+            showBanner('Blocked @' + (author.handle || '') + '. They can\'t interact with you.');
+          }
+        } catch (err) {
+          showBanner('Error: ' + err.message, true);
+        }
+      });
+      menu.appendChild(blockItem);
+    }
+
+    // Position the dropdown relative to the button
+    btn.parentElement.style.position = 'relative';
+    btn.parentElement.appendChild(menu);
+    menu.style.right = '0';
+    menu.style.top = '100%';
+
+    // Dismiss on outside click
+    setTimeout(() => {
+      document.addEventListener('click', () => menu.remove(), { once: true });
+    }, 0);
+  }
 
   reportModalSubmit.addEventListener('click', async () => {
     if (!reportSubject) return;
@@ -1697,6 +1841,7 @@
       loadGallery();
     } else if (urlView === 'analytics') {
       showView('analytics', true);
+<<<<<<< Updated upstream
       loadAnalytics();
     } else if (urlView === 'compose') {
       showView('compose', true);
@@ -1711,6 +1856,14 @@
       }
       // Strip share params from URL so Back doesn't re-trigger compose pre-fill
       history.replaceState({ view: 'compose' }, '', '?view=compose');
+=======
+      if (ownProfile) {
+        $('analytics-actor-input').value = ownProfile.handle || '';
+        loadAnalytics(ownProfile.handle);
+      }
+    } else if (urlView === 'timeline') {
+      showView('timeline', true);
+>>>>>>> Stashed changes
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -1770,6 +1923,10 @@
       tv:            navTvBtn,
       gallery:       navGalleryBtn,
       analytics:     navAnalyticsBtn,
+<<<<<<< Updated upstream
+=======
+      timeline:      navTimelineBtn,
+>>>>>>> Stashed changes
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -1834,6 +1991,11 @@
         url = '?view=gallery';
       } else if (name === 'analytics') {
         url = '?view=analytics';
+<<<<<<< Updated upstream
+=======
+      } else if (name === 'timeline') {
+        url = '?view=timeline';
+>>>>>>> Stashed changes
       }
       history.pushState(state, '', url);
     }
@@ -1903,6 +2065,14 @@
     if (!notifLoaded) loadNotifications();
   });
   navTvBtn.addEventListener('click', () => showView('tv'));
+  navAnalyticsBtn.addEventListener('click', () => {
+    showView('analytics');
+    if (!analyticsCurrentActor && ownProfile) {
+      $('analytics-actor-input').value = ownProfile.handle || '';
+      loadAnalytics(ownProfile.handle);
+    }
+  });
+  navTimelineBtn.addEventListener('click', () => showView('timeline'));
 
   // Use browser history for the Back button so Forward/Back both work
   threadBackBtn.addEventListener('click',  () => history.back());
@@ -2572,7 +2742,11 @@
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
+<<<<<<< Updated upstream
     const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics/timeline
+=======
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
+>>>>>>> Stashed changes
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -2832,17 +3006,25 @@
       reportActorBtn.type      = 'button';
       reportActorBtn.className = 'btn btn-ghost report-actor-btn';
       reportActorBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
-      reportActorBtn.setAttribute('aria-label', `Report @${profile.handle}`);
+      reportActorBtn.setAttribute('aria-label', `More options for @${profile.handle}`);
       reportActorBtn.addEventListener('click', () => {
-        openReportModal({
-          subject: {
-            $type: 'com.atproto.admin.defs#repoRef',
-            did:   profile.did,
-          },
-          subtitle: `Account @${escHtml(profile.handle)}`,
-        });
+        showPostActionsMenu(reportActorBtn, { uri: '', cid: '' }, profile);
       });
       el.appendChild(reportActorBtn);
+
+      // View Timeline button
+      const viewTimelineBtn = document.createElement('button');
+      viewTimelineBtn.type = 'button';
+      viewTimelineBtn.className = 'btn btn-ghost profile-timeline-btn';
+      viewTimelineBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg> Timeline`;
+      viewTimelineBtn.setAttribute('aria-label', `View ${profile.handle} timeline`);
+      viewTimelineBtn.addEventListener('click', () => {
+        showView('timeline');
+        $('timeline-search-input').value = '@' + profile.handle;
+        tlQuery = '@' + profile.handle;
+        tlDoSearch();
+      });
+      el.appendChild(viewTimelineBtn);
     }
 
     profileHeaderEl.innerHTML = '';
@@ -4207,22 +4389,15 @@
     });
     actions.appendChild(shareBtn);
 
-    // Report button (⋯ overflow → report post)
+    // Actions menu button (⋯ overflow → report/mute/block)
     const reportBtn = document.createElement('button');
     reportBtn.type      = 'button';
     reportBtn.className = 'action-btn report-action-btn';
-    reportBtn.setAttribute('aria-label', 'Report post');
+    reportBtn.setAttribute('aria-label', 'Post actions');
     reportBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
     reportBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      openReportModal({
-        subject: {
-          $type: 'com.atproto.repo.strongRef',
-          uri:   post.uri,
-          cid:   post.cid,
-        },
-        subtitle: `Post by @${escHtml(author.handle || '')}`,
-      });
+      showPostActionsMenu(reportBtn, post, author);
     });
     actions.appendChild(reportBtn);
 
@@ -6424,6 +6599,7 @@
   }
 
   /* ================================================================
+<<<<<<< Updated upstream
      M22 — ANALYTICS DASHBOARD
   ================================================================ */
   (() => {
@@ -6937,6 +7113,527 @@
       });
     }
   })();
+=======
+     ANALYTICS (M22)
+  ================================================================ */
+  let analyticsCurrentActor = null;
+
+  async function loadAnalytics(actor) {
+    const loadingEl = $('analytics-loading');
+    const errorEl   = $('analytics-error');
+    const contentEl = $('analytics-content');
+    const actorInput = $('analytics-actor-input');
+
+    // Default to own profile
+    if (!actor) {
+      actor = ownProfile?.handle || ownProfile?.did;
+      if (!actor) { showError(errorEl, 'Please enter a handle to analyze.'); return; }
+      if (actorInput && !actorInput.value) actorInput.value = ownProfile?.handle || '';
+    }
+    actor = actor.trim().replace(/^@/, '');
+    analyticsCurrentActor = actor;
+
+    loadingEl.hidden = false;
+    contentEl.hidden = true;
+    hideError(errorEl);
+
+    try {
+      // Fetch up to 2 pages of author feed (50 per page)
+      let allPosts = [];
+      let cursor = undefined;
+      for (let i = 0; i < 2; i++) {
+        const data = await API.getAuthorFeedFull(actor, 50, cursor);
+        const items = data.feed || [];
+        // Filter: only original posts by this user (exclude reposts)
+        const ownPosts = items.filter(item =>
+          !item.reason || item.reason.$type !== 'app.bsky.feed.repost'
+        );
+        allPosts = allPosts.concat(ownPosts.map(item => item.post));
+        cursor = data.cursor;
+        if (!cursor || items.length < 50) break;
+      }
+
+      if (!allPosts.length) {
+        showError(errorEl, 'No original posts found for this account.');
+        loadingEl.hidden = true;
+        return;
+      }
+
+      renderAnalytics(allPosts);
+      contentEl.hidden = false;
+    } catch (err) {
+      showError(errorEl, 'Could not load analytics: ' + (err.message || 'Unknown error'));
+    } finally {
+      loadingEl.hidden = true;
+    }
+  }
+
+  function renderAnalytics(posts) {
+    // Sort oldest first for chart
+    const sorted = [...posts].sort((a, b) => new Date(a.record?.createdAt || 0) - new Date(b.record?.createdAt || 0));
+
+    const totalLikes    = posts.reduce((s, p) => s + (p.likeCount || 0), 0);
+    const totalReposts  = posts.reduce((s, p) => s + (p.repostCount || 0), 0);
+    const totalPosts    = posts.length;
+    const avgLikes      = totalPosts ? Math.round(totalLikes / totalPosts) : 0;
+
+    // Summary cards
+    const grid = $('analytics-summary-grid');
+    grid.innerHTML = '';
+    const stats = [
+      { label: 'Posts Analyzed', value: totalPosts, color: 'var(--color-accent)' },
+      { label: 'Total Likes',    value: totalLikes.toLocaleString(), color: 'var(--color-blue)' },
+      { label: 'Total Reposts',  value: totalReposts.toLocaleString(), color: 'var(--color-lime)' },
+      { label: 'Avg Likes',      value: avgLikes,    color: 'var(--color-accent)' },
+    ];
+    stats.forEach(({ label, value, color }) => {
+      const card = document.createElement('div');
+      card.className = 'analytics-stat-card';
+      card.innerHTML = `<div class="analytics-stat-value" style="color:${color}">${value}</div><div class="analytics-stat-label">${escHtml(label)}</div>`;
+      grid.appendChild(card);
+    });
+
+    // Engagement chart using Canvas API
+    drawEngagementChart(sorted);
+
+    // Top posts
+    const topPosts = [...posts]
+      .sort((a, b) => ((b.likeCount||0) + (b.repostCount||0) + (b.replyCount||0)) - ((a.likeCount||0) + (a.repostCount||0) + (a.replyCount||0)))
+      .slice(0, 10);
+    renderTopPosts(topPosts);
+  }
+
+  function drawEngagementChart(sortedPosts) {
+    const canvas = $('analytics-engagement-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // Set canvas size to container width
+    const wrap = canvas.parentElement;
+    const W = Math.max(300, wrap.clientWidth || 320);
+    const H = Math.min(200, Math.round(W * 0.4));
+    canvas.width  = W;
+    canvas.height = H;
+
+    const PAD = { top: 16, right: 16, bottom: 40, left: 44 };
+    const chartW = W - PAD.left - PAD.right;
+    const chartH = H - PAD.top - PAD.bottom;
+
+    const likes   = sortedPosts.map(p => p.likeCount   || 0);
+    const reposts = sortedPosts.map(p => p.repostCount || 0);
+    const maxVal  = Math.max(1, ...likes, ...reposts);
+
+    const n = sortedPosts.length;
+    const barW = Math.max(2, Math.floor(chartW / (n * 2.5)));
+
+    // Background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = '#E0E0E0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = PAD.top + chartH - (chartH * i / 4);
+      ctx.beginPath();
+      ctx.moveTo(PAD.left, y);
+      ctx.lineTo(PAD.left + chartW, y);
+      ctx.stroke();
+      // Y labels
+      ctx.fillStyle = '#666';
+      ctx.font = `10px Inter, sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxVal * i / 4).toString(), PAD.left - 4, y + 3);
+    }
+
+    // Bars
+    sortedPosts.forEach((p, i) => {
+      const x = PAD.left + (i / n) * chartW;
+      const slotW = chartW / n;
+      const bw = Math.min(barW, slotW * 0.4);
+
+      // Likes (coral)
+      const lh = (likes[i] / maxVal) * chartH;
+      ctx.fillStyle = '#FF5C35';
+      ctx.fillRect(x + slotW * 0.1, PAD.top + chartH - lh, bw, lh);
+
+      // Reposts (blue)
+      const rh = (reposts[i] / maxVal) * chartH;
+      ctx.fillStyle = '#0047FF';
+      ctx.fillRect(x + slotW * 0.1 + bw + 1, PAD.top + chartH - rh, bw, rh);
+    });
+
+    // X axis labels (show up to 6 dates)
+    ctx.fillStyle = '#666';
+    ctx.font = `10px Inter, sans-serif`;
+    ctx.textAlign = 'center';
+    const step = Math.max(1, Math.floor(n / 6));
+    sortedPosts.forEach((p, i) => {
+      if (i % step !== 0) return;
+      const x = PAD.left + (i / n) * chartW + (chartW / n) * 0.5;
+      const d = new Date(p.record?.createdAt || '');
+      const label = isNaN(d) ? '' : `${d.getMonth()+1}/${d.getDate()}`;
+      ctx.fillText(label, x, H - PAD.bottom + 14);
+    });
+
+    // Legend
+    ctx.fillStyle = '#FF5C35';
+    ctx.fillRect(PAD.left, H - 10, 10, 8);
+    ctx.fillStyle = '#333';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Likes', PAD.left + 13, H - 3);
+    ctx.fillStyle = '#0047FF';
+    ctx.fillRect(PAD.left + 55, H - 10, 10, 8);
+    ctx.fillStyle = '#333';
+    ctx.fillText('Reposts', PAD.left + 68, H - 3);
+
+    // Border
+    ctx.strokeStyle = '#0A0A0A';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(PAD.left, PAD.top, chartW, chartH);
+  }
+
+  function renderTopPosts(topPosts) {
+    const container = $('analytics-top-posts');
+    container.innerHTML = '';
+    topPosts.forEach((post, i) => {
+      const author = post.author || {};
+      const record = post.record || {};
+      const text = (record.text || '').slice(0, 140) + ((record.text || '').length > 140 ? '…' : '');
+      const ts = record.createdAt ? new Date(record.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+
+      const card = document.createElement('div');
+      card.className = 'analytics-top-post-card';
+      card.innerHTML = `
+        <div class="analytics-top-post-rank">#${i+1}</div>
+        <div class="analytics-top-post-body">
+          <div class="analytics-top-post-text">${escHtml(text)}</div>
+          <div class="analytics-top-post-meta">
+            <span class="analytics-top-post-stat"><strong>${formatCount(post.likeCount||0)}</strong> likes</span>
+            <span class="analytics-top-post-stat"><strong>${formatCount(post.repostCount||0)}</strong> reposts</span>
+            <span class="analytics-top-post-stat"><strong>${formatCount(post.replyCount||0)}</strong> replies</span>
+            <span class="analytics-top-post-date">${escHtml(ts)}</span>
+          </div>
+        </div>
+      `;
+      card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
+      container.appendChild(card);
+    });
+  }
+
+  // Wire up analytics load button and actor input
+  $('analytics-load-btn').addEventListener('click', () => {
+    const val = $('analytics-actor-input').value.trim().replace(/^@/, '');
+    loadAnalytics(val || null);
+  });
+  $('analytics-actor-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('analytics-load-btn').click();
+  });
+
+  // Attach mention autocomplete to analytics actor input
+  attachMentionAutocomplete($('analytics-actor-input'));
+
+  /* ================================================================
+     TIMELINE (M13)
+  ================================================================ */
+  // Zoom level definitions: [windowMs, minEngagement, label]
+  const TL_ZOOM_LEVELS = [
+    [7 * 24 * 60 * 60 * 1000, 25,  '7d'],
+    [2 * 24 * 60 * 60 * 1000, 15,  '2d'],
+    [12 * 60 * 60 * 1000,     8,   '12h'],
+    [3  * 60 * 60 * 1000,     3,   '3h'],
+    [1  * 60 * 60 * 1000,     1,   '1h'],
+    [15 * 60 * 1000,          0,   '15m'],
+    [5  * 60 * 1000,          0,   '5m'],
+  ];
+
+  let tlZoomLevel = 3;
+  let tlAllPosts  = [];
+  let tlQuery     = '';
+
+  function tlUpdateZoomLabel() {
+    $('timeline-zoom-label').textContent = TL_ZOOM_LEVELS[tlZoomLevel][2];
+  }
+
+  $('timeline-zoom-in-btn').addEventListener('click', () => {
+    if (tlZoomLevel < TL_ZOOM_LEVELS.length - 1) {
+      tlZoomLevel++;
+      tlUpdateZoomLabel();
+      tlRender();
+    }
+  });
+
+  $('timeline-zoom-out-btn').addEventListener('click', () => {
+    if (tlZoomLevel > 0) {
+      tlZoomLevel--;
+      tlUpdateZoomLabel();
+      tlRender();
+    }
+  });
+
+  $('timeline-search-btn').addEventListener('click', () => tlDoSearch());
+  $('timeline-search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tlDoSearch();
+  });
+
+  async function tlDoSearch() {
+    const raw = $('timeline-search-input').value.trim();
+    if (!raw) return;
+    tlQuery = raw;
+
+    const loadingEl = $('timeline-loading');
+    const errorEl   = $('timeline-error');
+    const emptyEl   = $('timeline-empty');
+    const wrapEl    = $('timeline-canvas-wrap');
+
+    loadingEl.hidden = false;
+    errorEl.hidden   = true;
+    emptyEl.hidden   = true;
+    wrapEl.hidden    = true;
+
+    try {
+      let posts = [];
+      if (raw.startsWith('@')) {
+        const handle = raw.replace(/^@/, '');
+        let cursor;
+        for (let i = 0; i < 3; i++) {
+          const data = await API.getAuthorFeedFull(handle, 50, cursor);
+          const items = (data.feed || []).filter(item =>
+            !item.reason || item.reason.$type !== 'app.bsky.feed.repost'
+          );
+          posts = posts.concat(items.map(item => item.post));
+          cursor = data.cursor;
+          if (!cursor || (data.feed || []).length < 50) break;
+        }
+      } else if (raw.startsWith('#')) {
+        const data = await API.searchPosts(raw, 'latest', 100);
+        posts = (data.posts || []);
+      } else {
+        const data = await API.searchPosts(raw, 'latest', 100);
+        posts = (data.posts || []);
+      }
+
+      if (!posts.length) {
+        emptyEl.hidden = false;
+      } else {
+        tlAllPosts = posts;
+        tlZoomLevel = 3;
+        tlUpdateZoomLabel();
+        tlRender();
+        wrapEl.hidden = false;
+      }
+    } catch (err) {
+      errorEl.hidden = false;
+      errorEl.textContent = 'Error: ' + (err.message || 'Failed to load');
+    } finally {
+      loadingEl.hidden = true;
+    }
+  }
+
+  function tlRender() {
+    const scrollInner = $('timeline-scroll-inner');
+    scrollInner.innerHTML = '';
+
+    const [windowMs, minEngagement] = TL_ZOOM_LEVELS[tlZoomLevel];
+
+    // Filter by engagement threshold
+    let posts = tlAllPosts.filter(p => {
+      const eng = (p.likeCount||0) + (p.repostCount||0) + (p.replyCount||0);
+      return eng >= minEngagement;
+    });
+
+    // Show at least some posts even if none meet threshold
+    if (!posts.length && tlAllPosts.length) {
+      posts = tlAllPosts.slice(0, Math.min(20, tlAllPosts.length));
+    }
+
+    if (!posts.length) return;
+
+    // Sort by time (oldest → newest: left → right)
+    posts = [...posts].sort((a, b) => new Date(a.record?.createdAt||0) - new Date(b.record?.createdAt||0));
+
+    const latestMs = Math.max(...posts.map(p => new Date(p.record?.createdAt||0).getTime()));
+    const timeEnd   = latestMs + windowMs * 0.05;
+    const timeStart = timeEnd - windowMs;
+
+    const visible = posts.filter(p => {
+      const t = new Date(p.record?.createdAt||0).getTime();
+      return t >= timeStart && t <= timeEnd;
+    });
+
+    const CARD_W   = 180;
+    const CARD_H   = 100;
+    const AXIS_Y   = 180;
+    const LANE_H   = 20;
+    const TOTAL_H  = AXIS_Y * 2 + 40;
+    const MIN_PX_W = 800;
+
+    const wrapEl = $('timeline-canvas-wrap');
+    const containerW = Math.max(MIN_PX_W, wrapEl.clientWidth || 600);
+    const pxPerMs = (containerW - CARD_W) / (windowMs || 1);
+
+    scrollInner.style.width  = containerW + 'px';
+    scrollInner.style.height = TOTAL_H + 'px';
+    scrollInner.style.position = 'relative';
+
+    // Draw axis SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', containerW);
+    svg.setAttribute('height', TOTAL_H);
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.pointerEvents = 'none';
+
+    // Axis line
+    const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    axisLine.setAttribute('x1', 0);
+    axisLine.setAttribute('y1', AXIS_Y);
+    axisLine.setAttribute('x2', containerW);
+    axisLine.setAttribute('y2', AXIS_Y);
+    axisLine.setAttribute('stroke', '#0A0A0A');
+    axisLine.setAttribute('stroke-width', '2');
+    svg.appendChild(axisLine);
+
+    // Time tick marks
+    const tickCount = Math.min(10, Math.floor(containerW / 80));
+    for (let i = 0; i <= tickCount; i++) {
+      const t = timeStart + (windowMs * i / tickCount);
+      const x = Math.round((t - timeStart) * pxPerMs);
+      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      tick.setAttribute('x1', x); tick.setAttribute('y1', AXIS_Y - 6);
+      tick.setAttribute('x2', x); tick.setAttribute('y2', AXIS_Y + 6);
+      tick.setAttribute('stroke', '#0A0A0A'); tick.setAttribute('stroke-width', '1.5');
+      svg.appendChild(tick);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', x);
+      label.setAttribute('y', AXIS_Y + 20);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('fill', '#666');
+      label.setAttribute('font-family', 'Inter, sans-serif');
+      const d = new Date(t);
+      const lbl = windowMs > 86400000
+        ? `${d.getMonth()+1}/${d.getDate()}`
+        : `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+      label.textContent = lbl;
+      svg.appendChild(label);
+    }
+
+    scrollInner.appendChild(svg);
+
+    // Place post cards with greedy lane-based collision avoidance
+    const laneAbove = [];
+    const laneBelow = [];
+    let aboveTurn = true;
+
+    visible.forEach((post) => {
+      const t = new Date(post.record?.createdAt||0).getTime();
+      const cx = Math.round((t - timeStart) * pxPerMs);
+      const cardLeft = Math.max(0, Math.min(cx - CARD_W / 2, containerW - CARD_W));
+
+      const findLane = (lanes) => {
+        for (let i = 0; i < lanes.length; i++) {
+          if ((lanes[i] || 0) <= cardLeft) return i;
+        }
+        return lanes.length;
+      };
+
+      let laneIdx, isAbove;
+      if (aboveTurn) {
+        const aLane = findLane(laneAbove);
+        const bLane = findLane(laneBelow);
+        if (aLane <= laneAbove.length) { laneIdx = aLane; isAbove = true; }
+        else { laneIdx = bLane; isAbove = false; }
+      } else {
+        const bLane = findLane(laneBelow);
+        const aLane = findLane(laneAbove);
+        if (bLane <= laneBelow.length) { laneIdx = bLane; isAbove = false; }
+        else { laneIdx = aLane; isAbove = true; }
+      }
+      aboveTurn = !aboveTurn;
+
+      const lanes = isAbove ? laneAbove : laneBelow;
+      lanes[laneIdx] = cardLeft + CARD_W + 8;
+
+      const cardY = isAbove
+        ? AXIS_Y - CARD_H - (laneIdx * (CARD_H + LANE_H)) - 16
+        : AXIS_Y + (laneIdx * (CARD_H + LANE_H)) + 16;
+
+      // Connector line
+      const connLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      connLine.setAttribute('x1', cx);
+      connLine.setAttribute('y1', AXIS_Y);
+      connLine.setAttribute('x2', cx);
+      connLine.setAttribute('y2', isAbove ? cardY + CARD_H : cardY);
+      connLine.setAttribute('stroke', '#0047FF');
+      connLine.setAttribute('stroke-width', '1.5');
+      connLine.setAttribute('stroke-dasharray', '3 2');
+      svg.appendChild(connLine);
+
+      // Dot on axis
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', cx);
+      dot.setAttribute('cy', AXIS_Y);
+      dot.setAttribute('r', '4');
+      dot.setAttribute('fill', '#FF5C35');
+      dot.setAttribute('stroke', '#0A0A0A');
+      dot.setAttribute('stroke-width', '1.5');
+      svg.appendChild(dot);
+
+      // Post card div
+      const author = post.author || {};
+      const record = post.record || {};
+      const text = (record.text || '').slice(0, 80) + ((record.text||'').length > 80 ? '…' : '');
+      const ts = record.createdAt ? formatTimestamp(record.createdAt) : '';
+
+      const card = document.createElement('div');
+      card.className = 'timeline-post-card';
+      card.style.position = 'absolute';
+      card.style.left = cardLeft + 'px';
+      card.style.top  = cardY + 'px';
+      card.style.width = CARD_W + 'px';
+      card.innerHTML = `
+        <div class="timeline-card-author">
+          <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+          <span class="timeline-card-handle">@${escHtml(author.handle||'')}</span>
+        </div>
+        <div class="timeline-card-text">${escHtml(text)}</div>
+        <div class="timeline-card-footer">
+          <span class="timeline-card-eng">♥ ${formatCount(post.likeCount||0)}</span>
+          <span class="timeline-card-time">${escHtml(ts)}</span>
+        </div>
+      `;
+      card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
+      scrollInner.appendChild(card);
+    });
+  }
+
+  // Save timeline as channel
+  $('timeline-save-btn').addEventListener('click', () => {
+    if (!tlQuery) return;
+    const name = prompt('Save timeline as channel:', tlQuery);
+    if (!name?.trim()) return;
+    const list = channelsLoad();
+    if (list.some(c => c.query === tlQuery && c.type === 'timeline')) {
+      showBanner('Already saved!');
+      return;
+    }
+    const id = String(Date.now());
+    list.push({
+      id, name: name.trim(), query: tlQuery, type: 'timeline',
+      lastSeenAt: new Date().toISOString(), unreadCount: 0,
+    });
+    channelsSave(list);
+    renderChannelsSidebar();
+    showBanner('Saved to channels!');
+  });
+
+  // Attach autocomplete to timeline search
+  attachMentionAutocomplete($('timeline-search-input'));
+>>>>>>> Stashed changes
 
   /* ================================================================
      BOOT

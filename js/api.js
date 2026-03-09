@@ -480,6 +480,43 @@ const API = (() => {
     return `at://${identity.did}/app.bsky.feed.post/${rkey}`;
   }
 
+  async function muteActor(did) {
+    return authPost('app.bsky.graph.muteActor', { actor: did });
+  }
+
+  async function unmuteActor(did) {
+    return authPost('app.bsky.graph.unmuteActor', { actor: did });
+  }
+
+  async function blockActor(subjectDid) {
+    const session = AUTH.getSession();
+    return authPost('com.atproto.repo.createRecord', {
+      repo:       session.did,
+      collection: 'app.bsky.graph.block',
+      record: {
+        $type:     'app.bsky.graph.block',
+        subject:   subjectDid,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  async function unblockActor(blockUri) {
+    const session = AUTH.getSession();
+    const parts = blockUri.split('/');
+    return authPost('com.atproto.repo.deleteRecord', {
+      repo:       session.did,
+      collection: 'app.bsky.graph.block',
+      rkey:       parts[parts.length - 1],
+    });
+  }
+
+  async function getAuthorFeedFull(actor, limit = 50, cursor) {
+    return authGet('app.bsky.feed.getAuthorFeed', {
+      actor, limit, cursor, filter: 'posts_no_replies',
+    });
+  }
+
   return {
     searchPosts,
     searchActors,
@@ -505,5 +542,10 @@ const API = (() => {
     getRecord,
     putRecord,
     createQuotePost,
+    muteActor,
+    unmuteActor,
+    blockActor,
+    unblockActor,
+    getAuthorFeedFull,
   };
 })();
