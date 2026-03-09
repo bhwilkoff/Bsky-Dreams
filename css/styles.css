@@ -4650,18 +4650,25 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
    M22 — ANALYTICS DASHBOARD
 ================================================================ */
 
 /* Actor switcher bar */
+#view-analytics .view-inner {
+  padding: 0;
+  max-width: 100%;
+}
+
+#view-analytics .feed-header {
+  padding: var(--space-md) var(--space-md) 0;
+}
+
 .analytics-actor-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 2px solid var(--nb-black);
   flex-wrap: wrap;
 }
 
@@ -4674,17 +4681,12 @@ a.post-timestamp:hover {
 
 .analytics-actor-input {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 6px 10px;
-  border: 2px solid var(--color-border);
-  border-radius: 4px;
   font-size: 0.875rem;
   background: var(--color-surface);
   color: var(--color-text);
-}
-
-.analytics-actor-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
 }
 
 .analytics-own-btn {
@@ -4699,14 +4701,15 @@ a.post-timestamp:hover {
   gap: 12px;
   padding: 12px 16px;
   background: var(--color-surface-alt);
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 2px solid var(--nb-black);
   flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .analytics-profile-avatar {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: 0;
   border: 2px solid var(--nb-black);
   object-fit: cover;
   flex-shrink: 0;
@@ -4773,16 +4776,20 @@ a.post-timestamp:hover {
 }
 
 .analytics-section {
-  padding: 16px 16px 8px;
-  border-bottom: 2px solid var(--color-border);
+  padding: 16px 16px 12px;
+  border-bottom: 2px solid var(--nb-black);
 }
 
 .analytics-section-title {
   font-family: 'Syne', sans-serif;
   font-size: 0.9375rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--color-text);
   margin-bottom: 12px;
+  border-bottom: 2px solid var(--nb-black);
+  padding-bottom: 6px;
 }
 
 .analytics-section-sub {
@@ -4910,21 +4917,39 @@ a.post-timestamp:hover {
 .analytics-top-posts {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-sm);
 }
 
 .analytics-top-row {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  background: var(--color-bg);
+  border: 2px solid var(--nb-black);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-sm) var(--space-md);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .analytics-top-row:hover {
-  background: var(--color-surface-alt);
-  margin: 0 -16px;
-  padding: 10px 16px;
-  border-radius: 4px;
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-elevated);
+}
+
+.analytics-top-rank {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--color-accent);
+  flex-shrink: 0;
+  min-width: 28px;
+  line-height: 1;
+}
+
+.analytics-top-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .analytics-top-text {
@@ -5158,9 +5183,9 @@ a.post-timestamp:hover {
   border-color: var(--color-accent);
   background: var(--color-accent-light);
   color: var(--color-accent);
-=======
-=======
->>>>>>> Stashed changes
+}
+
+/* ================================================================
    CHANNEL DROPDOWN SEPARATOR
 ================================================================ */
 .channel-dropdown-sep {
@@ -5479,8 +5504,6 @@ a.post-timestamp:hover {
 #view-timeline .view-inner.timeline-view-inner {
   flex: 1;
   overflow: hidden;
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+  padding: 0;
+  max-width: 100%;
 }
