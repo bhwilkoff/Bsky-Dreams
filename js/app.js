@@ -6743,27 +6743,30 @@
         return;
       }
 
-      sorted.forEach((post) => {
+      sorted.forEach((post, idx) => {
         const text = post.record?.text || '';
         const row  = document.createElement('div');
         row.className = 'analytics-top-row';
         row.setAttribute('role', 'listitem');
         row.innerHTML = `
-          <div class="analytics-top-text">${escHtml(text.slice(0, 120))}${text.length > 120 ? '…' : ''}</div>
-          <div class="analytics-top-stats">
-            <span class="analytics-top-stat" title="Likes">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              ${formatCount(post.likeCount || 0)}
-            </span>
-            <span class="analytics-top-stat" title="Reposts">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-              ${formatCount(post.repostCount || 0)}
-            </span>
-            <span class="analytics-top-stat" title="Replies">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              ${formatCount(post.replyCount || 0)}
-            </span>
-            <span class="analytics-top-date">${formatTimestamp(post.record?.createdAt || post.indexedAt)}</span>
+          <div class="analytics-top-rank">#${idx + 1}</div>
+          <div class="analytics-top-body">
+            <div class="analytics-top-text">${escHtml(text.slice(0, 120))}${text.length > 120 ? '…' : ''}</div>
+            <div class="analytics-top-stats">
+              <span class="analytics-top-stat" title="Likes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                ${formatCount(post.likeCount || 0)}
+              </span>
+              <span class="analytics-top-stat" title="Reposts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                ${formatCount(post.repostCount || 0)}
+              </span>
+              <span class="analytics-top-stat" title="Replies">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                ${formatCount(post.replyCount || 0)}
+              </span>
+              <span class="analytics-top-date">${formatTimestamp(post.record?.createdAt || post.indexedAt)}</span>
+            </div>
           </div>`;
         row.addEventListener('click', () => {
           const author = post.author?.handle || '';
@@ -6939,8 +6942,8 @@
         tlAllPosts = posts;
         tlZoomLevel = 3;
         tlUpdateZoomLabel();
-        tlRender();
         wrapEl.hidden = false;
+        tlRender();
       }
     } catch (err) {
       errorEl.hidden = false;
