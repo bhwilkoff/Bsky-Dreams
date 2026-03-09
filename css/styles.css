@@ -5368,7 +5368,6 @@ a.post-timestamp:hover {
 .timeline-view-inner {
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow: hidden;
 }
 .timeline-controls-bar {
@@ -5431,14 +5430,15 @@ a.post-timestamp:hover {
 }
 .timeline-canvas-wrap {
   flex: 1;
+  min-height: 0;
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden; /* horizontal-only scroll */
   position: relative;
   background: var(--color-bg);
 }
 .timeline-scroll-inner {
   position: relative;
-  min-height: 360px;
+  height: 100%; /* fill wrap height via CSS; width set by JS */
 }
 .timeline-post-card {
   background: var(--color-bg);
@@ -5496,13 +5496,15 @@ a.post-timestamp:hover {
 }
 .timeline-card-eng { color: var(--color-accent); font-weight: 600; }
 
-/* view-timeline height fix: fill remaining viewport */
+/* Timeline: fixed-height, horizontal-only viewport — no vertical scroll */
 #view-timeline.view {
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* CRITICAL: prevent vertical scroll so flex heights resolve */
 }
 #view-timeline .view-inner.timeline-view-inner {
   flex: 1;
+  min-height: 0; /* allow flex shrinking */
   overflow: hidden;
   padding: 0;
   max-width: 100%;

@@ -6859,15 +6859,16 @@
   /* ================================================================
      TIMELINE (M13)
   ================================================================ */
-  // Zoom level definitions: [windowMs, minEngagement, label]
+  // Zoom level definitions: [pxPerHour, minEngagement, label]
+  // pxPerHour controls horizontal density; minEngagement filters at wide zoom
   const TL_ZOOM_LEVELS = [
-    [7 * 24 * 60 * 60 * 1000, 25,  '7d'],
-    [2 * 24 * 60 * 60 * 1000, 15,  '2d'],
-    [12 * 60 * 60 * 1000,     8,   '12h'],
-    [3  * 60 * 60 * 1000,     3,   '3h'],
-    [1  * 60 * 60 * 1000,     1,   '1h'],
-    [15 * 60 * 1000,          0,   '15m'],
-    [5  * 60 * 1000,          0,   '5m'],
+    [30,    20, 'Wide'],
+    [90,    10, '3d'],
+    [240,    5, '12h'],
+    [720,    2, '4h'],    // default (index 3)
+    [2160,   1, '80m'],
+    [7200,   0, '25m'],
+    [21600,  0, '8m'],
   ];
 
   let tlZoomLevel = 3;
@@ -6943,7 +6944,7 @@
         tlZoomLevel = 3;
         tlUpdateZoomLabel();
         wrapEl.hidden = false;
-        tlRender();
+        requestAnimationFrame(tlRender);
       }
     } catch (err) {
       errorEl.hidden = false;
@@ -6955,168 +6956,173 @@
 
   function tlRender() {
     const scrollInner = $('timeline-scroll-inner');
+    const wrapEl      = $('timeline-canvas-wrap');
     scrollInner.innerHTML = '';
 
-    const [windowMs, minEngagement] = TL_ZOOM_LEVELS[tlZoomLevel];
+    const [pxPerHour, minEngagement] = TL_ZOOM_LEVELS[tlZoomLevel];
+    const pxPerMs = pxPerHour / 3600000;
 
-    // Filter by engagement threshold
-    let posts = tlAllPosts.filter(p => {
-      const eng = (p.likeCount||0) + (p.repostCount||0) + (p.replyCount||0);
-      return eng >= minEngagement;
-    });
-
-    // Show at least some posts even if none meet threshold
-    if (!posts.length && tlAllPosts.length) {
-      posts = tlAllPosts.slice(0, Math.min(20, tlAllPosts.length));
-    }
-
+    // Filter by engagement; fall back to all posts if none pass threshold
+    let posts = tlAllPosts.filter(p =>
+      (p.likeCount||0) + (p.repostCount||0) + (p.replyCount||0) >= minEngagement
+    );
+    if (!posts.length) posts = tlAllPosts.slice();
     if (!posts.length) return;
 
-    // Sort by time (oldest → newest: left → right)
-    posts = [...posts].sort((a, b) => new Date(a.record?.createdAt||0) - new Date(b.record?.createdAt||0));
+    // Sort oldest → newest (left → right); newest will be at the right edge
+    posts = [...posts].sort((a, b) =>
+      new Date(a.record?.createdAt||0) - new Date(b.record?.createdAt||0)
+    );
 
-    const latestMs = Math.max(...posts.map(p => new Date(p.record?.createdAt||0).getTime()));
-    const timeEnd   = latestMs + windowMs * 0.05;
-    const timeStart = timeEnd - windowMs;
+    const tFirst    = new Date(posts[0].record?.createdAt||0).getTime();
+    const tLast     = new Date(posts[posts.length - 1].record?.createdAt||0).getTime();
+    const tSpan     = tLast - tFirst || 3600000;
+    const tPad      = Math.max(tSpan * 0.08, 900000); // 8% or min 15 min
+    const timeStart = tFirst - tPad;
+    const timeEnd   = tLast + tPad;
+    const totalSpan = timeEnd - timeStart;
 
-    const visible = posts.filter(p => {
-      const t = new Date(p.record?.createdAt||0).getTime();
-      return t >= timeStart && t <= timeEnd;
-    });
+    const wrapW      = wrapEl.clientWidth  || 600;
+    const wrapH      = wrapEl.clientHeight || 320;
+    const containerW = Math.max(wrapW, Math.round(totalSpan * pxPerMs));
 
-    const CARD_W   = 180;
-    const CARD_H   = 100;
-    const AXIS_Y   = 180;
-    const LANE_H   = 20;
-    const TOTAL_H  = AXIS_Y * 2 + 40;
-    const MIN_PX_W = 800;
+    // Fixed layout constants relative to actual wrap height
+    const AXIS_Y    = Math.round(wrapH / 2);
+    const CARD_W    = 160;
+    const CARD_H    = 78;
+    const LANE_H    = CARD_H + 6;
+    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - 28) / LANE_H));
 
-    const wrapEl = $('timeline-canvas-wrap');
-    const containerW = Math.max(MIN_PX_W, wrapEl.clientWidth || 600);
-    const pxPerMs = (containerW - CARD_W) / (windowMs || 1);
+    scrollInner.style.width    = containerW + 'px';
+    // height comes from CSS (height: 100% on scroll-inner)
 
-    scrollInner.style.width  = containerW + 'px';
-    scrollInner.style.height = TOTAL_H + 'px';
-    scrollInner.style.position = 'relative';
-
-    // Draw axis SVG
+    // ── SVG layer: axis line + tick marks + connectors + dots ──
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', containerW);
-    svg.setAttribute('height', TOTAL_H);
-    svg.style.position = 'absolute';
-    svg.style.top = '0';
-    svg.style.left = '0';
-    svg.style.pointerEvents = 'none';
+    svg.setAttribute('width',  containerW);
+    svg.setAttribute('height', wrapH);
+    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:1';
 
     // Axis line
     const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    axisLine.setAttribute('x1', 0);
-    axisLine.setAttribute('y1', AXIS_Y);
-    axisLine.setAttribute('x2', containerW);
-    axisLine.setAttribute('y2', AXIS_Y);
+    axisLine.setAttribute('x1', 0);        axisLine.setAttribute('y1', AXIS_Y);
+    axisLine.setAttribute('x2', containerW); axisLine.setAttribute('y2', AXIS_Y);
     axisLine.setAttribute('stroke', '#0A0A0A');
     axisLine.setAttribute('stroke-width', '2');
     svg.appendChild(axisLine);
 
-    // Time tick marks
-    const tickCount = Math.min(10, Math.floor(containerW / 80));
-    for (let i = 0; i <= tickCount; i++) {
-      const t = timeStart + (windowMs * i / tickCount);
+    // Smart tick interval: pick the candidate closest to totalSpan / targetTicks
+    const TICK_CANDIDATES = [60000, 300000, 600000, 900000, 1800000, 3600000,
+                              7200000, 21600000, 43200000, 86400000, 604800000];
+    const targetTicks  = Math.max(4, Math.min(12, Math.floor(containerW / 90)));
+    const idealInterval = totalSpan / targetTicks;
+    const tickInterval  = TICK_CANDIDATES.reduce((best, iv) =>
+      Math.abs(iv - idealInterval) < Math.abs(best - idealInterval) ? iv : best
+    );
+
+    // Tick marks aligned to clean time boundaries
+    const firstTick = Math.ceil(timeStart / tickInterval) * tickInterval;
+    for (let t = firstTick; t <= timeEnd; t += tickInterval) {
       const x = Math.round((t - timeStart) * pxPerMs);
+      if (x < 0 || x > containerW) continue;
+
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', x); tick.setAttribute('y1', AXIS_Y - 6);
-      tick.setAttribute('x2', x); tick.setAttribute('y2', AXIS_Y + 6);
-      tick.setAttribute('stroke', '#0A0A0A'); tick.setAttribute('stroke-width', '1.5');
+      tick.setAttribute('x1', x); tick.setAttribute('y1', AXIS_Y - 5);
+      tick.setAttribute('x2', x); tick.setAttribute('y2', AXIS_Y + 5);
+      tick.setAttribute('stroke', '#0A0A0A');
+      tick.setAttribute('stroke-width', '1');
       svg.appendChild(tick);
+
+      // 12-hour time format
+      const d    = new Date(t);
+      const h12  = d.getHours() % 12 || 12;
+      const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+      const mm   = String(d.getMinutes()).padStart(2, '0');
+      let lbl;
+      if (tickInterval >= 86400000) {
+        lbl = `${d.getMonth() + 1}/${d.getDate()}`;
+      } else if (d.getMinutes() === 0) {
+        lbl = `${h12}${ampm}`;
+      } else {
+        lbl = `${h12}:${mm}${ampm}`;
+      }
 
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.setAttribute('x', x);
-      label.setAttribute('y', AXIS_Y + 20);
+      label.setAttribute('y', AXIS_Y + 18);
       label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('font-size', '10');
+      label.setAttribute('font-size', '9');
       label.setAttribute('fill', '#666');
       label.setAttribute('font-family', 'Inter, sans-serif');
-      const d = new Date(t);
-      const lbl = windowMs > 86400000
-        ? `${d.getMonth()+1}/${d.getDate()}`
-        : `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
       label.textContent = lbl;
       svg.appendChild(label);
     }
 
     scrollInner.appendChild(svg);
 
-    // Place post cards with greedy lane-based collision avoidance
-    const laneAbove = [];
+    // ── Post cards with lane-based collision avoidance ──
+    const laneAbove = []; // laneAbove[i] = next free x for lane i above axis
     const laneBelow = [];
-    let aboveTurn = true;
+    let aboveTurn   = true;
 
-    visible.forEach((post) => {
-      const t = new Date(post.record?.createdAt||0).getTime();
-      const cx = Math.round((t - timeStart) * pxPerMs);
-      const cardLeft = Math.max(0, Math.min(cx - CARD_W / 2, containerW - CARD_W));
+    posts.forEach(post => {
+      const t        = new Date(post.record?.createdAt||0).getTime();
+      const cx       = Math.round((t - timeStart) * pxPerMs);
+      const cardLeft = Math.max(0, Math.min(cx - Math.floor(CARD_W / 2), containerW - CARD_W));
 
       const findLane = (lanes) => {
-        for (let i = 0; i < lanes.length; i++) {
-          if ((lanes[i] || 0) <= cardLeft) return i;
+        for (let i = 0; i < MAX_LANES; i++) {
+          if (!lanes[i] || lanes[i] <= cardLeft) return i;
         }
-        return lanes.length;
+        return -1; // no room
       };
 
       let laneIdx, isAbove;
       if (aboveTurn) {
-        const aLane = findLane(laneAbove);
-        const bLane = findLane(laneBelow);
-        if (aLane <= laneAbove.length) { laneIdx = aLane; isAbove = true; }
-        else { laneIdx = bLane; isAbove = false; }
+        laneIdx = findLane(laneAbove);
+        isAbove = laneIdx >= 0;
+        if (!isAbove) { laneIdx = findLane(laneBelow); }
       } else {
-        const bLane = findLane(laneBelow);
-        const aLane = findLane(laneAbove);
-        if (bLane <= laneBelow.length) { laneIdx = bLane; isAbove = false; }
-        else { laneIdx = aLane; isAbove = true; }
+        laneIdx = findLane(laneBelow);
+        isAbove = false;
+        if (laneIdx < 0) { laneIdx = findLane(laneAbove); isAbove = laneIdx >= 0; }
       }
       aboveTurn = !aboveTurn;
+      if (laneIdx < 0) return; // no space at this zoom level — skip
 
-      const lanes = isAbove ? laneAbove : laneBelow;
-      lanes[laneIdx] = cardLeft + CARD_W + 8;
+      (isAbove ? laneAbove : laneBelow)[laneIdx] = cardLeft + CARD_W + 4;
 
       const cardY = isAbove
-        ? AXIS_Y - CARD_H - (laneIdx * (CARD_H + LANE_H)) - 16
-        : AXIS_Y + (laneIdx * (CARD_H + LANE_H)) + 16;
+        ? AXIS_Y - CARD_H - laneIdx * LANE_H - 8
+        : AXIS_Y + laneIdx * LANE_H + 8;
 
-      // Connector line
+      // Connector line (axis → card edge only)
+      const connY = isAbove ? cardY + CARD_H : cardY;
       const connLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      connLine.setAttribute('x1', cx);
-      connLine.setAttribute('y1', AXIS_Y);
-      connLine.setAttribute('x2', cx);
-      connLine.setAttribute('y2', isAbove ? cardY + CARD_H : cardY);
+      connLine.setAttribute('x1', cx); connLine.setAttribute('y1', AXIS_Y);
+      connLine.setAttribute('x2', cx); connLine.setAttribute('y2', connY);
       connLine.setAttribute('stroke', '#0047FF');
       connLine.setAttribute('stroke-width', '1.5');
       connLine.setAttribute('stroke-dasharray', '3 2');
       svg.appendChild(connLine);
 
-      // Dot on axis
+      // Dot on axis at the post's time position
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      dot.setAttribute('cx', cx);
-      dot.setAttribute('cy', AXIS_Y);
+      dot.setAttribute('cx', cx); dot.setAttribute('cy', AXIS_Y);
       dot.setAttribute('r', '4');
       dot.setAttribute('fill', '#FF5C35');
       dot.setAttribute('stroke', '#0A0A0A');
       dot.setAttribute('stroke-width', '1.5');
       svg.appendChild(dot);
 
-      // Post card div
-      const author = post.author || {};
-      const record = post.record || {};
-      const text = (record.text || '').slice(0, 80) + ((record.text||'').length > 80 ? '…' : '');
-      const ts = record.createdAt ? formatTimestamp(record.createdAt) : '';
+      // Post card
+      const author   = post.author || {};
+      const record   = post.record || {};
+      const text     = (record.text || '').slice(0, 75) + ((record.text||'').length > 75 ? '…' : '');
+      const ts       = record.createdAt ? formatTimestamp(record.createdAt) : '';
 
       const card = document.createElement('div');
       card.className = 'timeline-post-card';
-      card.style.position = 'absolute';
-      card.style.left = cardLeft + 'px';
-      card.style.top  = cardY + 'px';
-      card.style.width = CARD_W + 'px';
+      card.style.cssText = `position:absolute;left:${cardLeft}px;top:${cardY}px;width:${CARD_W}px;z-index:2`;
       card.innerHTML = `
         <div class="timeline-card-author">
           <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
@@ -7130,6 +7136,11 @@
       `;
       card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
       scrollInner.appendChild(card);
+    });
+
+    // Scroll to newest posts (right edge) after layout
+    requestAnimationFrame(() => {
+      wrapEl.scrollLeft = Math.max(0, containerW - wrapW);
     });
   }
 
