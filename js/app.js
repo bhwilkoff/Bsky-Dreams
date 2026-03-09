@@ -1842,6 +1842,7 @@
     } else if (urlView === 'analytics') {
       showView('analytics', true);
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       loadAnalytics();
     } else if (urlView === 'compose') {
       showView('compose', true);
@@ -1857,12 +1858,17 @@
       // Strip share params from URL so Back doesn't re-trigger compose pre-fill
       history.replaceState({ view: 'compose' }, '', '?view=compose');
 =======
+=======
+>>>>>>> Stashed changes
       if (ownProfile) {
         $('analytics-actor-input').value = ownProfile.handle || '';
         loadAnalytics(ownProfile.handle);
       }
     } else if (urlView === 'timeline') {
       showView('timeline', true);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     } else if (urlQ) {
       // Restore a saved search from URL
@@ -1924,6 +1930,10 @@
       gallery:       navGalleryBtn,
       analytics:     navAnalyticsBtn,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+      timeline:      navTimelineBtn,
+>>>>>>> Stashed changes
 =======
       timeline:      navTimelineBtn,
 >>>>>>> Stashed changes
@@ -1992,6 +2002,11 @@
       } else if (name === 'analytics') {
         url = '?view=analytics';
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+      } else if (name === 'timeline') {
+        url = '?view=timeline';
+>>>>>>> Stashed changes
 =======
       } else if (name === 'timeline') {
         url = '?view=timeline';
@@ -2743,7 +2758,11 @@
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics/timeline
+=======
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
+>>>>>>> Stashed changes
 =======
     const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
 >>>>>>> Stashed changes
@@ -6600,6 +6619,7 @@
 
   /* ================================================================
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
      M22 — ANALYTICS DASHBOARD
   ================================================================ */
   (() => {
@@ -7114,6 +7134,8 @@
     }
   })();
 =======
+=======
+>>>>>>> Stashed changes
      ANALYTICS (M22)
   ================================================================ */
   let analyticsCurrentActor = null;
@@ -7633,6 +7655,9 @@
 
   // Attach autocomplete to timeline search
   attachMentionAutocomplete($('timeline-search-input'));
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
   /* ================================================================
