@@ -4807,7 +4807,7 @@ a.post-timestamp:hover {
 
 .analytics-canvas {
   width: 100%;
-  height: 180px;
+  aspect-ratio: 5 / 2;
   display: block;
 }
 
@@ -4917,7 +4917,6 @@ a.post-timestamp:hover {
 .analytics-top-posts {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
 }
 
 .analytics-top-row {
@@ -4977,6 +4976,67 @@ a.post-timestamp:hover {
   font-size: 0.75rem;
   color: var(--color-text-light);
   margin-left: auto;
+}
+
+/* Ranked post wrapper (analytics top posts using full post cards) */
+.analytics-ranked-post {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.analytics-post-rank {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 16px 0;
+}
+
+/* Inside analytics, post cards lose their standalone border/shadow so the
+   wrapper's border-bottom provides the row separator. */
+.analytics-ranked-post .post-card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.analytics-ranked-post .post-card:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--color-surface-alt);
+}
+
+/* Mobile overrides for analytics */
+@media (max-width: 767px) {
+  /* Actor switcher bar: stack vertically so the input isn't squished */
+  .analytics-actor-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analytics-own-btn {
+    width: 100%;
+    text-align: left;
+  }
+
+  .analytics-actor-form {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Profile stats: spread across the full width below name/avatar */
+  .analytics-profile-stats {
+    width: 100%;
+    justify-content: space-around;
+    padding-top: 4px;
+  }
+
+  .analytics-profile-strip {
+    row-gap: 8px;
+  }
 }
 
 /* ================================================================
