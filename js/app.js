@@ -1730,13 +1730,6 @@
     });
   }
 
-  if (navAnalyticsBtn) {
-    navAnalyticsBtn.addEventListener('click', () => {
-      showView('analytics');
-      loadAnalytics();
-    });
-  }
-
   /* ================================================================
      INIT — check stored session on page load
   ================================================================ */
@@ -2046,10 +2039,7 @@
   navTvBtn.addEventListener('click', () => showView('tv'));
   navAnalyticsBtn.addEventListener('click', () => {
     showView('analytics');
-    if (!analyticsCurrentActor && ownProfile) {
-      $('analytics-actor-input').value = ownProfile.handle || '';
-      loadAnalytics(ownProfile.handle);
-    }
+    loadAnalytics();
   });
   navTimelineBtn.addEventListener('click', () => showView('timeline'));
 
@@ -2990,8 +2980,8 @@
       // View Timeline button
       const viewTimelineBtn = document.createElement('button');
       viewTimelineBtn.type = 'button';
-      viewTimelineBtn.className = 'btn btn-ghost profile-timeline-btn';
-      viewTimelineBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg> Timeline`;
+      viewTimelineBtn.className = 'report-actor-btn';
+      viewTimelineBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>`;
       viewTimelineBtn.setAttribute('aria-label', `View ${profile.handle} timeline`);
       viewTimelineBtn.addEventListener('click', () => {
         showView('timeline');
@@ -6800,7 +6790,7 @@
           API.getAuthorFeed(actor, 100),
         ]);
 
-        analyticsPosts = feedData.feed?.map((item) => item.post).filter(Boolean) || [];
+        analyticsPosts = feedData.feed?.filter((item) => !item.reason || item.reason.$type !== 'app.bsky.feed.defs#reasonRepost').map((item) => item.post).filter(Boolean) || [];
 
         // Populate profile strip
         $('analytics-profile-avatar').src = profileData.avatar || '';
