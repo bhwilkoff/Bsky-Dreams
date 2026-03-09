@@ -5521,58 +5521,66 @@ a.post-timestamp:hover {
 .timeline-post-card {
   background: var(--color-bg);
   border: 2px solid var(--nb-black);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-xs) var(--space-sm);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  /* Total height must equal JS CARD_H = 72px:
+     border(4) + padding-v(8) + author(18) + gap(2) + text-2lines(28) + footer(12) = 72 */
+  padding: 4px 6px;
   cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s;
+  transition: transform 0.08s, box-shadow 0.08s;
   overflow: hidden;
   box-sizing: border-box;
 }
 .timeline-post-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: var(--shadow-elevated);
-  z-index: 10;
-  position: relative;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+  z-index: 20 !important;
 }
 .timeline-card-author {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: 3px;
+  margin-bottom: 2px;
+  height: 18px;   /* fixed — keeps total card height predictable */
+  overflow: hidden;
 }
 .timeline-card-avatar {
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   border-radius: 0;
-  border: 1.5px solid var(--nb-black);
+  border: 1px solid var(--nb-black);
   object-fit: cover;
   flex-shrink: 0;
 }
 .timeline-card-handle {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   color: var(--color-blue);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1;
 }
 .timeline-card-text {
-  font-size: 0.75rem;
-  line-height: 1.35;
+  font-size: 0.68rem;
+  line-height: 1.3;
   color: var(--color-text);
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;   /* 2 lines × 12px × 1.3 ≈ 28px */
   -webkit-box-orient: vertical;
+  height: 28px;  /* fixed height so card total is predictable */
 }
 .timeline-card-footer {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
-  font-size: 0.68rem;
+  margin-top: 2px;
+  font-size: 0.62rem;
+  line-height: 1;
+  height: 12px;  /* fixed */
   color: var(--color-text-light);
+  overflow: hidden;
 }
-.timeline-card-eng { color: var(--color-accent); font-weight: 600; }
+.timeline-card-eng { color: var(--color-accent); font-weight: 700; }
 
 /* Timeline: full-height flex column, no vertical scrolling */
 #view-timeline.view {
