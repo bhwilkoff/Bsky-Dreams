@@ -7047,19 +7047,23 @@
       new Date(a.record?.createdAt||0) - new Date(b.record?.createdAt||0)
     );
 
-    // Time axis uses the explicit window
+    // Time axis: the selected window spans the full canvas width.
+    // Canvas = 3 × viewport so posts have 3× more horizontal room (fewer collisions)
+    // and the user can scroll one full screen left (earlier) or right (later).
+    //   x = 0          → tlWindowStart  (one screen to the left of initial view)
+    //   x = wrapW      → midpoint of left-third / start of middle-third
+    //   x = 2*wrapW    → midpoint / start of right-third
+    //   x = 3*wrapW    → tlWindowEnd    (one screen to the right of initial view)
     const timeStart  = tlWindowStart;
     const timeEnd    = tlWindowEnd;
-    const totalSpan  = timeEnd - timeStart || 3600000;
+    const windowSpan = timeEnd - timeStart || 3600000;
 
     const wrapW  = wrapEl.clientWidth  || 600;
     const wrapH  = wrapEl.clientHeight || Math.max(300, Math.round(window.innerHeight * 0.65));
 
-    // Pixel-per-ms: fit totalSpan into wrapW with min density
-    const MIN_PX_PER_HOUR = 40;
-    const minW = Math.round((totalSpan / 3600000) * MIN_PX_PER_HOUR);
-    const containerW = Math.max(wrapW, minW);
-    const pxPerMs    = containerW / totalSpan;
+    // Canvas is always 3× the visible width; pxPerMs is derived from that.
+    const containerW = Math.max(3 * wrapW, 900);
+    const pxPerMs    = containerW / windowSpan;
 
     const CARD_W   = 158;
     // CARD_H must match the actual CSS-rendered card height exactly.
@@ -7094,7 +7098,7 @@
     const TICK_CANDIDATES = [60000, 300000, 600000, 900000, 1800000, 3600000,
                               7200000, 21600000, 43200000, 86400000];
     const targetTicks   = Math.max(4, Math.min(10, Math.floor(containerW / 80)));
-    const idealInterval = totalSpan / targetTicks;
+    const idealInterval = windowSpan / targetTicks;
     const tickInterval  = TICK_CANDIDATES.reduce((best, iv) =>
       Math.abs(iv - idealInterval) < Math.abs(best - idealInterval) ? iv : best
     );
@@ -7219,9 +7223,12 @@
       scrollInner.appendChild(card);
     });
 
-    // Scroll to right edge (most recent) after render
+    // Initial scroll: show the MIDDLE third of the canvas.
+    // tlWindowStart is at x=0  → one full screen to the left  of the viewport.
+    // tlWindowEnd   is at x=3W → one full screen to the right of the viewport.
+    // Viewport shows x=[wrapW … 2*wrapW], i.e. the middle third of the time window.
     requestAnimationFrame(() => {
-      wrapEl.scrollLeft = Math.max(0, containerW - wrapW);
+      wrapEl.scrollLeft = wrapW;
     });
   }
 
