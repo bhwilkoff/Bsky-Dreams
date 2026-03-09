@@ -6859,43 +6859,84 @@
   /* ================================================================
      TIMELINE (M13)
   ================================================================ */
-  // Zoom level definitions: [pxPerHour, minEngagement, label]
-  // pxPerHour controls horizontal density; minEngagement filters at wide zoom
+  // Each zoom level: [windowMs, label, minEngagement]
+  // windowMs = total time window shown; minEngagement = min likes+reposts+replies to show post
   const TL_ZOOM_LEVELS = [
-    [30,    20, 'Wide'],
-    [90,    10, '3d'],
-    [240,    5, '12h'],
-    [720,    2, '4h'],    // default (index 3)
-    [2160,   1, '80m'],
-    [7200,   0, '25m'],
-    [21600,  0, '8m'],
+    [7 * 86400000,   '7d',  50],   // 0: 7 days   — top posts only
+    [3 * 86400000,   '3d',  25],   // 1: 3 days
+    [1 * 86400000,   '1d',  10],   // 2: 1 day    ← default
+    [12 * 3600000,   '12h',  5],   // 3: 12 hours
+    [4  * 3600000,   '4h',   2],   // 4: 4 hours
+    [1  * 3600000,   '1h',   0],   // 5: 1 hour   — show all
+    [20 * 60000,     '20m',  0],   // 6: 20 minutes
   ];
 
-  let tlZoomLevel = 3;
-  let tlAllPosts  = [];
+  let tlZoomLevel = 2;       // default: 1 day
+  let tlAllPosts  = [];      // posts for the current window
   let tlQuery     = '';
+  let tlWindowEnd = Date.now();                               // right edge (ms)
+  let tlWindowStart = tlWindowEnd - TL_ZOOM_LEVELS[2][0];   // left edge (ms)
 
   function tlUpdateZoomLabel() {
-    $('timeline-zoom-label').textContent = TL_ZOOM_LEVELS[tlZoomLevel][2];
+    $('timeline-zoom-label').textContent = TL_ZOOM_LEVELS[tlZoomLevel][1];
+  }
+
+  function tlSyncDateInputs() {
+    const fmt = (ms) => {
+      const d = new Date(ms);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    $('timeline-start-input').value = fmt(tlWindowStart);
+    $('timeline-end-input').value   = fmt(tlWindowEnd);
   }
 
   $('timeline-zoom-in-btn').addEventListener('click', () => {
+    if (!tlQuery) return;
     if (tlZoomLevel < TL_ZOOM_LEVELS.length - 1) {
       tlZoomLevel++;
+      const newSpan = TL_ZOOM_LEVELS[tlZoomLevel][0];
+      const centre = (tlWindowStart + tlWindowEnd) / 2;
+      tlWindowStart = centre - newSpan / 2;
+      tlWindowEnd   = centre + newSpan / 2;
       tlUpdateZoomLabel();
-      tlRender();
+      tlSyncDateInputs();
+      tlFetch();
     }
   });
 
   $('timeline-zoom-out-btn').addEventListener('click', () => {
+    if (!tlQuery) return;
     if (tlZoomLevel > 0) {
       tlZoomLevel--;
+      const newSpan = TL_ZOOM_LEVELS[tlZoomLevel][0];
+      const centre = (tlWindowStart + tlWindowEnd) / 2;
+      tlWindowStart = centre - newSpan / 2;
+      tlWindowEnd   = centre + newSpan / 2;
       tlUpdateZoomLabel();
-      tlRender();
+      tlSyncDateInputs();
+      tlFetch();
     }
   });
 
-  $('timeline-search-btn').addEventListener('click', () => tlDoSearch());
+  $('timeline-range-btn').addEventListener('click', () => {
+    const s = new Date($('timeline-start-input').value).getTime();
+    const e = new Date($('timeline-end-input').value).getTime();
+    if (!isNaN(s) && !isNaN(e) && s < e && tlQuery) {
+      tlWindowStart = s;
+      tlWindowEnd   = e;
+      const span = e - s;
+      let best = 0;
+      TL_ZOOM_LEVELS.forEach((z, i) => {
+        if (Math.abs(z[0] - span) < Math.abs(TL_ZOOM_LEVELS[best][0] - span)) best = i;
+      });
+      tlZoomLevel = best;
+      tlUpdateZoomLabel();
+      tlFetch();
+    }
+  });
+
+  $('timeline-search-btn').addEventListener('click', tlDoSearch);
   $('timeline-search-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') tlDoSearch();
   });
@@ -6904,6 +6945,17 @@
     const raw = $('timeline-search-input').value.trim();
     if (!raw) return;
     tlQuery = raw;
+    // Reset window to default zoom (1 day ending now)
+    tlZoomLevel   = 2;
+    tlWindowEnd   = Date.now();
+    tlWindowStart = tlWindowEnd - TL_ZOOM_LEVELS[2][0];
+    tlUpdateZoomLabel();
+    tlSyncDateInputs();
+    tlFetch();
+  }
+
+  async function tlFetch() {
+    if (!tlQuery) return;
 
     const loadingEl = $('timeline-loading');
     const errorEl   = $('timeline-error');
@@ -6914,35 +6966,52 @@
     errorEl.hidden   = true;
     emptyEl.hidden   = true;
     wrapEl.hidden    = true;
+    tlAllPosts = [];
 
     try {
       let posts = [];
+      const raw = tlQuery;
+
       if (raw.startsWith('@')) {
+        // Author feed: walk pages until all posts are before window start
         const handle = raw.replace(/^@/, '');
         let cursor;
-        for (let i = 0; i < 3; i++) {
+        outer: for (let i = 0; i < 6; i++) {
           const data = await API.getAuthorFeedFull(handle, 50, cursor);
           const items = (data.feed || []).filter(item =>
-            !item.reason || item.reason.$type !== 'app.bsky.feed.repost'
+            !item.reason || item.reason.$type !== 'app.bsky.feed.defs#reasonRepost'
           );
-          posts = posts.concat(items.map(item => item.post));
+          for (const item of items) {
+            const t = new Date(item.post?.record?.createdAt || 0).getTime();
+            if (t < tlWindowStart) break outer; // newest-first feed; past the window
+            if (t <= tlWindowEnd) posts.push(item.post);
+          }
           cursor = data.cursor;
-          if (!cursor || (data.feed || []).length < 50) break;
+          if (!cursor || items.length < 50) break;
         }
-      } else if (raw.startsWith('#')) {
-        const data = await API.searchPosts(raw, 'latest', 100);
-        posts = (data.posts || []);
       } else {
-        const data = await API.searchPosts(raw, 'latest', 100);
-        posts = (data.posts || []);
+        // Search: fetch latest + top, client-filter to window
+        const [r1, r2] = await Promise.allSettled([
+          API.searchPosts(raw, 'latest', 100),
+          API.searchPosts(raw, 'top', 100),
+        ]);
+        const all = [
+          ...(r1.status === 'fulfilled' ? r1.value.posts || [] : []),
+          ...(r2.status === 'fulfilled' ? r2.value.posts || [] : []),
+        ];
+        const seen = new Set();
+        for (const p of all) {
+          if (seen.has(p.uri)) continue;
+          seen.add(p.uri);
+          const t = new Date(p.record?.createdAt || 0).getTime();
+          if (t >= tlWindowStart && t <= tlWindowEnd) posts.push(p);
+        }
       }
 
       if (!posts.length) {
         emptyEl.hidden = false;
       } else {
         tlAllPosts = posts;
-        tlZoomLevel = 3;
-        tlUpdateZoomLabel();
         wrapEl.hidden = false;
         requestAnimationFrame(tlRender);
       }
@@ -6959,100 +7028,98 @@
     const wrapEl      = $('timeline-canvas-wrap');
     scrollInner.innerHTML = '';
 
-    const [pxPerHour, minEngagement] = TL_ZOOM_LEVELS[tlZoomLevel];
-    const pxPerMs = pxPerHour / 3600000;
+    const [, , minEngagement] = TL_ZOOM_LEVELS[tlZoomLevel];
 
-    // Filter by engagement; fall back to all posts if none pass threshold
-    let posts = tlAllPosts.filter(p =>
+    // Sort by engagement descending, then apply minEngagement filter
+    // Show top-N posts that fit in the available lanes — most engaged always visible
+    let allSorted = [...tlAllPosts].sort((a, b) =>
+      ((b.likeCount||0) + (b.repostCount||0) + (b.replyCount||0)) -
+      ((a.likeCount||0) + (a.repostCount||0) + (a.replyCount||0))
+    );
+
+    // If minEngagement > 0, keep only posts meeting threshold (fall back to all if none)
+    let filtered = allSorted.filter(p =>
       (p.likeCount||0) + (p.repostCount||0) + (p.replyCount||0) >= minEngagement
     );
-    if (!posts.length) posts = tlAllPosts.slice();
-    if (!posts.length) return;
+    if (!filtered.length) filtered = allSorted;
+    if (!filtered.length) return;
 
-    // Sort oldest → newest (left → right); newest will be at the right edge
-    posts = [...posts].sort((a, b) =>
+    // Sort filtered posts chronologically for placement
+    const posts = [...filtered].sort((a, b) =>
       new Date(a.record?.createdAt||0) - new Date(b.record?.createdAt||0)
     );
 
-    const tFirst    = new Date(posts[0].record?.createdAt||0).getTime();
-    const tLast     = new Date(posts[posts.length - 1].record?.createdAt||0).getTime();
-    const tSpan     = tLast - tFirst || 3600000;
-    const tPad      = Math.max(tSpan * 0.08, 900000); // 8% or min 15 min
-    const timeStart = tFirst - tPad;
-    const timeEnd   = tLast + tPad;
-    const totalSpan = timeEnd - timeStart;
+    // Time axis uses the explicit window
+    const timeStart  = tlWindowStart;
+    const timeEnd    = tlWindowEnd;
+    const totalSpan  = timeEnd - timeStart || 3600000;
 
-    const wrapW      = wrapEl.clientWidth  || 600;
-    // Use actual clientHeight; if still 0 (layout not ready) fall back to viewport estimate
-    const wrapH      = wrapEl.clientHeight || Math.max(300, Math.round(window.innerHeight * 0.65));
-    const containerW = Math.max(wrapW, Math.round(totalSpan * pxPerMs));
+    const wrapW  = wrapEl.clientWidth  || 600;
+    const wrapH  = wrapEl.clientHeight || Math.max(300, Math.round(window.innerHeight * 0.65));
 
-    // Fixed layout constants relative to actual wrap height
-    const AXIS_Y    = Math.round(wrapH / 2);
-    const CARD_W    = 160;
-    const CARD_H    = 78;
-    const LANE_H    = CARD_H + 6;
-    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - 28) / LANE_H));
+    // Pixel-per-ms: fit totalSpan into wrapW with min density
+    const MIN_PX_PER_HOUR = 40;
+    const minW = Math.round((totalSpan / 3600000) * MIN_PX_PER_HOUR);
+    const containerW = Math.max(wrapW, minW);
+    const pxPerMs    = containerW / totalSpan;
+
+    const CARD_W  = 160;
+    const CARD_H  = 72;
+    const GAP     = 8;   // gap between card edge and axis
+    const LANE_H  = CARD_H + 4; // vertical step per lane
+    const AXIS_Y  = Math.round(wrapH / 2);
+    // Max lanes: how many cards can stack above (or below) the axis
+    const MAX_LANES = Math.max(1, Math.floor((AXIS_Y - GAP - 24) / LANE_H));
 
     scrollInner.style.width  = containerW + 'px';
-    scrollInner.style.height = wrapH + 'px'; // explicit — no reliance on CSS height: 100%
+    scrollInner.style.height = wrapH + 'px';
 
-    // ── SVG layer: axis line + tick marks + connectors + dots ──
+    // ── SVG: axis + ticks + connectors + dots ──
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width',  containerW);
     svg.setAttribute('height', wrapH);
     svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:1';
 
-    // Axis line
     const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    axisLine.setAttribute('x1', 0);        axisLine.setAttribute('y1', AXIS_Y);
+    axisLine.setAttribute('x1', 0); axisLine.setAttribute('y1', AXIS_Y);
     axisLine.setAttribute('x2', containerW); axisLine.setAttribute('y2', AXIS_Y);
-    axisLine.setAttribute('stroke', '#0A0A0A');
-    axisLine.setAttribute('stroke-width', '2');
+    axisLine.setAttribute('stroke', '#0A0A0A'); axisLine.setAttribute('stroke-width', '2');
     svg.appendChild(axisLine);
 
-    // Smart tick interval: pick the candidate closest to totalSpan / targetTicks
+    // Smart tick interval
     const TICK_CANDIDATES = [60000, 300000, 600000, 900000, 1800000, 3600000,
-                              7200000, 21600000, 43200000, 86400000, 604800000];
-    const targetTicks  = Math.max(4, Math.min(12, Math.floor(containerW / 90)));
+                              7200000, 21600000, 43200000, 86400000];
+    const targetTicks   = Math.max(4, Math.min(10, Math.floor(containerW / 80)));
     const idealInterval = totalSpan / targetTicks;
     const tickInterval  = TICK_CANDIDATES.reduce((best, iv) =>
       Math.abs(iv - idealInterval) < Math.abs(best - idealInterval) ? iv : best
     );
 
-    // Tick marks aligned to clean time boundaries
     const firstTick = Math.ceil(timeStart / tickInterval) * tickInterval;
     for (let t = firstTick; t <= timeEnd; t += tickInterval) {
       const x = Math.round((t - timeStart) * pxPerMs);
       if (x < 0 || x > containerW) continue;
 
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', x); tick.setAttribute('y1', AXIS_Y - 5);
-      tick.setAttribute('x2', x); tick.setAttribute('y2', AXIS_Y + 5);
-      tick.setAttribute('stroke', '#0A0A0A');
-      tick.setAttribute('stroke-width', '1');
+      tick.setAttribute('x1', x); tick.setAttribute('y1', AXIS_Y - 6);
+      tick.setAttribute('x2', x); tick.setAttribute('y2', AXIS_Y + 6);
+      tick.setAttribute('stroke', '#0A0A0A'); tick.setAttribute('stroke-width', '1');
       svg.appendChild(tick);
 
-      // 12-hour time format
       const d    = new Date(t);
       const h12  = d.getHours() % 12 || 12;
       const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
       const mm   = String(d.getMinutes()).padStart(2, '0');
       let lbl;
-      if (tickInterval >= 86400000) {
-        lbl = `${d.getMonth() + 1}/${d.getDate()}`;
-      } else if (d.getMinutes() === 0) {
-        lbl = `${h12}${ampm}`;
-      } else {
-        lbl = `${h12}:${mm}${ampm}`;
-      }
+      if (tickInterval >= 86400000)      lbl = `${d.getMonth()+1}/${d.getDate()}`;
+      else if (d.getMinutes() === 0)     lbl = `${h12}${ampm}`;
+      else                               lbl = `${h12}:${mm}${ampm}`;
 
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('x', x);
-      label.setAttribute('y', AXIS_Y + 18);
+      label.setAttribute('x', x); label.setAttribute('y', AXIS_Y + 18);
       label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('font-size', '9');
-      label.setAttribute('fill', '#666');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('fill', '#555');
       label.setAttribute('font-family', 'Inter, sans-serif');
       label.textContent = lbl;
       svg.appendChild(label);
@@ -7060,53 +7127,57 @@
 
     scrollInner.appendChild(svg);
 
-    // ── Post cards with lane-based collision avoidance ──
-    const laneAbove = []; // laneAbove[i] = next free x for lane i above axis
-    const laneBelow = [];
-    let aboveTurn   = true;
+    // ── Cards with strict overlap-prevention ──
+    // Tracks the right edge of the last placed card in each lane
+    const laneAboveEnd = new Array(MAX_LANES).fill(-Infinity);
+    const laneBelowEnd = new Array(MAX_LANES).fill(-Infinity);
+    const CARD_MARGIN  = 6; // min horizontal gap between cards in same lane
 
     posts.forEach(post => {
-      const t        = new Date(post.record?.createdAt||0).getTime();
-      const cx       = Math.round((t - timeStart) * pxPerMs);
+      const t   = new Date(post.record?.createdAt || 0).getTime();
+      const cx  = Math.round((t - timeStart) * pxPerMs);
+      // Centre card on cx, clamp to container
       const cardLeft = Math.max(0, Math.min(cx - Math.floor(CARD_W / 2), containerW - CARD_W));
+      const cardRight = cardLeft + CARD_W;
 
-      const findLane = (lanes) => {
-        for (let i = 0; i < MAX_LANES; i++) {
-          if (!lanes[i] || lanes[i] <= cardLeft) return i;
-        }
-        return -1; // no room
-      };
-
-      let laneIdx, isAbove;
-      if (aboveTurn) {
-        laneIdx = findLane(laneAbove);
-        isAbove = laneIdx >= 0;
-        if (!isAbove) { laneIdx = findLane(laneBelow); }
-      } else {
-        laneIdx = findLane(laneBelow);
-        isAbove = false;
-        if (laneIdx < 0) { laneIdx = findLane(laneAbove); isAbove = laneIdx >= 0; }
+      // Find first lane above that has room (cardLeft > laneEnd + margin)
+      let laneAboveIdx = -1;
+      for (let i = 0; i < MAX_LANES; i++) {
+        if (cardLeft >= laneAboveEnd[i] + CARD_MARGIN) { laneAboveIdx = i; break; }
       }
-      aboveTurn = !aboveTurn;
-      if (laneIdx < 0) return; // no space at this zoom level — skip
+      // Find first lane below that has room
+      let laneBelowIdx = -1;
+      for (let i = 0; i < MAX_LANES; i++) {
+        if (cardLeft >= laneBelowEnd[i] + CARD_MARGIN) { laneBelowIdx = i; break; }
+      }
 
-      (isAbove ? laneAbove : laneBelow)[laneIdx] = cardLeft + CARD_W + 4;
+      if (laneAboveIdx < 0 && laneBelowIdx < 0) return; // skip — no room at this zoom
+
+      // Pick above first (alternating doesn't help — always prefer above first, then below)
+      let isAbove, laneIdx;
+      if (laneAboveIdx >= 0 && (laneBelowIdx < 0 || laneAboveIdx <= laneBelowIdx)) {
+        isAbove = true; laneIdx = laneAboveIdx;
+      } else {
+        isAbove = false; laneIdx = laneBelowIdx;
+      }
+
+      if (isAbove) laneAboveEnd[laneIdx] = cardRight;
+      else         laneBelowEnd[laneIdx] = cardRight;
 
       const cardY = isAbove
-        ? AXIS_Y - CARD_H - laneIdx * LANE_H - 8
-        : AXIS_Y + laneIdx * LANE_H + 8;
+        ? AXIS_Y - GAP - CARD_H - laneIdx * LANE_H
+        : AXIS_Y + GAP + laneIdx * LANE_H;
 
-      // Connector line (axis → card edge only)
+      // Connector and dot — only for this card
       const connY = isAbove ? cardY + CARD_H : cardY;
-      const connLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      connLine.setAttribute('x1', cx); connLine.setAttribute('y1', AXIS_Y);
-      connLine.setAttribute('x2', cx); connLine.setAttribute('y2', connY);
-      connLine.setAttribute('stroke', '#0047FF');
-      connLine.setAttribute('stroke-width', '1.5');
-      connLine.setAttribute('stroke-dasharray', '3 2');
-      svg.appendChild(connLine);
+      const conn = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      conn.setAttribute('x1', cx); conn.setAttribute('y1', AXIS_Y);
+      conn.setAttribute('x2', cx); conn.setAttribute('y2', connY);
+      conn.setAttribute('stroke', '#0047FF');
+      conn.setAttribute('stroke-width', '1.5');
+      conn.setAttribute('stroke-dasharray', '3 2');
+      svg.appendChild(conn);
 
-      // Dot on axis at the post's time position
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot.setAttribute('cx', cx); dot.setAttribute('cy', AXIS_Y);
       dot.setAttribute('r', '4');
@@ -7115,11 +7186,11 @@
       dot.setAttribute('stroke-width', '1.5');
       svg.appendChild(dot);
 
-      // Post card
-      const author   = post.author || {};
-      const record   = post.record || {};
-      const text     = (record.text || '').slice(0, 75) + ((record.text||'').length > 75 ? '…' : '');
-      const ts       = record.createdAt ? formatTimestamp(record.createdAt) : '';
+      // Card
+      const author = post.author || {};
+      const record = post.record || {};
+      const text   = (record.text || '').slice(0, 70) + ((record.text||'').length > 70 ? '…' : '');
+      const eng    = (post.likeCount||0) + (post.repostCount||0) + (post.replyCount||0);
 
       const card = document.createElement('div');
       card.className = 'timeline-post-card';
@@ -7131,15 +7202,14 @@
         </div>
         <div class="timeline-card-text">${escHtml(text)}</div>
         <div class="timeline-card-footer">
-          <span class="timeline-card-eng">♥ ${formatCount(post.likeCount||0)}</span>
-          <span class="timeline-card-time">${escHtml(ts)}</span>
+          <span class="timeline-card-eng">♥ ${formatCount(post.likeCount||0)} ↺ ${formatCount(post.repostCount||0)}</span>
         </div>
       `;
       card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
       scrollInner.appendChild(card);
     });
 
-    // Scroll to newest posts (right edge) after layout
+    // Scroll to right edge (most recent) after render
     requestAnimationFrame(() => {
       wrapEl.scrollLeft = Math.max(0, containerW - wrapW);
     });
