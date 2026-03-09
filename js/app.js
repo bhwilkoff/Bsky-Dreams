@@ -915,8 +915,24 @@
       const result = await API.getRecord(session.did, PREFS_COLLECTION, PREFS_RKEY);
       const prefs = result?.value || {};
       if (prefs.savedChannels && Array.isArray(prefs.savedChannels)) {
-        channelsSave(prefs.savedChannels);
+        // Merge cloud channels with local channels. Local channels that haven't
+        // synced yet (e.g. added within the 2s debounce window before a refresh)
+        // are preserved; channels added on other devices are imported.
+        const local   = channelsLoad();
+        const localMap = new Map(local.map((c) => [c.id, c]));
+        let imported = 0;
+        for (const ch of prefs.savedChannels) {
+          if (!localMap.has(ch.id)) {
+            localMap.set(ch.id, ch);
+            imported++;
+          }
+        }
+        const merged = [...localMap.values()];
+        channelsSave(merged);
         renderChannelsSidebar();
+        // If we imported cloud channels not yet in local, push merged state back
+        // so the cloud stays consistent with the full merged set.
+        if (imported > 0) schedulePrefsSync();
       }
       if (prefs.uiPrefs) {
         if (typeof prefs.uiPrefs.hideAdult === 'boolean') {
@@ -2142,6 +2158,17 @@
     }
     schedulePrefsSync(); // M20
   });
+
+  // Set default date range for advanced search: yesterday → today.
+  // These fields should never be blank when the panel is opened.
+  (() => {
+    const toYYYYMMDD = (d) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (advSinceEl && !advSinceEl.value) advSinceEl.value = toYYYYMMDD(yesterday);
+    if (advUntilEl && !advUntilEl.value) advUntilEl.value = toYYYYMMDD(today);
+  })();
 
   // Advanced panel toggle
   advToggleBtn.addEventListener('click', () => {
@@ -6597,7 +6624,8 @@
       const ctx = engCanvas.getContext('2d');
       const dpr = window.devicePixelRatio || 1;
       const W   = engCanvas.offsetWidth  || 300;
-      const H   = 180;
+      // Height: read from CSS (aspect-ratio drives it), fallback to 40% of width
+      const H   = engCanvas.offsetHeight || Math.max(160, Math.round(W * 0.4));
       engCanvas.width  = W * dpr;
       engCanvas.height = H * dpr;
       ctx.scale(dpr, dpr);
@@ -6728,7 +6756,7 @@
       heatmapEl.appendChild(grid);
     }
 
-    /* -- Top posts table -- */
+    /* -- Top posts (full feed cards with rank label outside) -- */
     function renderTopPosts(posts, sort) {
       if (!topPostsEl) return;
       topPostsEl.innerHTML = '';
@@ -6743,36 +6771,22 @@
         return;
       }
 
-      sorted.forEach((post, idx) => {
-        const text = post.record?.text || '';
-        const row  = document.createElement('div');
-        row.className = 'analytics-top-row';
-        row.setAttribute('role', 'listitem');
-        row.innerHTML = `
-          <div class="analytics-top-rank">#${idx + 1}</div>
-          <div class="analytics-top-body">
-            <div class="analytics-top-text">${escHtml(text.slice(0, 120))}${text.length > 120 ? '…' : ''}</div>
-            <div class="analytics-top-stats">
-              <span class="analytics-top-stat" title="Likes">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                ${formatCount(post.likeCount || 0)}
-              </span>
-              <span class="analytics-top-stat" title="Reposts">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                ${formatCount(post.repostCount || 0)}
-              </span>
-              <span class="analytics-top-stat" title="Replies">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                ${formatCount(post.replyCount || 0)}
-              </span>
-              <span class="analytics-top-date">${formatTimestamp(post.record?.createdAt || post.indexedAt)}</span>
-            </div>
-          </div>`;
-        row.addEventListener('click', () => {
-          const author = post.author?.handle || '';
-          openThread(post.uri, post.cid, author);
-        });
-        topPostsEl.appendChild(row);
+      sorted.forEach((post, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'analytics-ranked-post';
+        wrapper.setAttribute('role', 'listitem');
+
+        // Rank label shown outside (above) the card
+        const rank = document.createElement('div');
+        rank.className = 'analytics-post-rank';
+        rank.textContent = `#${i + 1}`;
+
+        // Full feed card — same rendering as Discovery/Following feed
+        const card = buildPostCard(post, { clickable: true });
+
+        wrapper.appendChild(rank);
+        wrapper.appendChild(card);
+        topPostsEl.appendChild(wrapper);
       });
     }
 
