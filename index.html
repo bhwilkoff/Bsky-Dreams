@@ -179,10 +179,6 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <span>Search</span>
         </button>
-        <button class="sidebar-nav-item" id="nav-analytics-btn" data-view="analytics">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span>Analytics</span>
-        </button>
         <button class="sidebar-nav-item" id="nav-timeline-btn" data-view="timeline">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>
           <span>Timeline</span>
@@ -771,38 +767,7 @@
       </div>
     </section>
 
-    <!-- ---- TIMELINE SCRUBBER VIEW (M13) ---- -->
-    <section id="view-timeline" class="view" hidden aria-labelledby="timeline-heading">
-      <div class="view-inner view-inner--no-overflow">
-        <div class="thread-header timeline-header">
-          <button class="btn btn-ghost back-btn" id="timeline-back-btn" aria-label="Back to search results">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-            Back
-          </button>
-          <h2 id="timeline-heading" class="thread-heading" id="timeline-title">Timeline</h2>
-          <div class="timeline-zoom-btns" role="group" aria-label="Zoom level">
-            <button class="timeline-zoom-btn active" data-zoom="hours">Hours</button>
-            <button class="timeline-zoom-btn" data-zoom="days">Days</button>
-          </div>
-        </div>
 
-        <!-- Horizontal scrollable rail -->
-        <div class="timeline-outer" id="timeline-outer">
-          <div class="timeline-rail" id="timeline-rail" role="list" aria-label="Posts on timeline">
-            <!-- Rendered by app.js -->
-          </div>
-          <!-- Time axis: rendered below the rail by app.js -->
-          <div class="timeline-axis" id="timeline-axis" aria-hidden="true"></div>
-        </div>
-
-        <div id="timeline-empty" class="feed-empty" hidden>
-          <p>No dated posts found for this search.</p>
-        </div>
-        <div id="timeline-loading" class="analytics-loading" hidden>
-          <span class="loading-dots">Loading timeline…</span>
-        </div>
-      </div>
-    </section>
 
   </div><!-- /#app-screen -->
 
@@ -1064,39 +1029,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       ANALYTICS VIEW (M22)
-  ============================================================ -->
-  <section id="view-analytics" class="view" hidden aria-labelledby="analytics-heading">
-    <div class="view-inner">
-      <div class="analytics-header">
-        <h2 id="analytics-heading" class="view-heading">Analytics</h2>
-        <div class="analytics-actor-row">
-          <div class="analytics-actor-search-wrap">
-            <input type="text" id="analytics-actor-input" class="field-input analytics-actor-input"
-                   placeholder="@handle or your own" autocomplete="off" autocapitalize="none" spellcheck="false">
-            <div id="analytics-actor-dropdown" class="mention-dropdown" hidden></div>
-          </div>
-          <button id="analytics-load-btn" class="btn btn-primary analytics-load-btn">Load</button>
-        </div>
-      </div>
-      <div id="analytics-loading" class="analytics-loading" hidden>Loading analytics…</div>
-      <div id="analytics-error" class="error-banner" hidden role="alert"></div>
-      <div id="analytics-content" hidden>
-        <div class="analytics-summary-grid" id="analytics-summary-grid"></div>
-        <div class="analytics-section">
-          <h3 class="analytics-section-title">Engagement Per Post</h3>
-          <div class="analytics-chart-outer">
-            <canvas id="analytics-engagement-chart" class="analytics-chart-canvas"></canvas>
-          </div>
-        </div>
-        <div class="analytics-section">
-          <h3 class="analytics-section-title">Top Posts</h3>
-          <div id="analytics-top-posts" class="analytics-top-posts"></div>
-        </div>
-      </div>
-    </div>
-  </section>
+
 
   <!-- ============================================================
        TIMELINE VIEW (M13)

@@ -1407,13 +1407,6 @@
   }
 
   /* ================================================================
-     M22 — ANALYTICS DASHBOARD + M13 — TIMELINE SCRUBBER (DOM refs)
-  ================================================================ */
-  const navAnalyticsBtn = $('nav-analytics-btn');
-  const viewAnalytics   = $('view-analytics');
-  const viewTimeline    = $('view-timeline');
-
-  /* ================================================================
      M37 — IMAGE GALLERY VIEW
   ================================================================ */
   const navGalleryBtn  = $('nav-gallery-btn');
@@ -1841,9 +1834,6 @@
       loadGallery();
     } else if (urlView === 'analytics') {
       showView('analytics', true);
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-      loadAnalytics();
     } else if (urlView === 'compose') {
       showView('compose', true);
       const shareText = p.get('shareText');
@@ -1857,19 +1847,8 @@
       }
       // Strip share params from URL so Back doesn't re-trigger compose pre-fill
       history.replaceState({ view: 'compose' }, '', '?view=compose');
-=======
-=======
->>>>>>> Stashed changes
-      if (ownProfile) {
-        $('analytics-actor-input').value = ownProfile.handle || '';
-        loadAnalytics(ownProfile.handle);
-      }
     } else if (urlView === 'timeline') {
       showView('timeline', true);
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -1929,14 +1908,7 @@
       tv:            navTvBtn,
       gallery:       navGalleryBtn,
       analytics:     navAnalyticsBtn,
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
       timeline:      navTimelineBtn,
->>>>>>> Stashed changes
-=======
-      timeline:      navTimelineBtn,
->>>>>>> Stashed changes
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -2001,16 +1973,8 @@
         url = '?view=gallery';
       } else if (name === 'analytics') {
         url = '?view=analytics';
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
       } else if (name === 'timeline') {
         url = '?view=timeline';
->>>>>>> Stashed changes
-=======
-      } else if (name === 'timeline') {
-        url = '?view=timeline';
->>>>>>> Stashed changes
       }
       history.pushState(state, '', url);
     }
@@ -2757,15 +2721,7 @@
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics/timeline
-=======
     const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
->>>>>>> Stashed changes
-=======
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
->>>>>>> Stashed changes
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -6618,8 +6574,6 @@
   }
 
   /* ================================================================
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
      M22 — ANALYTICS DASHBOARD
   ================================================================ */
   (() => {
@@ -6908,453 +6862,6 @@
       }, 150);
     });
   })();
-
-  /* ================================================================
-     M13 — HORIZONTAL EVENT TIMELINE SCRUBBER
-  ================================================================ */
-  (() => {
-    let timelinePosts  = [];
-    let timelineZoom   = 'hours'; // 'hours' | 'days'
-    let timelineQuery  = '';
-
-    const rail        = $('timeline-rail');
-    const axis        = $('timeline-axis');
-    const emptyEl     = $('timeline-empty');
-    const loadingTl   = $('timeline-loading');
-    const backBtn     = $('timeline-back-btn');
-    const titleEl     = $('timeline-heading');
-    const zoomBtns    = document.querySelectorAll('.timeline-zoom-btn');
-
-    // Timeline toggle buttons in search view
-    const viewToggles  = $('search-view-toggles');
-    const listBtn      = $('search-view-list');
-    const tlBtn        = $('search-view-timeline');
-
-    // Show/hide the view toggle bar after a post search
-    function showSearchViewToggles(show) {
-      if (viewToggles) viewToggles.hidden = !show;
-      if (listBtn) listBtn.classList.toggle('active', show);
-      if (tlBtn)   tlBtn.setAttribute('aria-pressed', 'false');
-    }
-
-    // Hook into search form submit: show toggles on post search results
-    const origSearchHandler = searchForm._tlHooked;
-    if (!origSearchHandler) {
-      searchForm._tlHooked = true;
-      searchForm.addEventListener('submit', () => {
-        // Hide toggles initially; show after results render
-        if (viewToggles) viewToggles.hidden = true;
-      });
-    }
-
-    // Override the search form to show toggles after post search
-    const origSearchSubmit = searchForm.onsubmit;
-    // After renderPostFeed is called from the search handler, show the toggles
-    // We intercept by patching showSaveChannelBtn which is called right after rendering
-    const _origShowSaveChannelBtn = window._showSaveChannelBtnPatched;
-    if (!_origShowSaveChannelBtn) {
-      window._showSaveChannelBtnPatched = true;
-      // Watch for changes to searchResults to detect post search completion
-      new MutationObserver(() => {
-        const hasPostCards = searchResults.querySelector('.post-card');
-        if (viewToggles) {
-          viewToggles.hidden = !hasPostCards || lastSearchType !== 'posts';
-        }
-      }).observe(searchResults, { childList: true });
-    }
-
-    if (listBtn) {
-      listBtn.addEventListener('click', () => {
-        listBtn.classList.add('active');
-        listBtn.setAttribute('aria-pressed', 'true');
-        tlBtn.classList.remove('active');
-        tlBtn.setAttribute('aria-pressed', 'false');
-        searchResults.hidden = false;
-      });
-    }
-
-    if (tlBtn) {
-      tlBtn.addEventListener('click', () => {
-        tlBtn.classList.add('active');
-        tlBtn.setAttribute('aria-pressed', 'true');
-        listBtn.classList.remove('active');
-        listBtn.setAttribute('aria-pressed', 'false');
-        openTimeline(lastSearchQuery, lastSearchResults);
-      });
-    }
-
-    function openTimeline(query, posts) {
-      timelinePosts = (posts || []).slice();
-      timelineQuery = query || '';
-      if (titleEl) titleEl.textContent = `Timeline: ${timelineQuery}`;
-      showView('timeline');
-      renderTimeline();
-    }
-
-    window.openTimeline = openTimeline;
-
-    function renderTimeline() {
-      if (!rail) return;
-      rail.innerHTML   = '';
-      if (axis) axis.innerHTML = '';
-      emptyEl.hidden   = true;
-      loadingTl.hidden = true;
-
-      // Filter to posts with valid dates, sort chronologically
-      const dated = timelinePosts
-        .filter((p) => p.record?.createdAt || p.indexedAt)
-        .sort((a, b) => {
-          const ta = new Date(a.record?.createdAt || a.indexedAt).getTime();
-          const tb = new Date(b.record?.createdAt || b.indexedAt).getTime();
-          return ta - tb;
-        });
-
-      if (!dated.length) {
-        emptyEl.hidden = false;
-        return;
-      }
-
-      const firstMs = new Date(dated[0].record?.createdAt || dated[0].indexedAt).getTime();
-      const lastMs  = new Date(dated[dated.length - 1].record?.createdAt || dated[dated.length - 1].indexedAt).getTime();
-      const spanMs  = Math.max(lastMs - firstMs, 1);
-
-      // Card width + min spacing
-      const CARD_W   = 200;
-      const MIN_STEP = 220;
-      const PAD      = 24;
-      const RAIL_H   = 220;
-
-      // Total rail width: proportional to time span, or min-step × posts
-      const railW = Math.max(MIN_STEP * dated.length, 600);
-      rail.style.width  = `${railW + PAD * 2}px`;
-      rail.style.height = `${RAIL_H}px`;
-      rail.style.position = 'relative';
-
-      dated.forEach((post, i) => {
-        const postMs = new Date(post.record?.createdAt || post.indexedAt).getTime();
-        const frac   = spanMs > 0 ? (postMs - firstMs) / spanMs : i / Math.max(dated.length - 1, 1);
-        const x      = PAD + Math.round(frac * (railW - CARD_W));
-
-        const card = document.createElement('article');
-        card.className   = 'timeline-card';
-        card.setAttribute('role', 'listitem');
-        card.style.left  = `${x}px`;
-
-        const author  = post.author || {};
-        const text    = post.record?.text || '';
-        const dateStr = formatTimestamp(post.record?.createdAt || post.indexedAt);
-
-        card.innerHTML = `
-          <div class="timeline-card-header">
-            <img src="${escHtml(author.avatar || '')}" alt="" class="timeline-card-avatar"
-                 onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
-            <span class="timeline-card-handle">@${escHtml(author.handle || '')}</span>
-            <span class="timeline-card-time">${escHtml(dateStr)}</span>
-          </div>
-          <p class="timeline-card-text">${escHtml(text.slice(0, 140))}${text.length > 140 ? '…' : ''}</p>
-          <div class="timeline-card-stats">
-            <span>${formatCount(post.likeCount || 0)} ♥</span>
-            <span>${formatCount(post.repostCount || 0)} ↺</span>
-          </div>`;
-
-        card.addEventListener('click', () => {
-          openThread(post.uri, post.cid, author.handle || '');
-        });
-
-        // Connector line down to axis
-        const line = document.createElement('div');
-        line.className = 'timeline-connector';
-        line.style.left = `${x + CARD_W / 2}px`;
-        rail.appendChild(line);
-
-        rail.appendChild(card);
-      });
-
-      // Render time axis
-      if (axis) {
-        axis.style.width = `${railW + PAD * 2}px`;
-        renderTimeAxis(dated, firstMs, lastMs, railW, PAD, CARD_W);
-      }
-    }
-
-    function renderTimeAxis(dated, firstMs, lastMs, railW, PAD, CARD_W) {
-      if (!axis) return;
-      axis.innerHTML = '';
-      const spanMs = Math.max(lastMs - firstMs, 1);
-
-      // Choose tick interval based on zoom and span
-      let tickMs;
-      if (timelineZoom === 'hours') {
-        tickMs = 60 * 60 * 1000; // 1 hour
-        if (spanMs > 24 * 60 * 60 * 1000) tickMs = 3 * 60 * 60 * 1000;
-      } else {
-        tickMs = 24 * 60 * 60 * 1000; // 1 day
-      }
-
-      const tickStart = Math.ceil(firstMs / tickMs) * tickMs;
-      for (let t = tickStart; t <= lastMs; t += tickMs) {
-        const frac = (t - firstMs) / spanMs;
-        const x    = PAD + Math.round(frac * (railW - CARD_W)) + CARD_W / 2;
-
-        const tick = document.createElement('div');
-        tick.className = 'timeline-axis-tick';
-        tick.style.left = `${x}px`;
-
-        const label = document.createElement('span');
-        label.className = 'timeline-axis-label';
-        const d = new Date(t);
-        if (timelineZoom === 'hours') {
-          label.textContent = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        } else {
-          label.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        }
-        tick.appendChild(label);
-        axis.appendChild(tick);
-      }
-    }
-
-    // Zoom button toggle
-    zoomBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        zoomBtns.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        timelineZoom = btn.dataset.zoom;
-        renderTimeline();
-      });
-    });
-
-    // Back button
-    if (backBtn) {
-      backBtn.addEventListener('click', () => {
-        showView('search', true);
-        // Re-activate list view state
-        if (listBtn) listBtn.classList.add('active');
-        if (tlBtn)   tlBtn.classList.remove('active');
-      });
-    }
-  })();
-=======
-=======
->>>>>>> Stashed changes
-     ANALYTICS (M22)
-  ================================================================ */
-  let analyticsCurrentActor = null;
-
-  async function loadAnalytics(actor) {
-    const loadingEl = $('analytics-loading');
-    const errorEl   = $('analytics-error');
-    const contentEl = $('analytics-content');
-    const actorInput = $('analytics-actor-input');
-
-    // Default to own profile
-    if (!actor) {
-      actor = ownProfile?.handle || ownProfile?.did;
-      if (!actor) { showError(errorEl, 'Please enter a handle to analyze.'); return; }
-      if (actorInput && !actorInput.value) actorInput.value = ownProfile?.handle || '';
-    }
-    actor = actor.trim().replace(/^@/, '');
-    analyticsCurrentActor = actor;
-
-    loadingEl.hidden = false;
-    contentEl.hidden = true;
-    hideError(errorEl);
-
-    try {
-      // Fetch up to 2 pages of author feed (50 per page)
-      let allPosts = [];
-      let cursor = undefined;
-      for (let i = 0; i < 2; i++) {
-        const data = await API.getAuthorFeedFull(actor, 50, cursor);
-        const items = data.feed || [];
-        // Filter: only original posts by this user (exclude reposts)
-        const ownPosts = items.filter(item =>
-          !item.reason || item.reason.$type !== 'app.bsky.feed.repost'
-        );
-        allPosts = allPosts.concat(ownPosts.map(item => item.post));
-        cursor = data.cursor;
-        if (!cursor || items.length < 50) break;
-      }
-
-      if (!allPosts.length) {
-        showError(errorEl, 'No original posts found for this account.');
-        loadingEl.hidden = true;
-        return;
-      }
-
-      renderAnalytics(allPosts);
-      contentEl.hidden = false;
-    } catch (err) {
-      showError(errorEl, 'Could not load analytics: ' + (err.message || 'Unknown error'));
-    } finally {
-      loadingEl.hidden = true;
-    }
-  }
-
-  function renderAnalytics(posts) {
-    // Sort oldest first for chart
-    const sorted = [...posts].sort((a, b) => new Date(a.record?.createdAt || 0) - new Date(b.record?.createdAt || 0));
-
-    const totalLikes    = posts.reduce((s, p) => s + (p.likeCount || 0), 0);
-    const totalReposts  = posts.reduce((s, p) => s + (p.repostCount || 0), 0);
-    const totalPosts    = posts.length;
-    const avgLikes      = totalPosts ? Math.round(totalLikes / totalPosts) : 0;
-
-    // Summary cards
-    const grid = $('analytics-summary-grid');
-    grid.innerHTML = '';
-    const stats = [
-      { label: 'Posts Analyzed', value: totalPosts, color: 'var(--color-accent)' },
-      { label: 'Total Likes',    value: totalLikes.toLocaleString(), color: 'var(--color-blue)' },
-      { label: 'Total Reposts',  value: totalReposts.toLocaleString(), color: 'var(--color-lime)' },
-      { label: 'Avg Likes',      value: avgLikes,    color: 'var(--color-accent)' },
-    ];
-    stats.forEach(({ label, value, color }) => {
-      const card = document.createElement('div');
-      card.className = 'analytics-stat-card';
-      card.innerHTML = `<div class="analytics-stat-value" style="color:${color}">${value}</div><div class="analytics-stat-label">${escHtml(label)}</div>`;
-      grid.appendChild(card);
-    });
-
-    // Engagement chart using Canvas API
-    drawEngagementChart(sorted);
-
-    // Top posts
-    const topPosts = [...posts]
-      .sort((a, b) => ((b.likeCount||0) + (b.repostCount||0) + (b.replyCount||0)) - ((a.likeCount||0) + (a.repostCount||0) + (a.replyCount||0)))
-      .slice(0, 10);
-    renderTopPosts(topPosts);
-  }
-
-  function drawEngagementChart(sortedPosts) {
-    const canvas = $('analytics-engagement-chart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    // Set canvas size to container width
-    const wrap = canvas.parentElement;
-    const W = Math.max(300, wrap.clientWidth || 320);
-    const H = Math.min(200, Math.round(W * 0.4));
-    canvas.width  = W;
-    canvas.height = H;
-
-    const PAD = { top: 16, right: 16, bottom: 40, left: 44 };
-    const chartW = W - PAD.left - PAD.right;
-    const chartH = H - PAD.top - PAD.bottom;
-
-    const likes   = sortedPosts.map(p => p.likeCount   || 0);
-    const reposts = sortedPosts.map(p => p.repostCount || 0);
-    const maxVal  = Math.max(1, ...likes, ...reposts);
-
-    const n = sortedPosts.length;
-    const barW = Math.max(2, Math.floor(chartW / (n * 2.5)));
-
-    // Background
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, W, H);
-
-    // Grid lines
-    ctx.strokeStyle = '#E0E0E0';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = PAD.top + chartH - (chartH * i / 4);
-      ctx.beginPath();
-      ctx.moveTo(PAD.left, y);
-      ctx.lineTo(PAD.left + chartW, y);
-      ctx.stroke();
-      // Y labels
-      ctx.fillStyle = '#666';
-      ctx.font = `10px Inter, sans-serif`;
-      ctx.textAlign = 'right';
-      ctx.fillText(Math.round(maxVal * i / 4).toString(), PAD.left - 4, y + 3);
-    }
-
-    // Bars
-    sortedPosts.forEach((p, i) => {
-      const x = PAD.left + (i / n) * chartW;
-      const slotW = chartW / n;
-      const bw = Math.min(barW, slotW * 0.4);
-
-      // Likes (coral)
-      const lh = (likes[i] / maxVal) * chartH;
-      ctx.fillStyle = '#FF5C35';
-      ctx.fillRect(x + slotW * 0.1, PAD.top + chartH - lh, bw, lh);
-
-      // Reposts (blue)
-      const rh = (reposts[i] / maxVal) * chartH;
-      ctx.fillStyle = '#0047FF';
-      ctx.fillRect(x + slotW * 0.1 + bw + 1, PAD.top + chartH - rh, bw, rh);
-    });
-
-    // X axis labels (show up to 6 dates)
-    ctx.fillStyle = '#666';
-    ctx.font = `10px Inter, sans-serif`;
-    ctx.textAlign = 'center';
-    const step = Math.max(1, Math.floor(n / 6));
-    sortedPosts.forEach((p, i) => {
-      if (i % step !== 0) return;
-      const x = PAD.left + (i / n) * chartW + (chartW / n) * 0.5;
-      const d = new Date(p.record?.createdAt || '');
-      const label = isNaN(d) ? '' : `${d.getMonth()+1}/${d.getDate()}`;
-      ctx.fillText(label, x, H - PAD.bottom + 14);
-    });
-
-    // Legend
-    ctx.fillStyle = '#FF5C35';
-    ctx.fillRect(PAD.left, H - 10, 10, 8);
-    ctx.fillStyle = '#333';
-    ctx.font = '10px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Likes', PAD.left + 13, H - 3);
-    ctx.fillStyle = '#0047FF';
-    ctx.fillRect(PAD.left + 55, H - 10, 10, 8);
-    ctx.fillStyle = '#333';
-    ctx.fillText('Reposts', PAD.left + 68, H - 3);
-
-    // Border
-    ctx.strokeStyle = '#0A0A0A';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(PAD.left, PAD.top, chartW, chartH);
-  }
-
-  function renderTopPosts(topPosts) {
-    const container = $('analytics-top-posts');
-    container.innerHTML = '';
-    topPosts.forEach((post, i) => {
-      const author = post.author || {};
-      const record = post.record || {};
-      const text = (record.text || '').slice(0, 140) + ((record.text || '').length > 140 ? '…' : '');
-      const ts = record.createdAt ? new Date(record.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-
-      const card = document.createElement('div');
-      card.className = 'analytics-top-post-card';
-      card.innerHTML = `
-        <div class="analytics-top-post-rank">#${i+1}</div>
-        <div class="analytics-top-post-body">
-          <div class="analytics-top-post-text">${escHtml(text)}</div>
-          <div class="analytics-top-post-meta">
-            <span class="analytics-top-post-stat"><strong>${formatCount(post.likeCount||0)}</strong> likes</span>
-            <span class="analytics-top-post-stat"><strong>${formatCount(post.repostCount||0)}</strong> reposts</span>
-            <span class="analytics-top-post-stat"><strong>${formatCount(post.replyCount||0)}</strong> replies</span>
-            <span class="analytics-top-post-date">${escHtml(ts)}</span>
-          </div>
-        </div>
-      `;
-      card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
-      container.appendChild(card);
-    });
-  }
-
-  // Wire up analytics load button and actor input
-  $('analytics-load-btn').addEventListener('click', () => {
-    const val = $('analytics-actor-input').value.trim().replace(/^@/, '');
-    loadAnalytics(val || null);
-  });
-  $('analytics-actor-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') $('analytics-load-btn').click();
-  });
-
-  // Attach mention autocomplete to analytics actor input
-  attachMentionAutocomplete($('analytics-actor-input'));
 
   /* ================================================================
      TIMELINE (M13)
@@ -7655,10 +7162,6 @@
 
   // Attach autocomplete to timeline search
   attachMentionAutocomplete($('timeline-search-input'));
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
   /* ================================================================
      BOOT
