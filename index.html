@@ -1163,7 +1163,13 @@
       <a id="inapp-reader-original" class="inapp-reader-original-link" href="#" target="_blank" rel="noopener noreferrer">Open original ↗</a>
     </div>
     <div class="inapp-reader-body">
-      <div id="inapp-reader-loading" class="inapp-reader-status" hidden>Fetching article…</div>
+      <div id="inapp-reader-loading" class="inapp-reader-loading-panel" hidden>
+        <div id="inapp-reader-progress-label" class="inapp-reader-progress-label">Starting…</div>
+        <div class="inapp-reader-progress-track">
+          <div id="inapp-reader-progress-bar" class="inapp-reader-progress-bar" style="width:0%"></div>
+        </div>
+        <ol id="inapp-reader-steps" class="inapp-reader-steps"></ol>
+      </div>
       <div id="inapp-reader-error" class="inapp-reader-status inapp-reader-error" hidden></div>
       <article class="inapp-reader-article" id="inapp-reader-article" hidden>
         <h1 id="inapp-reader-title" class="inapp-reader-article-title"></h1>

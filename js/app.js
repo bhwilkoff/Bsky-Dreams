@@ -2220,6 +2220,10 @@
     inappReaderContent.innerHTML = '';
     inappReaderTitle.textContent = '';
     inappReaderByline.textContent = '';
+    const stepsEl = $('inapp-reader-steps');
+    if (stepsEl) stepsEl.innerHTML = '';
+    const bar = $('inapp-reader-progress-bar');
+    if (bar) bar.style.width = '0%';
   }
 
   inappReaderClose.addEventListener('click', closeInAppReader);
@@ -2232,9 +2236,51 @@
   /**
    * Fetch the article at `url`, parse with Readability, and display in the overlay.
    * Uses allorigins.win as a CORS proxy (same as link preview in compose).
+   * Shows live step-by-step progress through each phase.
    */
   async function openInAppReader(url, cardTitle) {
     if (!inappReaderOverlay) return;
+
+    const progressBar   = $('inapp-reader-progress-bar');
+    const progressLabel = $('inapp-reader-progress-label');
+    const stepsEl       = $('inapp-reader-steps');
+
+    // Step log helpers
+    let stepItems = [];
+    function addStep(label) {
+      const li = document.createElement('li');
+      li.className = 'inapp-reader-step step-active';
+      const icon = document.createElement('span');
+      icon.className = 'inapp-reader-step-icon';
+      const text = document.createElement('span');
+      text.textContent = label;
+      li.appendChild(icon);
+      li.appendChild(text);
+      // Mark any previous active step as done
+      stepItems.forEach((s) => {
+        if (s.classList.contains('step-active')) {
+          s.classList.remove('step-active');
+          s.classList.add('step-done');
+          s.querySelector('.inapp-reader-step-icon').textContent = '✓';
+        }
+      });
+      stepsEl.appendChild(li);
+      stepItems.push(li);
+      return li;
+    }
+    function failStep(msg) {
+      const last = stepItems[stepItems.length - 1];
+      if (last) {
+        last.classList.remove('step-active');
+        last.classList.add('step-error');
+        last.querySelector('.inapp-reader-step-icon').textContent = '✗';
+        last.querySelector('span:last-child').textContent = msg;
+      }
+    }
+    function setProgress(pct, label) {
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = label;
+    }
 
     // Show overlay in loading state
     inappReaderOverlay.hidden = false;
@@ -2242,8 +2288,10 @@
     inappReaderError.hidden   = true;
     inappReaderArticle.hidden = true;
     inappReaderContent.innerHTML = '';
+    stepsEl.innerHTML = '';
+    stepItems = [];
 
-    // Set toolbar metadata
+    // Set toolbar metadata immediately
     let hostname = '';
     try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { /* skip */ }
     inappReaderDomain.textContent = hostname;
@@ -2254,41 +2302,76 @@
     if (body) body.scrollTop = 0;
 
     try {
-      // Fetch via allorigins CORS proxy
+      // Phase 1 — contact proxy
+      setProgress(10, 'Contacting proxy…');
+      addStep(`Sending request to proxy for ${hostname}`);
+
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
       const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+      if (!res.ok) throw new Error(`Proxy returned HTTP ${res.status}`);
+
+      // Phase 2 — download response
+      setProgress(45, 'Downloading article…');
+      addStep('Proxy responded — downloading page');
+
       const data = await res.json();
-      if (!data?.contents) throw new Error('No content returned from proxy');
+      const html = data?.contents;
+      if (!html) throw new Error('Proxy returned no page content');
 
-      // Parse with Readability
+      const kbSize = Math.round(html.length / 1024);
+      addStep(`Downloaded ${kbSize > 0 ? kbSize + ' KB' : 'page'} of HTML`);
+      setProgress(65, 'Parsing HTML…');
+
+      // Phase 3 — parse HTML
+      addStep('Parsing HTML document');
       const parser = new DOMParser();
-      const doc = parser.parseFromString(data.contents, 'text/html');
+      const doc = parser.parseFromString(html, 'text/html');
 
-      // Fix relative URLs in the parsed doc so images/links work
+      // Fix relative URLs so images/links resolve correctly
       const base = doc.createElement('base');
       base.href = url;
       doc.head.prepend(base);
 
+      setProgress(80, 'Extracting article…');
+
+      // Phase 4 — run Readability
+      addStep('Extracting article content');
       if (typeof Readability === 'undefined') throw new Error('Readability library not loaded');
       const reader = new Readability(doc);
       const article = reader.parse();
 
-      if (!article) throw new Error('Could not extract article content. The page may require JavaScript or a login.');
+      if (!article) throw new Error('Could not extract article — page may require JavaScript or a login');
 
-      // Render
-      inappReaderTitle.textContent = article.title || cardTitle || 'Article';
-      inappReaderByline.textContent = article.byline || '';
-      // article.content is sanitized HTML from Readability — safe to set
-      inappReaderContent.innerHTML = article.content || '';
+      setProgress(95, 'Rendering…');
+      addStep(`Extracted "${article.title || cardTitle || 'Article'}"` +
+              (article.byline ? ` · ${article.byline}` : ''));
+
+      // Render article
+      inappReaderTitle.textContent   = article.title || cardTitle || 'Article';
+      inappReaderByline.textContent  = article.byline || '';
+      inappReaderContent.innerHTML   = article.content || '';
+
+      // Mark final step done and finish bar
+      const last = stepItems[stepItems.length - 1];
+      if (last) {
+        last.classList.remove('step-active');
+        last.classList.add('step-done');
+        last.querySelector('.inapp-reader-step-icon').textContent = '✓';
+      }
+      setProgress(100, 'Done');
+
+      // Brief pause so the user sees 100% before the content replaces the panel
+      await new Promise((r) => setTimeout(r, 320));
 
       inappReaderLoading.hidden = true;
       inappReaderArticle.hidden = false;
 
     } catch (err) {
-      inappReaderLoading.hidden = true;
-      inappReaderError.hidden   = false;
-      inappReaderError.textContent = `Could not load article: ${err.message || 'Unknown error'}. Try opening it directly or via Archive.`;
+      failStep(err.message || 'Unknown error');
+      setProgress(progressBar ? parseInt(progressBar.style.width) : 0, 'Failed');
+      // Show error below the step log rather than replacing it
+      inappReaderError.hidden = false;
+      inappReaderError.textContent = `${err.message || 'Unknown error'}. Try opening the article directly or via Archive mode.`;
     }
   }
 

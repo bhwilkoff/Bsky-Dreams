@@ -6170,3 +6170,83 @@ a.post-timestamp:hover {
     padding: var(--space-xl) var(--space-xl);
   }
 }
+
+/* ---- Reader progress panel ---- */
+.inapp-reader-loading-panel {
+  max-width: 480px;
+  margin: var(--space-xl) auto;
+  padding: var(--space-lg) var(--space-md);
+}
+
+.inapp-reader-progress-label {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  margin-bottom: var(--space-sm);
+}
+
+.inapp-reader-progress-track {
+  height: 6px;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--nb-black);
+  overflow: hidden;
+  margin-bottom: var(--space-md);
+}
+
+.inapp-reader-progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.inapp-reader-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inapp-reader-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  transition: color 0.2s;
+}
+
+.inapp-reader-step.step-active {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.inapp-reader-step.step-done {
+  color: var(--color-text-muted);
+}
+
+.inapp-reader-step.step-error {
+  color: var(--color-error, #c0392b);
+}
+
+.inapp-reader-step-icon {
+  font-size: 0.75rem;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Spinning dots for active step */
+.inapp-reader-step.step-active .inapp-reader-step-icon::after {
+  content: '⋯';
+  animation: readerDots 1.2s infinite;
+}
+
+@keyframes readerDots {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
