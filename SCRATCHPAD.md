@@ -9,7 +9,7 @@ batch (M52–M65), mobile zoom prevention (viewport + input font-size fix), iOS 
 + URL param routing), accent color picker in Settings, Klipy brand attribution, and M22 Analytics Dashboard +
 M13 Horizontal Timeline Scrubber.
 
-**Next focus:** M14 (Network Constellation), M16 (Direct Messages).
+**Next focus:** M14 (Network Constellation), M16 (Direct Messages), M-Reader polish.
 
 ---
 
@@ -368,6 +368,17 @@ M13 Horizontal Timeline Scrubber.
 - **Zoom toggle**: Hours / Days buttons; re-renders rail and axis on change
 - **Back button**: returns to search view and resets toggle button state
 - **`openTimeline(query, posts)`** exported to `window` for future programmatic use
+
+### M-Reader: Article Reader View ✅
+- **Entry**: "Reader" nav item in sidebar (open book icon); `?view=reader` deep-link supported
+- **Filtering**: `getArticleEmbed(post)` returns the `external` embed only for posts with readable link cards — excludes GIFs, social media domains (Twitter/X, Instagram, YouTube, Reddit, etc.), direct media file links, and embeds with titles under 12 chars
+- **Article cards**: thumbnail (16:7 aspect crop), domain label (accent color, uppercase), publication date (parsed from URL path patterns `/YYYY/MM/DD/`, `/YYYY-MM-DD`, `/YYYYMMDD`; falls back to post indexedAt), Syne bold title, description snippet, author strip with avatar/name/handle
+- **Seen tracking**: separate `bsky_reader_seen` localStorage key (Set of article URLs, max 10k); articles only marked seen when clicked/opened (not at render time); seen cards get dashed border + reduced opacity; "Mark all read" button bulk-dismisses all visible cards
+- **Archive/paywall toggle**: 3-way mode group (Direct / Bypass / Wayback); Bypass uses `12ft.io/proxy?q=` to strip soft paywalls; Wayback uses `web.archive.org/web/` for archived versions; selected mode applied to every card click
+- **Infinite scroll** + **pull-to-refresh** + **scroll-to-top** (same pattern as Gallery)
+- **Post conversation**: "Post" button on each card opens the original Bluesky thread without navigating away from Reader
+- **Like / Repost** with optimistic update + rollback on each card's author strip
+- **End-of-feed** message when both timeline + discover cursors exhausted
 
 ## Planned Milestones
 
