@@ -2235,8 +2235,8 @@
 
   /**
    * Fetch the article at `url`, parse with Readability, and display in the overlay.
-   * Uses allorigins.win as a CORS proxy (same as link preview in compose).
-   * Shows live step-by-step progress through each phase.
+   * Tries three CORS proxies in sequence; each has its own 18s AbortController timeout.
+   * Shows live step-by-step progress through every phase.
    */
   async function openInAppReader(url, cardTitle) {
     if (!inappReaderOverlay) return;
@@ -2244,45 +2244,67 @@
     const progressBar   = $('inapp-reader-progress-bar');
     const progressLabel = $('inapp-reader-progress-label');
     const stepsEl       = $('inapp-reader-steps');
+    const PROXY_TIMEOUT = 18000; // ms per proxy attempt
 
-    // Step log helpers
+    // Proxy list: each returns either { json: true } or { json: false } (raw text)
+    const PROXIES = [
+      {
+        label: 'allorigins',
+        url:   (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+        extractHtml: async (res) => { const d = await res.json(); return d?.contents || null; },
+      },
+      {
+        label: 'corsproxy.io',
+        url:   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        extractHtml: async (res) => res.text(),
+      },
+      {
+        label: 'codetabs',
+        url:   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        extractHtml: async (res) => res.text(),
+      },
+    ];
+
+    // ---- UI helpers ----
     let stepItems = [];
-    function addStep(label) {
-      const li = document.createElement('li');
-      li.className = 'inapp-reader-step step-active';
+
+    function addStep(label, state = 'active') {
+      // Mark previous active step done
+      stepItems.forEach((s) => {
+        if (s.classList.contains('step-active')) {
+          s.classList.replace('step-active', 'step-done');
+          s.querySelector('.inapp-reader-step-icon').textContent = '✓';
+        }
+      });
+      const li   = document.createElement('li');
+      li.className = `inapp-reader-step step-${state}`;
       const icon = document.createElement('span');
       icon.className = 'inapp-reader-step-icon';
+      if (state !== 'active') icon.textContent = state === 'done' ? '✓' : '✗';
       const text = document.createElement('span');
       text.textContent = label;
       li.appendChild(icon);
       li.appendChild(text);
-      // Mark any previous active step as done
-      stepItems.forEach((s) => {
-        if (s.classList.contains('step-active')) {
-          s.classList.remove('step-active');
-          s.classList.add('step-done');
-          s.querySelector('.inapp-reader-step-icon').textContent = '✓';
-        }
-      });
       stepsEl.appendChild(li);
       stepItems.push(li);
       return li;
     }
-    function failStep(msg) {
+
+    function failCurrentStep(msg) {
       const last = stepItems[stepItems.length - 1];
-      if (last) {
-        last.classList.remove('step-active');
-        last.classList.add('step-error');
-        last.querySelector('.inapp-reader-step-icon').textContent = '✗';
-        last.querySelector('span:last-child').textContent = msg;
-      }
-    }
-    function setProgress(pct, label) {
-      progressBar.style.width = pct + '%';
-      progressLabel.textContent = label;
+      if (!last) return;
+      last.classList.remove('step-active');
+      last.classList.add('step-error');
+      last.querySelector('.inapp-reader-step-icon').textContent = '✗';
+      last.querySelector('span:last-child').textContent = msg;
     }
 
-    // Show overlay in loading state
+    function setProgress(pct, label) {
+      if (progressBar)   progressBar.style.width = pct + '%';
+      if (progressLabel) progressLabel.textContent = label;
+    }
+
+    // ---- Initialise overlay ----
     inappReaderOverlay.hidden = false;
     inappReaderLoading.hidden = false;
     inappReaderError.hidden   = true;
@@ -2291,87 +2313,119 @@
     stepsEl.innerHTML = '';
     stepItems = [];
 
-    // Set toolbar metadata immediately
     let hostname = '';
     try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { /* skip */ }
     inappReaderDomain.textContent = hostname;
+
+    const archiveLink = $('inapp-reader-archive');
+    if (archiveLink) archiveLink.href = `https://archive.ph/?url=${encodeURIComponent(url)}`;
     inappReaderOriginal.href = url;
 
-    // Scroll overlay to top
-    const body = inappReaderOverlay.querySelector('.inapp-reader-body');
-    if (body) body.scrollTop = 0;
+    const bodyEl = inappReaderOverlay.querySelector('.inapp-reader-body');
+    if (bodyEl) bodyEl.scrollTop = 0;
 
+    // ---- Fetch with proxy fallback chain ----
+    let html = null;
+    const proxyCount = PROXIES.length;
+
+    for (let i = 0; i < proxyCount; i++) {
+      const proxy = PROXIES[i];
+      const attempt = `${proxy.label} (${i + 1}/${proxyCount})`;
+      const pctStart = 10 + i * 18; // space progress across attempts
+
+      setProgress(pctStart, `Trying ${proxy.label}…`);
+      addStep(`Fetching via ${attempt}`);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT);
+
+      try {
+        const res = await fetch(proxy.url(url), { signal: controller.signal });
+        clearTimeout(timer);
+
+        if (!res.ok) {
+          failCurrentStep(`${attempt} returned HTTP ${res.status} — trying next`);
+          continue;
+        }
+
+        setProgress(pctStart + 10, `Downloading from ${proxy.label}…`);
+        const candidate = await proxy.extractHtml(res);
+        if (!candidate || candidate.trim().length < 500) {
+          failCurrentStep(`${attempt} returned empty/short response — trying next`);
+          continue;
+        }
+
+        html = candidate;
+        // Mark the successful proxy step done
+        const last = stepItems[stepItems.length - 1];
+        if (last) {
+          last.classList.replace('step-active', 'step-done');
+          last.querySelector('.inapp-reader-step-icon').textContent = '✓';
+          last.querySelector('span:last-child').textContent =
+            `Downloaded ${Math.round(html.length / 1024)} KB via ${proxy.label}`;
+        }
+        break; // got HTML — stop trying proxies
+
+      } catch (fetchErr) {
+        clearTimeout(timer);
+        const reason = controller.signal.aborted
+          ? `timed out after ${PROXY_TIMEOUT / 1000}s`
+          : (fetchErr.message || 'network error');
+        failCurrentStep(`${attempt} failed: ${reason}${i + 1 < proxyCount ? ' — trying next' : ''}`);
+      }
+    }
+
+    if (!html) {
+      setProgress(parseInt(progressBar?.style.width) || 0, 'Failed');
+      inappReaderError.hidden = false;
+      inappReaderError.textContent =
+        'All proxies failed to retrieve the article. Try opening it directly or via Archive.';
+      return;
+    }
+
+    // ---- Parse + extract ----
     try {
-      // Phase 1 — contact proxy
-      setProgress(10, 'Contacting proxy…');
-      addStep(`Sending request to proxy for ${hostname}`);
-
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`Proxy returned HTTP ${res.status}`);
-
-      // Phase 2 — download response
-      setProgress(45, 'Downloading article…');
-      addStep('Proxy responded — downloading page');
-
-      const data = await res.json();
-      const html = data?.contents;
-      if (!html) throw new Error('Proxy returned no page content');
-
-      const kbSize = Math.round(html.length / 1024);
-      addStep(`Downloaded ${kbSize > 0 ? kbSize + ' KB' : 'page'} of HTML`);
-      setProgress(65, 'Parsing HTML…');
-
-      // Phase 3 — parse HTML
+      setProgress(72, 'Parsing HTML…');
       addStep('Parsing HTML document');
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
 
-      // Fix relative URLs so images/links resolve correctly
-      const base = doc.createElement('base');
+      const parser = new DOMParser();
+      const doc    = parser.parseFromString(html, 'text/html');
+      const base   = doc.createElement('base');
       base.href = url;
       doc.head.prepend(base);
 
-      setProgress(80, 'Extracting article…');
+      setProgress(84, 'Extracting article…');
+      addStep('Running Readability');
 
-      // Phase 4 — run Readability
-      addStep('Extracting article content');
       if (typeof Readability === 'undefined') throw new Error('Readability library not loaded');
-      const reader = new Readability(doc);
+      const reader  = new Readability(doc);
       const article = reader.parse();
 
-      if (!article) throw new Error('Could not extract article — page may require JavaScript or a login');
+      if (!article) throw new Error('Could not extract article content — the page may require JavaScript or a login');
 
-      setProgress(95, 'Rendering…');
-      addStep(`Extracted "${article.title || cardTitle || 'Article'}"` +
-              (article.byline ? ` · ${article.byline}` : ''));
+      setProgress(96, 'Rendering…');
+      addStep(
+        `"${article.title || cardTitle || 'Article'}"` +
+        (article.byline ? ` · ${article.byline}` : ''),
+        'done'
+      );
 
-      // Render article
-      inappReaderTitle.textContent   = article.title || cardTitle || 'Article';
-      inappReaderByline.textContent  = article.byline || '';
-      inappReaderContent.innerHTML   = article.content || '';
+      inappReaderTitle.textContent  = article.title  || cardTitle || 'Article';
+      inappReaderByline.textContent = article.byline || '';
+      inappReaderContent.innerHTML  = article.content || '';
 
-      // Mark final step done and finish bar
-      const last = stepItems[stepItems.length - 1];
-      if (last) {
-        last.classList.remove('step-active');
-        last.classList.add('step-done');
-        last.querySelector('.inapp-reader-step-icon').textContent = '✓';
-      }
       setProgress(100, 'Done');
-
-      // Brief pause so the user sees 100% before the content replaces the panel
-      await new Promise((r) => setTimeout(r, 320));
+      await new Promise((r) => setTimeout(r, 300));
 
       inappReaderLoading.hidden = true;
       inappReaderArticle.hidden = false;
 
     } catch (err) {
-      failStep(err.message || 'Unknown error');
-      setProgress(progressBar ? parseInt(progressBar.style.width) : 0, 'Failed');
-      // Show error below the step log rather than replacing it
+      failCurrentStep(err.message || 'Unknown error');
+      setProgress(parseInt(progressBar?.style.width) || 0, 'Failed');
       inappReaderError.hidden = false;
-      inappReaderError.textContent = `${err.message || 'Unknown error'}. Try opening the article directly or via Archive mode.`;
+      inappReaderError.textContent =
+        `${err.message || 'Unknown error'}. Try opening it directly or via Archive.`;
     }
   }
 

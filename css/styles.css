@@ -6250,3 +6250,10 @@ a.post-timestamp:hover {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
+
+.inapp-reader-toolbar-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
