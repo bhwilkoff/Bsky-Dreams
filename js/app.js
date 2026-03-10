@@ -1885,10 +1885,8 @@
   function getReaderOpenUrl(originalUrl) {
     switch (readerMode) {
       case 'archive':
-        // archive.ph strips paywalls and ads; no URL encoding needed for retrieval
-        return `https://archive.ph/${originalUrl}`;
-      case 'wayback':
-        return `https://web.archive.org/web/${originalUrl}`;
+        // archive.ph — use ?url= query param format (correct API)
+        return `https://archive.ph/?url=${encodeURIComponent(originalUrl)}`;
       default: // 'direct'
         return originalUrl;
     }
@@ -1907,7 +1905,7 @@
   let readerAllDone         = false;
   let readerSeenUriSet      = new Set(); // dedup post URIs within this reader session
   let readerScrollObserver  = null;
-  let readerMode            = 'direct'; // 'direct' | 'archive' | 'wayback'
+  let readerMode            = 'direct'; // 'direct' | 'readable' | 'archive'
 
   /**
    * Build a single reader card for an article post.
@@ -2086,8 +2084,11 @@
       readerSeenSet.add(articleUrl);
       saveReaderSeen();
       card.classList.add('reader-card-seen');
-      // Open in selected mode
-      window.open(getReaderOpenUrl(articleUrl), '_blank', 'noopener,noreferrer');
+      if (readerMode === 'readable') {
+        openInAppReader(articleUrl, external.title || '');
+      } else {
+        window.open(getReaderOpenUrl(articleUrl), '_blank', 'noopener,noreferrer');
+      }
     });
 
     return card;
@@ -2197,6 +2198,98 @@
       { root: viewReader, rootMargin: '0px 0px 400px 0px', threshold: 0 }
     );
     if (readerSentinel) readerScrollObserver.observe(readerSentinel);
+  }
+
+  /* ---- In-app Readability reader ---- */
+  const inappReaderOverlay  = $('inapp-reader-overlay');
+  const inappReaderClose    = $('inapp-reader-close');
+  const inappReaderDomain   = $('inapp-reader-domain');
+  const inappReaderOriginal = $('inapp-reader-original');
+  const inappReaderLoading  = $('inapp-reader-loading');
+  const inappReaderError    = $('inapp-reader-error');
+  const inappReaderArticle  = $('inapp-reader-article');
+  const inappReaderTitle    = $('inapp-reader-title');
+  const inappReaderByline   = $('inapp-reader-byline');
+  const inappReaderContent  = $('inapp-reader-content');
+
+  function closeInAppReader() {
+    inappReaderOverlay.hidden = true;
+    inappReaderArticle.hidden = true;
+    inappReaderLoading.hidden = true;
+    inappReaderError.hidden   = true;
+    inappReaderContent.innerHTML = '';
+    inappReaderTitle.textContent = '';
+    inappReaderByline.textContent = '';
+  }
+
+  inappReaderClose.addEventListener('click', closeInAppReader);
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !inappReaderOverlay.hidden) closeInAppReader();
+  });
+
+  /**
+   * Fetch the article at `url`, parse with Readability, and display in the overlay.
+   * Uses allorigins.win as a CORS proxy (same as link preview in compose).
+   */
+  async function openInAppReader(url, cardTitle) {
+    if (!inappReaderOverlay) return;
+
+    // Show overlay in loading state
+    inappReaderOverlay.hidden = false;
+    inappReaderLoading.hidden = false;
+    inappReaderError.hidden   = true;
+    inappReaderArticle.hidden = true;
+    inappReaderContent.innerHTML = '';
+
+    // Set toolbar metadata
+    let hostname = '';
+    try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { /* skip */ }
+    inappReaderDomain.textContent = hostname;
+    inappReaderOriginal.href = url;
+
+    // Scroll overlay to top
+    const body = inappReaderOverlay.querySelector('.inapp-reader-body');
+    if (body) body.scrollTop = 0;
+
+    try {
+      // Fetch via allorigins CORS proxy
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+      const data = await res.json();
+      if (!data?.contents) throw new Error('No content returned from proxy');
+
+      // Parse with Readability
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(data.contents, 'text/html');
+
+      // Fix relative URLs in the parsed doc so images/links work
+      const base = doc.createElement('base');
+      base.href = url;
+      doc.head.prepend(base);
+
+      if (typeof Readability === 'undefined') throw new Error('Readability library not loaded');
+      const reader = new Readability(doc);
+      const article = reader.parse();
+
+      if (!article) throw new Error('Could not extract article content. The page may require JavaScript or a login.');
+
+      // Render
+      inappReaderTitle.textContent = article.title || cardTitle || 'Article';
+      inappReaderByline.textContent = article.byline || '';
+      // article.content is sanitized HTML from Readability — safe to set
+      inappReaderContent.innerHTML = article.content || '';
+
+      inappReaderLoading.hidden = true;
+      inappReaderArticle.hidden = false;
+
+    } catch (err) {
+      inappReaderLoading.hidden = true;
+      inappReaderError.hidden   = false;
+      inappReaderError.textContent = `Could not load article: ${err.message || 'Unknown error'}. Try opening it directly or via Archive.`;
+    }
   }
 
   // Wire up archive mode toggle buttons
