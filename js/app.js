@@ -2159,17 +2159,6 @@
     schedulePrefsSync(); // M20
   });
 
-  // Set default date range for advanced search: yesterday → today.
-  // These fields should never be blank when the panel is opened.
-  (() => {
-    const toYYYYMMDD = (d) => d.toISOString().slice(0, 10);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (advSinceEl && !advSinceEl.value) advSinceEl.value = toYYYYMMDD(yesterday);
-    if (advUntilEl && !advUntilEl.value) advUntilEl.value = toYYYYMMDD(today);
-  })();
-
   // Advanced panel toggle
   advToggleBtn.addEventListener('click', () => {
     const open = advPanel.hidden;
@@ -6904,6 +6893,11 @@
     $('timeline-start-input').value = fmt(tlWindowStart);
     $('timeline-end-input').value   = fmt(tlWindowEnd);
   }
+
+  // Pre-fill the date inputs with the default window (yesterday → now) so they
+  // are never blank when the timeline interface is first opened.
+  tlUpdateZoomLabel();
+  tlSyncDateInputs();
 
   $('timeline-zoom-in-btn').addEventListener('click', () => {
     if (!tlQuery) return;
