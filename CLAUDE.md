@@ -31,7 +31,7 @@ break out of information bubbles through truth/fact-checking visibility.
 
 - `/` — Root: index.html, CLAUDE.md, SCRATCHPAD.md, DECISIONS.md, README.md
 - `/css/` — Stylesheets (styles.css is the single main stylesheet)
-- `/js/` — JavaScript modules (app.js, api.js, auth.js)
+- `/js/` — JavaScript modules (app.js, api.js, auth.js, Readability.js, hls.min.js)
 - `/assets/` — Static assets (icons, images)
 
 ## How to Run Locally

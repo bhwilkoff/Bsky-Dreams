@@ -390,10 +390,10 @@ the current state of each topic is captured in the most recent relevant entry.
 
 ## PTR Resistance — Two-Stage Threshold
 
-- **Date:** 2026-02-24
-- **Decision:** Pull-to-refresh requires a drag of ≥ 96px *plus* a 400ms hold before `ptrReadyToRelease` becomes true. Both conditions must be met before releasing triggers a refresh.
-- **Rationale:** The 64px threshold caused accidental refreshes when users quickly scrolled past the top. The hold timer ensures only deliberate, sustained pulls trigger a refresh.
-- **Trade-offs:** Slightly slower to trigger for intentional pulls. The 400ms delay is imperceptible in practice.
+- **Date:** 2026-02-24 (threshold reduced to 48px in M65)
+- **Decision:** Pull-to-refresh requires a drag of ≥ 48px *plus* a 400ms hold before `ptrReadyToRelease` becomes true.
+- **Rationale:** Original 96px was too stiff on mobile; reduced to 48px in M65. The hold timer prevents accidental refreshes from fast scrolls.
+- **Trade-offs:** 400ms delay is imperceptible in practice.
 
 ---
 
@@ -496,3 +496,33 @@ the current state of each topic is captured in the most recent relevant entry.
 - **Rationale:** The search handler is asynchronous and the toggle must appear only after a successful post search (not user/actor searches). Hooking into the existing search flow via mutation observation avoids modifying the search submit handler's control flow, keeping the change minimal and non-breaking.
 - **Alternatives considered:** Modifying the search submit handler directly to set toggle visibility (tighter coupling); polling `setInterval` (wasteful); custom event dispatch from search handler (more ceremony).
 - **Trade-offs:** MutationObserver fires on every DOM change to `#search-results`, including intermediate loading states. The `hasPostCards` check gates the show/hide correctly.
+
+---
+
+## Readability.js — Bundled Locally (not CDN)
+
+- **Date:** 2026-03-10
+- **Decision:** Mozilla's Readability.js is served as `/js/Readability.js` (downloaded from `raw.githubusercontent.com/mozilla/readability`). Exposes a global `Readability` class.
+- **Rationale:** `script-src 'self'` CSP blocks CDN scripts. Consistent with HLS.js local-bundle pattern.
+- **Trade-offs:** Manual update required for security fixes. ~80 KB added to repo.
+
+---
+
+## Reader View — Three-Proxy CORS Fallback Chain
+
+- **Date:** 2026-03-10
+- **Decision:** Full article HTML is fetched via a prioritised proxy chain: **codetabs.com → corsproxy.io → allorigins.win**. Each attempt uses an `AbortController` with an 18-second timeout. The first successful response (≥ 500 chars) is passed to Readability. Live step-by-step progress shown to user.
+- **Rationale:** Direct `fetch()` of third-party article pages is blocked by CORS. allorigins.win (used elsewhere for OG preview) times out on large HTML pages (HTTP 408). codetabs.com is most reliable for full pages; corsproxy.io is a solid fallback. allorigins is last because of the 408 failure mode.
+- **Alternatives considered:** Single proxy (no fallback — too fragile); Cloudflare Worker (adds infrastructure).
+- **Trade-offs:** Up to 54 seconds total before all three fail. Users see which proxy is being tried at each step.
+- **Revisit if:** codetabs.com becomes unreliable or adds rate limits.
+
+---
+
+## PTR Indicator — Fixed Position, Shared Across All Views
+
+- **Date:** 2026-03-10
+- **Decision:** `#ptr-indicator` is `position: fixed; top: -52px` (hidden above viewport) and is a sibling of all view sections in the DOM. JS manipulates `style.top` (not `style.marginTop`) to animate it in. Applies to all views that use `makePTR()`.
+- **Rationale:** Previously the indicator lived inside `#view-feed .view-inner`. This made it invisible when any other view (e.g. Reader, Gallery) was active, breaking PTR animation there. Fixed positioning removes the dependency on the scroll container DOM context.
+- **Alternatives considered:** Duplicating the indicator inside each view (DOM bloat); dynamically reparenting it on view switch (fragile).
+- **Trade-offs:** The indicator now overlays above all views rather than scrolling with content — correct for a PTR metaphor. Hidden on desktop via `@media (min-width: 768px) { #ptr-indicator { display: none } }`.
