@@ -517,6 +517,14 @@ const API = (() => {
     });
   }
 
+  async function getLikes(uri, limit = 50, cursor) {
+    return authGet('app.bsky.feed.getLikes', { uri, limit, cursor });
+  }
+
+  async function getRepostedBy(uri, limit = 50, cursor) {
+    return authGet('app.bsky.feed.getRepostedBy', { uri, limit, cursor });
+  }
+
   return {
     searchPosts,
     searchActors,
@@ -547,5 +555,7 @@ const API = (() => {
     blockActor,
     unblockActor,
     getAuthorFeedFull,
+    getLikes,
+    getRepostedBy,
   };
 })();
