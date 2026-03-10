@@ -2515,6 +2515,8 @@ a.post-timestamp:hover {
   margin-left: var(--space-sm);
   padding: 6px 10px;
   color: var(--color-text-muted);
+  border: 2px solid var(--nb-black);
+  box-shadow: 2px 2px 0 var(--nb-black);
 }
 
 .report-success-banner {
@@ -6087,6 +6089,40 @@ a.post-timestamp:hover {
 
 @media (max-width: 767px) {
   .inapp-reader-domain { display: none; }
+
+  .inapp-reader-toolbar {
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .inapp-reader-close {
+    width: 30px;
+    height: 30px;
+  }
+
+  .inapp-reader-post-actions {
+    gap: 2px;
+  }
+
+  .inapp-reader-action-btn {
+    padding: 4px 6px;
+    font-size: 0.68rem;
+    gap: 2px;
+  }
+
+  /* Hide counts in toolbar on mobile — they're visible in the thread anyway */
+  .inapp-reader-action-btn span {
+    display: none;
+  }
+
+  .inapp-reader-toolbar-links {
+    gap: 4px;
+  }
+
+  .inapp-reader-original-link {
+    padding: 4px 6px;
+    font-size: 0.68rem;
+  }
 }
 
 .inapp-reader-original-link {
@@ -6318,4 +6354,86 @@ a.post-timestamp:hover {
   align-items: center;
   gap: var(--space-sm);
   flex-shrink: 0;
+}
+
+/* ================================================================
+   Engagers overlay — who liked / reposted a post
+================================================================ */
+.engagers-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.engagers-overlay[hidden] { display: none; }
+
+.engagers-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 3px solid var(--nb-black);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.engagers-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 2px solid var(--nb-black);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  cursor: pointer;
+  color: var(--color-text);
+  flex-shrink: 0;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.engagers-back-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+
+.engagers-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  margin: 0;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.engagers-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.engager-item {
+  cursor: pointer;
+}
+
+.engager-item:hover {
+  background: var(--color-surface);
+}
+
+.engagers-loading {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+@media (min-width: 768px) {
+  .engagers-overlay {
+    left: var(--sidebar-width, 240px);
+  }
 }

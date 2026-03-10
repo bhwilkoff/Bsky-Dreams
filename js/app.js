@@ -184,13 +184,14 @@
 
   // M40 — Seen-posts deduplication (unified across all interfaces)
   const FEED_SEEN_KEY = 'bsky_feed_seen';
-  const FEED_SEEN_MAX = 10000;           // increased cap for cross-interface coverage
+  const FEED_SEEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — matches cloud sync window
   let feedSeenMap     = loadFeedSeen();  // Map<uri, { seenAt, likeCount, repostCount }>
   let feedSeenBypass  = false;           // session flag: "show anyway" escape hatch
 
   // M20 — Cross-device prefs sync
   const PREFS_COLLECTION     = 'app.bsky-dreams.prefs';
   const PREFS_RKEY           = 'self';
+  const CHANNELS_SYNCED_KEY  = 'bsky_channels_synced_at'; // timestamp of last successful cloud push
   let prefsSyncTimer         = null;
 
   // M20+ — Cross-device seen-posts sync (7-day rolling window)
@@ -593,7 +594,8 @@
     const storedTab = localStorage.getItem('bsky_default_tab') || 'discover';
     settingsDefaultTab.value = storedTab;
 
-    settingsSeenCount.textContent = `${feedSeenMap.size.toLocaleString()} posts`;
+    pruneFeedSeen();
+    settingsSeenCount.textContent = `${feedSeenMap.size.toLocaleString()} posts (last 7 days)`;
 
     try {
       const tvRaw  = localStorage.getItem('bsky_tv_seen');
@@ -867,6 +869,7 @@
 
   function saveFeedSeen() {
     try {
+      pruneFeedSeen(); // drop entries older than 7 days before persisting
       localStorage.setItem(FEED_SEEN_KEY, JSON.stringify([...feedSeenMap.entries()]));
     } catch {}
     scheduleSeenSync(); // keep cloud in sync (30 s debounce)
@@ -879,10 +882,15 @@
    */
   function markFeedPostSeen(uri) {
     if (!uri || feedSeenMap.has(uri)) return;
-    if (feedSeenMap.size >= FEED_SEEN_MAX) {
-      feedSeenMap.delete(feedSeenMap.keys().next().value); // evict oldest (FIFO)
-    }
     feedSeenMap.set(uri, { seenAt: Date.now() });
+  }
+
+  /** Prune entries older than 7 days — called on save to keep localStorage size bounded. */
+  function pruneFeedSeen() {
+    const cutoff = Date.now() - FEED_SEEN_MAX_AGE_MS;
+    for (const [uri, val] of feedSeenMap) {
+      if ((val.seenAt || 0) < cutoff) feedSeenMap.delete(uri);
+    }
   }
 
   function isFeedPostSeen(uri) {
@@ -917,24 +925,32 @@
       const result = await API.getRecord(session.did, PREFS_COLLECTION, PREFS_RKEY);
       const prefs = result?.value || {};
       if (prefs.savedChannels && Array.isArray(prefs.savedChannels)) {
-        // Merge cloud channels with local channels. Local channels that haven't
-        // synced yet (e.g. added within the 2s debounce window before a refresh)
-        // are preserved; channels added on other devices are imported.
-        const local   = channelsLoad();
-        const localMap = new Map(local.map((c) => [c.id, c]));
-        let imported = 0;
-        for (const ch of prefs.savedChannels) {
-          if (!localMap.has(ch.id)) {
-            localMap.set(ch.id, ch);
-            imported++;
+        // "Last write wins" — compare cloud savedAt timestamp against local
+        // last-sync timestamp. If cloud is newer (written on another device),
+        // replace local channels entirely. Otherwise keep local and push to cloud.
+        const cloudSavedAt  = prefs.channelsSavedAt || 0;
+        const localSyncedAt = parseInt(localStorage.getItem(CHANNELS_SYNCED_KEY) || '0', 10);
+
+        if (cloudSavedAt > localSyncedAt) {
+          // Cloud is authoritative — replace local with cloud list
+          channelsSave(prefs.savedChannels);
+          localStorage.setItem(CHANNELS_SYNCED_KEY, String(cloudSavedAt));
+          renderChannelsSidebar();
+        } else if (localSyncedAt > 0) {
+          // Local is newer or same — push local to cloud so other devices catch up
+          schedulePrefsSync();
+        } else {
+          // No sync history — additive import of any cloud channels missing locally
+          const local    = channelsLoad();
+          const localMap = new Map(local.map((c) => [c.id, c]));
+          let imported   = 0;
+          for (const ch of prefs.savedChannels) {
+            if (!localMap.has(ch.id)) { localMap.set(ch.id, ch); imported++; }
           }
+          channelsSave([...localMap.values()]);
+          renderChannelsSidebar();
+          if (imported > 0) schedulePrefsSync();
         }
-        const merged = [...localMap.values()];
-        channelsSave(merged);
-        renderChannelsSidebar();
-        // If we imported cloud channels not yet in local, push merged state back
-        // so the cloud stays consistent with the full merged set.
-        if (imported > 0) schedulePrefsSync();
       }
       if (prefs.uiPrefs) {
         if (typeof prefs.uiPrefs.hideAdult === 'boolean') {
@@ -971,13 +987,17 @@
     const session = AUTH.getSession();
     if (!session?.did) return;
     try {
+      const now = Date.now();
       const record = {
-        $type:        PREFS_COLLECTION,
-        savedChannels: channelsLoad(),
-        uiPrefs:      { hideAdult: hideAdultContent },
-        feedFilters:  { categories: [...activeFilterCats], custom: customFilterKws },
+        $type:           PREFS_COLLECTION,
+        savedChannels:   channelsLoad(),
+        channelsSavedAt: now,
+        uiPrefs:         { hideAdult: hideAdultContent },
+        feedFilters:     { categories: [...activeFilterCats], custom: customFilterKws },
       };
       await API.putRecord(session.did, PREFS_COLLECTION, PREFS_RKEY, record);
+      // Record the timestamp so future loads know local was authoritative at this moment
+      localStorage.setItem(CHANNELS_SYNCED_KEY, String(now));
     } catch (err) {
       console.warn('Cloud prefs save failed:', err.message);
     }
@@ -2837,8 +2857,10 @@
       searchScrollObserver.disconnect();
     }
 
-    // Hide scroll-to-top button on view switch (M34)
-    scrollToTopBtn.hidden = true;
+    // Show/hide scroll-to-top button based on the newly active view's scroll position
+    const SCROLL_SHOW_THRESHOLD = 300;
+    const nextView = document.getElementById('view-' + name);
+    scrollToTopBtn.hidden = !nextView || nextView.scrollTop < SCROLL_SHOW_THRESHOLD;
   }
 
   // Logo / title click always returns to feed and refreshes
@@ -3965,6 +3987,107 @@
   /**
    * Render notification items into a container.
    */
+  /* ----------------------------------------------------------------
+     Long-press helper — fires callback after 500ms hold, cancels on move/release
+  ---------------------------------------------------------------- */
+  function attachLongPress(el, callback) {
+    if (!el) return;
+    let timer = null;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    el.addEventListener('pointerdown', (e) => {
+      timer = setTimeout(() => {
+        timer = null;
+        e.target.releasePointerCapture?.(e.pointerId);
+        callback();
+      }, 500);
+    });
+    el.addEventListener('pointerup',    cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('pointermove',  cancel);
+  }
+
+  /* ----------------------------------------------------------------
+     Engagers overlay — who liked or reposted a post
+  ---------------------------------------------------------------- */
+  const engagersOverlay  = $('engagers-overlay');
+  const engagersList     = $('engagers-list');
+  const engagersTitle    = $('engagers-title');
+  const engagersLoading  = $('engagers-loading');
+  const engagersBackBtn  = $('engagers-back');
+
+  if (engagersBackBtn) {
+    engagersBackBtn.addEventListener('click', () => {
+      engagersOverlay.hidden = true;
+    });
+  }
+
+  async function showEngagers(type, postUri) {
+    if (!engagersOverlay) return;
+    engagersTitle.textContent = type === 'like' ? 'Liked by' : 'Reposted by';
+    engagersList.innerHTML    = '';
+    engagersLoading.hidden    = false;
+    engagersOverlay.hidden    = false;
+
+    try {
+      const data = type === 'like'
+        ? await API.getLikes(postUri, 100)
+        : await API.getRepostedBy(postUri, 100);
+
+      const actors = type === 'like'
+        ? (data.likes || []).map((l) => l.actor)
+        : (data.repostedBy || []);
+
+      engagersLoading.hidden = true;
+
+      if (!actors.length) {
+        engagersList.innerHTML = '<div class="notif-item" style="color:var(--color-text-muted);padding:var(--space-lg)">No one yet.</div>';
+        return;
+      }
+
+      actors.forEach((actor) => {
+        const item = document.createElement('div');
+        item.className = 'notif-item engager-item';
+
+        const icon = document.createElement('div');
+        icon.className = `notif-icon notif-icon-${type}`;
+        icon.innerHTML = type === 'like'
+          ? `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+        item.appendChild(icon);
+
+        const avatar = document.createElement('img');
+        setAvatarSrc(avatar, actor.avatar);
+        avatar.alt = ''; avatar.className = 'notif-avatar'; avatar.loading = 'lazy';
+        item.appendChild(avatar);
+
+        const body = document.createElement('div');
+        body.className = 'notif-body';
+        const meta = document.createElement('div');
+        meta.className = 'notif-meta';
+        const name = document.createElement('span');
+        name.className   = 'notif-author';
+        name.textContent = actor.displayName || actor.handle || 'Someone';
+        const handle = document.createElement('span');
+        handle.className   = 'notif-action';
+        handle.textContent = `@${actor.handle || ''}`;
+        meta.appendChild(name);
+        meta.appendChild(handle);
+        body.appendChild(meta);
+        item.appendChild(body);
+
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+          engagersOverlay.hidden = true;
+          openProfile(actor.handle);
+        });
+        engagersList.appendChild(item);
+      });
+    } catch (err) {
+      engagersLoading.hidden = true;
+      engagersList.innerHTML = `<div class="notif-item" style="color:var(--color-text-muted);padding:var(--space-lg)">Failed to load: ${err.message}</div>`;
+    }
+  }
+
   function renderNotifications(notifs, container, append = false) {
     if (!append) container.innerHTML = '';
 
@@ -4109,10 +4232,11 @@
     let tvCursor   = null;
     let tvTopic    = '';
     const tvHlsArr   = [null, null];
-    let tvSlot       = 0;       // which slide slot is currently visible (0 = a, 1 = b)
-    let tvSliding    = false;   // true while a slide transition is in progress
-    let tvRunning    = false;
-    let tvPaused     = false;    // M36 pause
+    let tvSlot           = 0;       // which slide slot is currently visible (0 = a, 1 = b)
+    let tvSliding        = false;   // true while a slide transition is in progress
+    let tvRunning        = false;
+    let tvPaused         = false;    // M36 pause
+    let tvUserWantsMuted = false;   // explicit user preference; survives slot transitions
     let tvCurrent    = null;
     let tvAllowAdult = false;
     let tvHideTimer  = null;
@@ -4275,7 +4399,7 @@
       vid.pause();
       vid.removeAttribute('src');
       vid.load();
-      vid.muted = activeVideo().muted;  // inherit current mute state
+      vid.muted = true;  // always mute preloaded slot so autoplay succeeds; restored on transition
       if (thumb) vid.poster = thumb;
 
       // M36: Skip GIF URLs (they autoplay as images, not true videos)
@@ -4336,6 +4460,7 @@
       setTimeout(() => {
         tvSlot = ns;
         tvVideos[1 - ns].pause();  // pause the now-offscreen slot
+        activeVideo().muted = tvUserWantsMuted; // restore user's mute preference on new active slot
         tvSliding = false;
         onComplete();
       }, DURATION);
@@ -4457,6 +4582,7 @@
       tvRunning       = true;
 
       // Start unmuted — the click that called startTV() IS the user gesture
+      tvUserWantsMuted = false;
       tvVideos.forEach((v) => { v.muted = false; });
       syncMuteBtn();
       syncPauseBtn();
@@ -4524,8 +4650,8 @@
 
     /* ---- Mute toggle ---- */
     tvMuteBtn.addEventListener('click', () => {
-      const muted = !activeVideo().muted;
-      tvVideos.forEach((v) => { v.muted = muted; });
+      tvUserWantsMuted = !tvUserWantsMuted;
+      tvVideos.forEach((v) => { v.muted = tvUserWantsMuted; });
       syncMuteBtn();
     });
 
@@ -5295,6 +5421,16 @@
       e.stopPropagation();
       const btn = e.currentTarget;
       showRepostActionSheet(btn, post);
+    });
+
+    // Long-press on repost → show who reposted
+    attachLongPress(actions.querySelector('.repost-action-btn'), () => {
+      showEngagers('repost', post.uri);
+    });
+
+    // Long-press on like → show who liked
+    attachLongPress(actions.querySelector('.like-action-btn'), () => {
+      showEngagers('like', post.uri);
     });
 
     return card;
@@ -7824,10 +7960,10 @@
           if (!cursor || items.length < 50) break;
         }
       } else {
-        // Search: fetch latest + top, client-filter to window
+        // Search: fetch latest + top (English only), client-filter to window
         const [r1, r2] = await Promise.allSettled([
-          API.searchPosts(raw, 'latest', 100),
-          API.searchPosts(raw, 'top', 100),
+          API.searchPosts(raw, 'latest', 100, undefined, { lang: 'en' }),
+          API.searchPosts(raw, 'top',    100, undefined, { lang: 'en' }),
         ]);
         const all = [
           ...(r1.status === 'fulfilled' ? r1.value.posts || [] : []),

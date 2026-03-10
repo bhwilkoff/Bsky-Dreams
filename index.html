@@ -1197,6 +1197,20 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       ENGAGERS OVERLAY — who liked / reposted a post
+  ============================================================ -->
+  <div id="engagers-overlay" class="engagers-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="engagers-title">
+    <div class="engagers-toolbar">
+      <button id="engagers-back" class="engagers-back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <h2 id="engagers-title" class="engagers-title">Liked by</h2>
+    </div>
+    <div id="engagers-list" class="engagers-list"></div>
+    <div id="engagers-loading" class="engagers-loading" hidden>Loading…</div>
+  </div>
+
   <div id="loading-overlay" class="loading-overlay" hidden aria-live="assertive" aria-label="Loading">
     <div class="spinner" aria-hidden="true"></div>
   </div>
