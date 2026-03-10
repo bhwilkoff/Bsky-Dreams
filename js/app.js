@@ -27,6 +27,7 @@
   const navProfileBtn   = $('nav-profile-btn');
   const navAnalyticsBtn = $('nav-analytics-btn');
   const navTimelineBtn  = $('nav-timeline-btn');
+  const navReaderBtn    = $('nav-reader-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
 
@@ -39,6 +40,7 @@
   const viewTv            = $('view-tv');
   const viewAnalytics     = $('view-analytics');
   const viewTimeline      = $('view-timeline');
+  const viewReader        = $('view-reader');
 
   const feedResults    = $('feed-results');
   const ptrIndicator   = $('ptr-indicator');
@@ -1747,6 +1749,479 @@
   }
 
   /* ================================================================
+     READER VIEW
+     Filters combined following+discover feeds for readable articles
+     (link cards that are not GIFs, social media, or direct media files).
+     Seen state is tracked per-URL and only marked when an article is opened.
+  ================================================================ */
+
+  const READER_SEEN_KEY = 'bsky_reader_seen';
+  const READER_SEEN_MAX = 10000;
+
+  // Load seen article URLs from localStorage
+  function loadReaderSeen() {
+    try {
+      const raw = localStorage.getItem(READER_SEEN_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  }
+
+  function saveReaderSeen() {
+    try {
+      const arr = [...readerSeenSet];
+      localStorage.setItem(READER_SEEN_KEY, JSON.stringify(arr.slice(-READER_SEEN_MAX)));
+    } catch { /* quota exceeded — skip */ }
+  }
+
+  let readerSeenSet = loadReaderSeen(); // Set<articleUrl> — only marked on open
+
+  // Domains that are definitely NOT readable articles
+  const READER_EXCLUDE_DOMAINS = new Set([
+    'twitter.com','x.com','t.co',
+    'instagram.com','facebook.com','fb.com','fb.watch',
+    'youtube.com','youtu.be','vimeo.com','dailymotion.com',
+    'tiktok.com','twitch.tv','kick.com',
+    'reddit.com','redd.it',
+    'imgur.com','giphy.com','tenor.com','klipy.com',
+    'spotify.com','soundcloud.com','podcasts.apple.com','open.spotify.com',
+    'music.apple.com','music.youtube.com',
+    'linkedin.com','threads.net','mastodon.social',
+    'amazon.com','ebay.com','etsy.com','shopify.com','aliexpress.com',
+    'bsky.app','bsky.social','staging.bsky.app',
+    'docs.google.com','drive.google.com','maps.google.com',
+    'github.com','gitlab.com','bitbucket.org',
+  ]);
+
+  // Extensions that indicate non-article payloads
+  const READER_MEDIA_EXT = /\.(jpg|jpeg|png|gif|webp|svg|ico|mp4|mp3|wav|ogg|flac|m4a|pdf|zip|exe|dmg|avi|mov|m4v|mkv|webm|ts)(\?.*)?$/i;
+
+  /**
+   * Returns the `external` embed object if this post is a "readable" article,
+   * or null otherwise.
+   */
+  function getArticleEmbed(post) {
+    const embed = post?.embed || {};
+    const type  = embed.$type || '';
+    let external = null;
+
+    if (type === 'app.bsky.embed.external#view') {
+      external = embed.external;
+    } else if (type === 'app.bsky.embed.recordWithMedia#view') {
+      const media = embed.media || {};
+      if ((media.$type || '') === 'app.bsky.embed.external#view') {
+        external = media.external;
+      }
+    }
+
+    if (!external?.uri) return null;
+
+    // Skip GIFs
+    if (isGifExternalEmbed(external)) return null;
+
+    try {
+      const url  = new URL(external.uri);
+      const host = url.hostname.replace(/^www\./, '');
+
+      // Exclude known non-article domains and their subdomains
+      if (READER_EXCLUDE_DOMAINS.has(host)) return null;
+      for (const excluded of READER_EXCLUDE_DOMAINS) {
+        if (host.endsWith('.' + excluded)) return null;
+      }
+
+      // Exclude direct media file links
+      if (READER_MEDIA_EXT.test(url.pathname)) return null;
+
+      // Must have a meaningful title (product pages often have short/empty titles)
+      if (!external.title || external.title.trim().length < 12) return null;
+
+    } catch { return null; }
+
+    return external;
+  }
+
+  /**
+   * Try to extract the article's publish date from the URL path.
+   * Common patterns: /YYYY/MM/DD/, /YYYY-MM-DD, /YYYYMMDD
+   * Returns a Date or null.
+   */
+  function extractArticleDate(uri) {
+    try {
+      const path = new URL(uri).pathname;
+      // /YYYY/MM/DD/
+      let m = path.match(/\/(\d{4})\/(\d{1,2})\/(\d{1,2})[\/\-_]/);
+      if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 1990 && d.getFullYear() <= 2030) return d;
+      }
+      // /YYYY-MM-DD or _YYYY-MM-DD
+      m = path.match(/[\/\-_](\d{4})-(\d{2})-(\d{2})[\/\-_\.]/);;
+      if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 1990 && d.getFullYear() <= 2030) return d;
+      }
+      // /YYYYMMDD
+      m = path.match(/\/(\d{4})(\d{2})(\d{2})[\/\-_\.]/);
+      if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 1990 && d.getFullYear() <= 2030) return d;
+      }
+    } catch { /* invalid URL */ }
+    return null;
+  }
+
+  /**
+   * Format a date for display, using the article date if available,
+   * otherwise the post's indexed/created time.
+   */
+  function formatArticleDate(articleDate, postIndexedAt) {
+    const d = articleDate || (postIndexedAt ? new Date(postIndexedAt) : null);
+    if (!d || isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  /**
+   * Given the current reader mode, return the URL to open for reading.
+   */
+  function getReaderOpenUrl(originalUrl) {
+    switch (readerMode) {
+      case 'bypass':
+        return `https://12ft.io/proxy?q=${encodeURIComponent(originalUrl)}`;
+      case 'wayback':
+        return `https://web.archive.org/web/${originalUrl}`;
+      default: // 'direct'
+        return originalUrl;
+    }
+  }
+
+  // Reader view state
+  const readerFeed       = $('reader-feed');
+  const readerSentinel   = $('reader-load-sentinel');
+  const readerLoadingEl  = $('reader-loading');
+  const readerEmptyEl    = $('reader-empty');
+  const readerEndEl      = $('reader-end');
+
+  let readerCursorTimeline  = null;
+  let readerCursorDiscover  = null;
+  let readerLoading_flag    = false;
+  let readerAllDone         = false;
+  let readerSeenUriSet      = new Set(); // dedup post URIs within this reader session
+  let readerScrollObserver  = null;
+  let readerMode            = 'direct'; // 'direct' | 'bypass' | 'wayback'
+
+  /**
+   * Build a single reader card for an article post.
+   */
+  function buildReaderCard(post, external) {
+    const author     = post.author || {};
+    const articleUrl = external.uri;
+    const isSeen     = readerSeenSet.has(articleUrl);
+
+    const card = document.createElement('article');
+    card.className   = 'reader-card' + (isSeen ? ' reader-card-seen' : '');
+    card.dataset.uri = post.uri;
+    card.dataset.url = articleUrl;
+
+    // Thumbnail
+    if (external.thumb) {
+      const img  = document.createElement('img');
+      img.src       = external.thumb;
+      img.alt       = '';
+      img.className = 'reader-card-thumb';
+      img.loading   = 'lazy';
+      card.appendChild(img);
+    }
+
+    // Card body
+    const body = document.createElement('div');
+    body.className = 'reader-card-body';
+
+    // Domain + date row
+    const meta = document.createElement('div');
+    meta.className = 'reader-card-meta';
+
+    let hostname = '';
+    try { hostname = new URL(articleUrl).hostname.replace(/^www\./, ''); } catch { /* skip */ }
+
+    const domainEl = document.createElement('span');
+    domainEl.className   = 'reader-card-domain';
+    domainEl.textContent = hostname;
+    meta.appendChild(domainEl);
+
+    const articleDate = extractArticleDate(articleUrl);
+    const dateStr     = formatArticleDate(articleDate, post.indexedAt);
+    if (dateStr) {
+      const sep = document.createElement('span');
+      sep.className   = 'reader-card-meta-sep';
+      sep.textContent = '·';
+      meta.appendChild(sep);
+      const dateEl = document.createElement('span');
+      dateEl.className   = 'reader-card-date';
+      dateEl.textContent = dateStr;
+      if (articleDate) dateEl.title = 'Publication date from URL';
+      else             dateEl.title = 'Date shared on Bluesky';
+      meta.appendChild(dateEl);
+    }
+
+    body.appendChild(meta);
+
+    // Title
+    const title = document.createElement('h3');
+    title.className   = 'reader-card-title';
+    title.textContent = external.title || '';
+    body.appendChild(title);
+
+    // Description
+    if (external.description) {
+      const desc = document.createElement('p');
+      desc.className   = 'reader-card-desc';
+      desc.textContent = external.description;
+      body.appendChild(desc);
+    }
+
+    card.appendChild(body);
+
+    // Author strip
+    const strip = document.createElement('div');
+    strip.className = 'reader-author-strip';
+
+    const avatar = document.createElement('img');
+    setAvatarSrc(avatar, author.avatar);
+    avatar.alt       = '';
+    avatar.className = 'reader-author-avatar';
+    avatar.loading   = 'lazy';
+    strip.appendChild(avatar);
+
+    const authorMeta = document.createElement('div');
+    authorMeta.className = 'reader-author-meta';
+    const nameBtn = document.createElement('button');
+    nameBtn.className   = 'reader-author-name';
+    nameBtn.textContent = author.displayName || author.handle || '';
+    nameBtn.addEventListener('click', (e) => { e.stopPropagation(); openProfile(author.handle); });
+    const handleEl = document.createElement('span');
+    handleEl.className   = 'reader-author-handle';
+    handleEl.textContent = `@${author.handle || ''}`;
+    authorMeta.appendChild(nameBtn);
+    authorMeta.appendChild(handleEl);
+    strip.appendChild(authorMeta);
+
+    // Strip actions: like, repost, view conversation
+    const actions = document.createElement('div');
+    actions.className = 'reader-strip-actions post-actions';
+
+    // Repost button
+    const repostBtn = document.createElement('button');
+    repostBtn.className = 'reader-action-btn repost-action-btn' + (post.viewer?.repost ? ' reposted' : '');
+    repostBtn.title     = 'Repost or Quote Post';
+    repostBtn.setAttribute('aria-label', 'Repost or Quote Post');
+    repostBtn.dataset.uri       = post.uri;
+    repostBtn.dataset.cid       = post.cid;
+    repostBtn.dataset.repostUri = post.viewer?.repost || '';
+    repostBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="${post.viewer?.repost ? 'var(--color-repost)' : 'currentColor'}" fill="none" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> <span class="action-count">${post.repostCount || 0}</span>`;
+    repostBtn.addEventListener('click', (e) => { e.stopPropagation(); showRepostActionSheet(repostBtn, post); });
+    actions.appendChild(repostBtn);
+
+    // Like button
+    const likeBtn = document.createElement('button');
+    likeBtn.className = 'reader-action-btn';
+    likeBtn.title     = post.viewer?.like ? 'Unlike' : 'Like';
+    likeBtn.setAttribute('aria-label', post.viewer?.like ? 'Unlike' : 'Like');
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="${post.viewer?.like ? 'currentColor' : 'none'}" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> <span class="action-count">${post.likeCount || 0}</span>`;
+    likeBtn.dataset.uri     = post.uri;
+    likeBtn.dataset.cid     = post.cid;
+    likeBtn.dataset.likeUri = post.viewer?.like || '';
+    likeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const liked       = !!btn.dataset.likeUri;
+      const prevLikeUri = btn.dataset.likeUri;
+      const countSpan   = btn.querySelector('.action-count');
+      const prevCount   = parseInt(countSpan.textContent, 10);
+      if (liked) {
+        btn.dataset.likeUri = '';
+        btn.querySelector('svg').setAttribute('fill', 'none');
+        countSpan.textContent = Math.max(0, prevCount - 1);
+      } else {
+        btn.querySelector('svg').setAttribute('fill', 'currentColor');
+        countSpan.textContent = prevCount + 1;
+      }
+      try {
+        if (liked) {
+          await API.unlikePost(prevLikeUri);
+        } else {
+          const result = await API.likePost(btn.dataset.uri, btn.dataset.cid);
+          btn.dataset.likeUri = result?.uri || '';
+        }
+      } catch {
+        btn.dataset.likeUri = prevLikeUri;
+        btn.querySelector('svg').setAttribute('fill', liked ? 'currentColor' : 'none');
+        countSpan.textContent = prevCount;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    actions.appendChild(likeBtn);
+
+    // View conversation button
+    const convoBtn = document.createElement('button');
+    convoBtn.className = 'reader-convo-btn';
+    convoBtn.title     = 'View original post and replies';
+    convoBtn.setAttribute('aria-label', 'View post conversation');
+    convoBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Post`;
+    convoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openThread(post.uri, post.cid || '', author.handle || '');
+    });
+    actions.appendChild(convoBtn);
+
+    strip.appendChild(actions);
+    card.appendChild(strip);
+
+    // Clicking the card (body, not strip buttons) opens the article
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      // Mark as seen on open
+      readerSeenSet.add(articleUrl);
+      saveReaderSeen();
+      card.classList.add('reader-card-seen');
+      // Open in selected mode
+      window.open(getReaderOpenUrl(articleUrl), '_blank', 'noopener,noreferrer');
+    });
+
+    return card;
+  }
+
+  /**
+   * Fetch one batch of posts, filter for articles, and render them.
+   */
+  async function loadReaderBatch() {
+    if (readerLoading_flag || readerAllDone) return;
+    readerLoading_flag = true;
+    readerLoadingEl.hidden = false;
+
+    try {
+      const [timelineRes, discoverRes] = await Promise.allSettled([
+        readerCursorTimeline !== 'done' ? API.getTimeline(30, readerCursorTimeline || undefined) : Promise.resolve(null),
+        readerCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 30, readerCursorDiscover || undefined) : Promise.resolve(null),
+      ]);
+
+      const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
+      const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
+
+      if (timelineData) {
+        readerCursorTimeline = timelineData.cursor || 'done';
+      } else {
+        readerCursorTimeline = 'done';
+      }
+      if (discoverData) {
+        readerCursorDiscover = discoverData.cursor || 'done';
+      } else {
+        readerCursorDiscover = 'done';
+      }
+
+      if (readerCursorTimeline === 'done' && readerCursorDiscover === 'done') {
+        readerAllDone = true;
+      }
+
+      const allItems = [
+        ...(timelineData?.feed || []),
+        ...(discoverData?.feed || []),
+      ];
+
+      let rendered = 0;
+      const seenUris = new Set();
+      for (const item of allItems) {
+        const post = item.post;
+        if (!post?.uri) continue;
+        // Dedup by post URI across batches
+        if (readerSeenUriSet.has(post.uri)) continue;
+        if (seenUris.has(post.uri)) continue;
+        seenUris.add(post.uri);
+        readerSeenUriSet.add(post.uri);
+
+        const external = getArticleEmbed(post);
+        if (!external) continue;
+
+        const card = buildReaderCard(post, external);
+        readerFeed.appendChild(card);
+        rendered++;
+      }
+
+      // If we got nothing and there's more, try another batch automatically
+      if (rendered === 0 && !readerAllDone) {
+        readerLoading_flag = false;
+        readerLoadingEl.hidden = true;
+        await loadReaderBatch();
+        return;
+      }
+
+      readerEmptyEl.hidden = readerFeed.children.length > 0;
+      if (readerAllDone) {
+        if (readerEndEl) readerEndEl.hidden = false;
+        if (readerScrollObserver) readerScrollObserver.disconnect();
+      }
+    } catch (err) {
+      console.warn('Reader load error:', err);
+    } finally {
+      readerLoading_flag = false;
+      readerLoadingEl.hidden = true;
+    }
+  }
+
+  /** Reset reader state and load a fresh batch. */
+  function loadReader() {
+    readerCursorTimeline = null;
+    readerCursorDiscover = null;
+    readerLoading_flag   = false;
+    readerAllDone        = false;
+    readerSeenUriSet     = new Set();
+    readerFeed.innerHTML = '';
+    readerEmptyEl.hidden   = true;
+    readerLoadingEl.hidden = true;
+    if (readerEndEl) readerEndEl.hidden = true;
+    setupReaderScrollObserver();
+    loadReaderBatch();
+  }
+
+  /** Set up IntersectionObserver on the sentinel for infinite scroll. */
+  function setupReaderScrollObserver() {
+    if (readerScrollObserver) readerScrollObserver.disconnect();
+    readerScrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !readerLoading_flag) {
+          loadReaderBatch();
+        }
+      },
+      { root: viewReader, rootMargin: '0px 0px 400px 0px', threshold: 0 }
+    );
+    if (readerSentinel) readerScrollObserver.observe(readerSentinel);
+  }
+
+  // Wire up archive mode toggle buttons
+  document.querySelectorAll('.reader-mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      readerMode = btn.dataset.mode;
+      document.querySelectorAll('.reader-mode-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Wire up "Mark all read" button
+  const readerMarkAllBtn = $('reader-mark-all-btn');
+  if (readerMarkAllBtn) {
+    readerMarkAllBtn.addEventListener('click', () => {
+      const cards = readerFeed.querySelectorAll('.reader-card[data-url]');
+      cards.forEach((card) => {
+        const url = card.dataset.url;
+        if (url) readerSeenSet.add(url);
+        card.classList.add('reader-card-seen');
+      });
+      saveReaderSeen();
+    });
+  }
+
+  /* ================================================================
      INIT — check stored session on page load
   ================================================================ */
   async function init() {
@@ -1843,6 +2318,9 @@
       loadGallery();
     } else if (urlView === 'analytics') {
       showView('analytics', true);
+    } else if (urlView === 'reader') {
+      showView('reader', true);
+      loadReader();
     } else if (urlView === 'compose') {
       showView('compose', true);
       const shareText = p.get('shareText');
@@ -1908,6 +2386,7 @@
       gallery:       viewGallery,
       analytics:     viewAnalytics,
       timeline:      viewTimeline,
+      reader:        viewReader,
     };
     const navBtns = {
       feed:          navFeedBtn,
@@ -1918,6 +2397,7 @@
       gallery:       navGalleryBtn,
       analytics:     navAnalyticsBtn,
       timeline:      navTimelineBtn,
+      reader:        navReaderBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -1984,6 +2464,8 @@
         url = '?view=analytics';
       } else if (name === 'timeline') {
         url = '?view=timeline';
+      } else if (name === 'reader') {
+        url = '?view=reader';
       }
       history.pushState(state, '', url);
     }
@@ -2008,6 +2490,12 @@
     if (name !== 'gallery' && galleryScrollObserver) {
       galleryScrollObserver.disconnect();
       galleryScrollObserver = null;
+    }
+
+    // disconnect reader scroll observer when leaving reader view
+    if (name !== 'reader' && readerScrollObserver) {
+      readerScrollObserver.disconnect();
+      readerScrollObserver = null;
     }
 
     // disconnect profile scroll observer when leaving profile view
@@ -2058,6 +2546,14 @@
     loadAnalytics();
   });
   navTimelineBtn.addEventListener('click', () => showView('timeline'));
+  navReaderBtn.addEventListener('click', () => {
+    showView('reader');
+    if (readerFeed.children.length === 0) {
+      loadReader();
+    } else if (!readerAllDone) {
+      setupReaderScrollObserver();
+    }
+  });
 
   // Use browser history for the Back button so Forward/Back both work
   threadBackBtn.addEventListener('click',  () => history.back());
@@ -2097,6 +2593,13 @@
         } else if (!galleryAllDone) {
           // Gallery has content — scroll observer was disconnected on the way out; reconnect it.
           setupGalleryScrollObserver();
+        }
+      }
+      if (view === 'reader') {
+        if (readerFeed.children.length === 0) {
+          loadReader();
+        } else if (!readerAllDone) {
+          setupReaderScrollObserver();
         }
       }
       if (view === 'notifications' && !notifLoaded) loadNotifications();
@@ -2722,12 +3225,13 @@
 
     // M57: Gallery view PTR — reload gallery from scratch
     makePTR(viewGallery, () => loadGallery());
+    makePTR(viewReader,  () => loadReader());
   })();
 
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline]; // M57: added viewGallery; M22/M13: added analytics, timeline
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline, viewReader];
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
