@@ -1884,8 +1884,9 @@
    */
   function getReaderOpenUrl(originalUrl) {
     switch (readerMode) {
-      case 'bypass':
-        return `https://12ft.io/proxy?q=${encodeURIComponent(originalUrl)}`;
+      case 'archive':
+        // archive.ph strips paywalls and ads; no URL encoding needed for retrieval
+        return `https://archive.ph/${originalUrl}`;
       case 'wayback':
         return `https://web.archive.org/web/${originalUrl}`;
       default: // 'direct'
@@ -1906,7 +1907,7 @@
   let readerAllDone         = false;
   let readerSeenUriSet      = new Set(); // dedup post URIs within this reader session
   let readerScrollObserver  = null;
-  let readerMode            = 'direct'; // 'direct' | 'bypass' | 'wayback'
+  let readerMode            = 'direct'; // 'direct' | 'archive' | 'wayback'
 
   /**
    * Build a single reader card for an article post.
@@ -2004,9 +2005,21 @@
     authorMeta.appendChild(handleEl);
     strip.appendChild(authorMeta);
 
-    // Strip actions: like, repost, view conversation
+    // Strip actions: reply → repost → like (matches system-wide order)
     const actions = document.createElement('div');
     actions.className = 'reader-strip-actions post-actions';
+
+    // Reply button — opens the original Bluesky thread
+    const replyBtn = document.createElement('button');
+    replyBtn.className = 'reader-action-btn';
+    replyBtn.title     = 'View post and replies';
+    replyBtn.setAttribute('aria-label', 'View post and replies');
+    replyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span class="action-count">${post.replyCount || 0}</span>`;
+    replyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openThread(post.uri, post.cid || '', author.handle || '');
+    });
+    actions.appendChild(replyBtn);
 
     // Repost button
     const repostBtn = document.createElement('button');
@@ -2062,18 +2075,6 @@
       }
     });
     actions.appendChild(likeBtn);
-
-    // View conversation button
-    const convoBtn = document.createElement('button');
-    convoBtn.className = 'reader-convo-btn';
-    convoBtn.title     = 'View original post and replies';
-    convoBtn.setAttribute('aria-label', 'View post conversation');
-    convoBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Post`;
-    convoBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openThread(post.uri, post.cid || '', author.handle || '');
-    });
-    actions.appendChild(convoBtn);
 
     strip.appendChild(actions);
     card.appendChild(strip);
