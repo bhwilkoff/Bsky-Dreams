@@ -2074,6 +2074,20 @@
     });
     actions.appendChild(likeBtn);
 
+    // Mark-as-read button
+    const markReadBtn = document.createElement('button');
+    markReadBtn.className = 'reader-mark-read-btn';
+    markReadBtn.title     = 'Mark as read';
+    markReadBtn.setAttribute('aria-label', 'Mark as read');
+    markReadBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+    markReadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      readerSeenSet.add(articleUrl);
+      saveReaderSeen();
+      card.classList.add('reader-card-seen');
+    });
+    actions.appendChild(markReadBtn);
+
     strip.appendChild(actions);
     card.appendChild(strip);
 
@@ -2085,7 +2099,7 @@
       saveReaderSeen();
       card.classList.add('reader-card-seen');
       if (readerMode === 'readable') {
-        openInAppReader(articleUrl, external.title || '');
+        openInAppReader(articleUrl, external.title || '', post);
       } else {
         window.open(getReaderOpenUrl(articleUrl), '_blank', 'noopener,noreferrer');
       }
@@ -2131,12 +2145,13 @@
         ...(discoverData?.feed || []),
       ];
 
-      let rendered = 0;
+      // First pass: dedup post URIs and collapse same article URLs to highest-engagement post
       const seenUris = new Set();
+      // Map<articleUrl, { post, external, engagement }>
+      const articleMap = new Map();
       for (const item of allItems) {
         const post = item.post;
         if (!post?.uri) continue;
-        // Dedup by post URI across batches
         if (readerSeenUriSet.has(post.uri)) continue;
         if (seenUris.has(post.uri)) continue;
         seenUris.add(post.uri);
@@ -2145,6 +2160,19 @@
         const external = getArticleEmbed(post);
         if (!external) continue;
 
+        // Skip articles already marked as read
+        if (readerSeenSet.has(external.uri)) continue;
+
+        const engagement = (post.likeCount || 0) + (post.repostCount || 0) + (post.replyCount || 0);
+        const existing   = articleMap.get(external.uri);
+        if (!existing || engagement > existing.engagement) {
+          articleMap.set(external.uri, { post, external, engagement });
+        }
+      }
+
+      // Second pass: render deduplicated articles
+      let rendered = 0;
+      for (const { post, external } of articleMap.values()) {
         const card = buildReaderCard(post, external);
         readerFeed.appendChild(card);
         rendered++;
@@ -2238,7 +2266,7 @@
    * Tries three CORS proxies in sequence; each has its own 18s AbortController timeout.
    * Shows live step-by-step progress through every phase.
    */
-  async function openInAppReader(url, cardTitle) {
+  async function openInAppReader(url, cardTitle, post) {
     if (!inappReaderOverlay) return;
 
     const progressBar   = $('inapp-reader-progress-bar');
@@ -2246,12 +2274,12 @@
     const stepsEl       = $('inapp-reader-steps');
     const PROXY_TIMEOUT = 18000; // ms per proxy attempt
 
-    // Proxy list: each returns either { json: true } or { json: false } (raw text)
+    // Proxy list: codetabs first (most reliable), then fallbacks
     const PROXIES = [
       {
-        label: 'allorigins',
-        url:   (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-        extractHtml: async (res) => { const d = await res.json(); return d?.contents || null; },
+        label: 'codetabs',
+        url:   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        extractHtml: async (res) => res.text(),
       },
       {
         label: 'corsproxy.io',
@@ -2259,9 +2287,9 @@
         extractHtml: async (res) => res.text(),
       },
       {
-        label: 'codetabs',
-        url:   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-        extractHtml: async (res) => res.text(),
+        label: 'allorigins',
+        url:   (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+        extractHtml: async (res) => { const d = await res.json(); return d?.contents || null; },
       },
     ];
 
@@ -2320,6 +2348,71 @@
     const archiveLink = $('inapp-reader-archive');
     if (archiveLink) archiveLink.href = `https://archive.ph/?url=${encodeURIComponent(url)}`;
     inappReaderOriginal.href = url;
+
+    // Wire up post action buttons if a post was passed
+    const replyBtn  = $('inapp-reader-reply-btn');
+    const repostBtn = $('inapp-reader-repost-btn');
+    const likeBtn   = $('inapp-reader-like-btn');
+    const replyCountEl  = $('inapp-reader-reply-count');
+    const repostCountEl = $('inapp-reader-repost-count');
+    const likeCountEl   = $('inapp-reader-like-count');
+
+    if (post) {
+      if (replyCountEl)  replyCountEl.textContent  = post.replyCount  || '';
+      if (repostCountEl) repostCountEl.textContent = post.repostCount || '';
+      if (likeCountEl)   likeCountEl.textContent   = post.likeCount   || '';
+
+      if (replyBtn) {
+        replyBtn.onclick = () => { closeInAppReader(); openThread(post.uri, post.cid || '', post.author?.handle || ''); };
+        replyBtn.disabled = false;
+      }
+      if (repostBtn) {
+        repostBtn.className = 'inapp-reader-action-btn' + (post.viewer?.repost ? ' reposted' : '');
+        repostBtn.dataset.uri       = post.uri;
+        repostBtn.dataset.cid       = post.cid;
+        repostBtn.dataset.repostUri = post.viewer?.repost || '';
+        repostBtn.onclick = (e) => { e.stopPropagation(); showRepostActionSheet(repostBtn, post); };
+        repostBtn.disabled = false;
+      }
+      if (likeBtn) {
+        likeBtn.dataset.uri     = post.uri;
+        likeBtn.dataset.cid     = post.cid;
+        likeBtn.dataset.likeUri = post.viewer?.like || '';
+        likeBtn.querySelector('svg').setAttribute('fill', post.viewer?.like ? 'currentColor' : 'none');
+        likeBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (likeBtn.disabled) return;
+          likeBtn.disabled = true;
+          const liked       = !!likeBtn.dataset.likeUri;
+          const prevUri     = likeBtn.dataset.likeUri;
+          const prevCount   = likeCountEl?.textContent || '';
+          const prevFill    = likeBtn.querySelector('svg').getAttribute('fill');
+          const newCount    = (post.likeCount || 0) + (liked ? -1 : 1);
+          likeBtn.querySelector('svg').setAttribute('fill', liked ? 'none' : 'currentColor');
+          if (likeCountEl) likeCountEl.textContent = newCount || '';
+          try {
+            if (liked) {
+              await API.unlikePost(likeBtn.dataset.likeUri);
+              likeBtn.dataset.likeUri = '';
+            } else {
+              const r = await API.likePost(likeBtn.dataset.uri, likeBtn.dataset.cid);
+              likeBtn.dataset.likeUri = r.uri;
+            }
+          } catch {
+            likeBtn.querySelector('svg').setAttribute('fill', prevFill);
+            if (likeCountEl) likeCountEl.textContent = prevCount;
+            likeBtn.dataset.likeUri = prevUri;
+          } finally {
+            likeBtn.disabled = false;
+          }
+        };
+        likeBtn.disabled = false;
+      }
+    } else {
+      if (replyBtn)  replyBtn.disabled  = true;
+      if (repostBtn) repostBtn.disabled = true;
+      if (likeBtn)   likeBtn.disabled   = true;
+    }
 
     const bodyEl = inappReaderOverlay.querySelector('.inapp-reader-body');
     if (bodyEl) bodyEl.scrollTop = 0;
@@ -3349,7 +3442,7 @@
 
       // Reveal the indicator by shrinking its negative top margin
       const pull = Math.min(dy * 0.5, PTR_HEIGHT); // dampen pull
-      ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
+      ptrIndicator.style.top = `${pull - PTR_HEIGHT}px`;
 
       if (dy >= PTR_THRESHOLD) {
         // M34: start hold timer if not already counting
@@ -3377,14 +3470,14 @@
       if (ptrReadyToRelease) {
         ptrReadyToRelease = false;
         ptrActive = true;
-        ptrIndicator.style.marginTop = '0px';
+        ptrIndicator.style.top = '0px';
         ptrIndicator.dataset.state   = 'loading';
         await loadFeed(false);
         ptrActive = false;
       }
 
       // Snap back
-      ptrIndicator.style.marginTop = '';
+      ptrIndicator.style.top = '';
       delete ptrIndicator.dataset.state;
     });
   })();
@@ -3416,7 +3509,7 @@
         const dy = Math.max(0, e.touches[0].clientY - ptrStartY);
         if (dy <= 0) return;
         const pull = Math.min(dy * 0.5, PTR_HEIGHT);
-        ptrIndicator.style.marginTop = `${pull - PTR_HEIGHT}px`;
+        ptrIndicator.style.top = `${pull - PTR_HEIGHT}px`;
         if (dy >= PTR_THRESHOLD) {
           if (!ptrHoldTimer && !ptrReadyToRelease) {
             ptrHoldTimer = setTimeout(() => { ptrReadyToRelease = true; ptrIndicator.dataset.state = 'release'; }, PTR_HOLD_MS);
@@ -3432,11 +3525,11 @@
         ptrDragging = false; clearTimeout(ptrHoldTimer); ptrHoldTimer = null;
         if (ptrReadyToRelease) {
           ptrReadyToRelease = false; ptrActive = true;
-          ptrIndicator.style.marginTop = '0px'; ptrIndicator.dataset.state = 'loading';
+          ptrIndicator.style.top = '0px'; ptrIndicator.dataset.state = 'loading';
           await triggerFn();
           ptrActive = false;
         }
-        ptrIndicator.style.marginTop = ''; delete ptrIndicator.dataset.state;
+        ptrIndicator.style.top = ''; delete ptrIndicator.dataset.state;
       });
     }
 
