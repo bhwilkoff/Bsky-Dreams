@@ -2873,6 +2873,11 @@
       searchScrollObserver.disconnect();
     }
 
+    // M14: dismiss constellation focus card when leaving constellation view
+    if (name !== 'constellation') {
+      dismissConstellationPanel();
+    }
+
     // M16: stop DMs polling when leaving DMs view
     if (name !== 'dms') {
       stopDmsPolling();
@@ -8676,9 +8681,10 @@
   /* ================================================================
      M14: NETWORK CONSTELLATION
   ================================================================ */
-  let constellationSimulation = null;
-  let constellationSvg        = null;
-  let constellationActiveNode = null;
+  let constellationSimulation    = null;
+  let constellationSvg           = null;
+  let constellationActiveNode    = null;
+  let constellationAlwaysVisible = new Set(); // seed + top-N DIDs
 
   // Max nodes — keep it legible
   const CONSTELLATION_MAX_NODES = 60;
@@ -8690,9 +8696,9 @@
     const infoEl    = $('constellation-info');
 
     if (constellationSimulation) { constellationSimulation.stop(); constellationSimulation = null; }
-    if (constellationSvg)        { constellationSvg.remove(); constellationSvg = null; }
-    constellationActiveNode = null;
-    dismissConstellationPanel();
+    dismissConstellationPanel(); // clears activeNode + removes focus card
+    if (constellationSvg) { constellationSvg.remove(); constellationSvg = null; }
+    constellationAlwaysVisible = new Set();
     graphEl.innerHTML = '';
     loadingEl.hidden  = false;
     emptyEl.hidden    = true;
@@ -8870,62 +8876,109 @@
     }
   }
 
-  // Active node panel state
+  // Active node focus card state
   let constellationPanel = null;
 
   function dismissConstellationPanel() {
-    if (constellationPanel) { constellationPanel.remove(); constellationPanel = null; }
+    if (constellationPanel) {
+      const el = constellationPanel;
+      el.classList.remove('is-open');
+      // Remove label visibility for deselected node if not in always-visible set
+      if (constellationActiveNode && constellationSvg) {
+        if (!constellationAlwaysVisible.has(constellationActiveNode)) {
+          constellationSvg.selectAll('.c-node-label')
+            .filter(n => n.id === constellationActiveNode)
+            .classed('c-node-label--visible', false);
+        }
+        constellationSvg.selectAll('.c-node')
+          .classed('c-node--active', false);
+      }
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+      constellationPanel = null;
+    }
     constellationActiveNode = null;
   }
 
-  function showConstellationPanel(container, d, screenX, screenY) {
+  function showNodeFocusCard(d) {
     dismissConstellationPanel();
     constellationActiveNode = d.id;
 
-    const panel = document.createElement('div');
-    panel.className = 'constellation-node-panel';
-    panel.style.left = `${Math.min(screenX + 12, container.offsetWidth - 190)}px`;
-    panel.style.top  = `${Math.min(screenY + 12, container.offsetHeight - 90)}px`;
+    // Highlight the selected node and show its label
+    if (constellationSvg) {
+      constellationSvg.selectAll('.c-node')
+        .classed('c-node--active', n => n.id === d.id);
+      constellationSvg.selectAll('.c-node-label')
+        .filter(n => n.id === d.id)
+        .classed('c-node-label--visible', true);
+    }
 
-    const nameEl = document.createElement('div');
-    nameEl.className = 'cnp-name';
-    nameEl.textContent = d.name || `@${d.handle}`;
+    const viewEl = $('view-constellation');
+    const card = document.createElement('div');
+    card.className = 'c-node-focus';
+    card.innerHTML = `
+      <div class="cnf-header">
+        <div class="cnf-avatar-wrap">
+          <img class="cnf-avatar" src="${d.avatar || ''}" alt="" onerror="this.style.display='none'">
+          <div class="cnf-avatar-placeholder" aria-hidden="true"></div>
+        </div>
+        <div class="cnf-info">
+          <div class="cnf-name">${d.name ? d.name.replace(/</g,'&lt;') : '@' + d.handle}</div>
+          <div class="cnf-handle">@${d.handle.replace(/</g,'&lt;')}</div>
+          <div class="cnf-stats" id="cnf-stats-inner">
+            <span class="cnf-stat-loading">···</span>
+          </div>
+        </div>
+        <button class="cnf-close btn-icon" aria-label="Dismiss">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="cnf-btns">
+        <button class="btn btn-primary cnf-btn" id="cnf-explore-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="12" x2="15" y2="15"/></svg>
+          Explore connections
+        </button>
+        <button class="btn btn-ghost cnf-btn" id="cnf-profile-btn">View profile</button>
+      </div>
+    `;
 
-    const handleEl = document.createElement('div');
-    handleEl.className = 'cnp-handle';
-    handleEl.textContent = `@${d.handle}`;
+    viewEl.appendChild(card);
+    constellationPanel = card;
 
-    const btns = document.createElement('div');
-    btns.className = 'cnp-btns';
+    // Animate in after paint
+    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('is-open')));
 
-    const recenterBtn = document.createElement('button');
-    recenterBtn.className = 'btn btn-primary cnp-btn';
-    recenterBtn.textContent = 'Explore';
-    recenterBtn.title = 'Re-center constellation on this person';
-    recenterBtn.addEventListener('click', (e) => {
+    // Async: fetch follower/following counts
+    API.getActorProfile(d.handle).then(p => {
+      const statsEl = card.querySelector('#cnf-stats-inner');
+      if (!statsEl || !p) return;
+      statsEl.innerHTML =
+        `<span>${formatCount(p.followersCount || 0)} <span class="cnf-stat-label">followers</span></span>` +
+        `<span>${formatCount(p.followsCount || 0)} <span class="cnf-stat-label">following</span></span>`;
+    }).catch(() => {
+      const statsEl = card.querySelector('#cnf-stats-inner');
+      if (statsEl) statsEl.innerHTML = '';
+    });
+
+    card.querySelector('#cnf-explore-btn').addEventListener('click', e => {
       e.stopPropagation();
       dismissConstellationPanel();
       $('constellation-search-input').value = '@' + d.handle;
       runConstellation('@' + d.handle);
     });
 
-    const profileBtn = document.createElement('button');
-    profileBtn.className = 'btn btn-ghost cnp-btn';
-    profileBtn.textContent = 'Profile';
-    profileBtn.title = 'Open profile page';
-    profileBtn.addEventListener('click', (e) => {
+    card.querySelector('#cnf-profile-btn').addEventListener('click', e => {
       e.stopPropagation();
       dismissConstellationPanel();
       openProfile(d.handle);
     });
 
-    btns.appendChild(recenterBtn);
-    btns.appendChild(profileBtn);
-    panel.appendChild(nameEl);
-    panel.appendChild(handleEl);
-    panel.appendChild(btns);
-    container.appendChild(panel);
-    constellationPanel = panel;
+    card.querySelector('.cnf-close').addEventListener('click', e => {
+      e.stopPropagation();
+      dismissConstellationPanel();
+    });
+
+    // Prevent taps inside card from bubbling to SVG background dismiss handler
+    card.addEventListener('click', e => e.stopPropagation());
   }
 
   function renderConstellationGraph(container, nodes, links, query) {
@@ -9012,75 +9065,73 @@
       .attr('clip-path', d => `url(#c-clip-${d.id.replace(/[^a-z0-9]/gi, '_')})`)
       .style('pointer-events', 'none');
 
-    // Labels: only for seed node (always) and top 5 by degree (always visible)
-    // All others: hidden unless hovered
+    // Labels: always visible for seed + top 5 by degree; revealed on tap/click for others
     const topDids = new Set(
       [...nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0)).slice(0, 5).map(n => n.id)
     );
+    // Track for dismissConstellationPanel — which nodes always keep their label
+    constellationAlwaysVisible = new Set([...topDids, ...nodes.filter(n => n.isSeed).map(n => n.id)]);
 
     const labelEls = nodeEls.append('text')
       .attr('class', d => `c-node-label${(d.isSeed || topDids.has(d.id)) ? ' c-node-label--visible' : ''}`)
-      .attr('dy', d => nodeR(d) + 10)
+      .attr('dy', d => nodeR(d) + 12)
       .text(d => `@${d.handle.split('.')[0]}`);
 
     const tooltip = $('constellation-tooltip');
 
-    // Drag behavior — separate from click
+    // Drag behavior — separate from click via _dragging flag
     const drag = d3.drag()
       .on('start', (event, d) => {
         if (!event.active) sim.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
         svg.style('cursor', 'grabbing');
         d._dragging = true;
+        d._dragMoved = false;
       })
-      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('drag', (event, d) => {
+        d.fx = event.x; d.fy = event.y;
+        d._dragMoved = true;
+      })
       .on('end',  (event, d) => {
         if (!event.active) sim.alphaTarget(0);
         d.fx = null; d.fy = null;
         svg.style('cursor', 'grab');
-        // Small delay so the click handler can check _dragging
         setTimeout(() => { d._dragging = false; }, 50);
       });
 
     nodeEls
+      // Desktop hover: show tooltip + reveal label temporarily
       .on('mouseenter', (event, d) => {
-        tooltip.textContent = `@${d.handle}${d.name && d.name !== d.handle ? ' · ' + d.name : ''}`;
+        tooltip.textContent = `@${d.handle}${d.name && d.name !== d.handle ? '  ·  ' + d.name : ''}`;
         tooltip.hidden = false;
-        // Temporarily show label on hover for nodes that don't always show it
-        labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', true);
+        if (!constellationAlwaysVisible.has(d.id) && constellationActiveNode !== d.id) {
+          labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', true);
+        }
       })
       .on('mousemove', (event) => {
         const rect = container.getBoundingClientRect();
-        tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
-        tooltip.style.top  = (event.clientY - rect.top  - 28) + 'px';
+        tooltip.style.left = (event.clientX - rect.left + 14) + 'px';
+        tooltip.style.top  = (event.clientY - rect.top  - 32) + 'px';
       })
       .on('mouseleave', (event, d) => {
         tooltip.hidden = true;
-        if (!d.isSeed && !topDids.has(d.id)) {
+        if (!constellationAlwaysVisible.has(d.id) && constellationActiveNode !== d.id) {
           labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', false);
         }
       })
+      // Tap/click: open focus card (works on both mobile and desktop)
       .on('click', (event, d) => {
         event.stopPropagation();
-        if (d._dragging) return;
-        const rect = container.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
+        if (d._dragging || d._dragMoved) return;
         if (constellationActiveNode === d.id) {
           dismissConstellationPanel();
         } else {
-          showConstellationPanel(container, d, x, y);
+          showNodeFocusCard(d);
         }
-      })
-      .on('dblclick', (event, d) => {
-        event.stopPropagation();
-        tooltip.hidden = true;
-        dismissConstellationPanel();
-        openProfile(d.handle);
       })
       .call(drag);
 
-    // Click on background/SVG → dismiss panel
+    // Tap/click on background → dismiss focus card
     svg.on('click', (event) => {
       if (event.target === svg.node() || event.target.closest('.c-links')) {
         dismissConstellationPanel();
