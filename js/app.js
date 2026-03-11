@@ -287,7 +287,7 @@
       const btn = document.createElement('button');
       btn.type      = 'button';
       btn.className = 'channel-btn';
-      btn.setAttribute('aria-label', `Open channel: ${ch.name}${ch.unreadCount ? ` (${ch.unreadCount} new)` : ''}`);
+      btn.setAttribute('aria-label', `Open channel: ${ch.name}${ch.unreadCount ? ' (new posts)' : ''}`);
 
       const glyphEl = document.createElement('span');
       glyphEl.className = 'channel-glyph';
@@ -306,8 +306,8 @@
 
       if (ch.unreadCount > 0) {
         const badge = document.createElement('span');
-        badge.className   = 'channel-badge';
-        badge.textContent = ch.unreadCount > 99 ? '99+' : String(ch.unreadCount);
+        badge.className = 'channel-badge';
+        badge.setAttribute('aria-hidden', 'true');
         btn.appendChild(badge);
       }
 
@@ -1567,15 +1567,15 @@
     const repostCount = post.repostCount || 0;
     const replyCount  = post.replyCount  || 0;
 
-    // Reply button — inline reply directly on the gallery card
+    // Reply button — opens the conversation/thread view
     const replyBtn = document.createElement('button');
     replyBtn.className   = 'gallery-action-btn';
-    replyBtn.title       = 'Reply';
-    replyBtn.setAttribute('aria-label', 'Reply');
+    replyBtn.title       = 'View conversation';
+    replyBtn.setAttribute('aria-label', 'View conversation');
     replyBtn.innerHTML   = `<svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span class="action-count">${replyCount}</span>`;
     replyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      expandInlineReply(card, post);
+      openThread(post.uri, post.cid, post.author?.handle);
     });
 
     // Repost button — uses showRepostActionSheet (same as main feed)
@@ -3734,6 +3734,8 @@
     try {
       const profile = await API.getActorProfile(actor);
       renderProfileHeader(profile);
+      // M15: load interaction graph asynchronously (fire-and-forget)
+      loadProfileInteractionGraph(actor, ownProfile?.did);
       await loadProfileFeed(actor, false);
     } catch (err) {
       profileHeaderEl.innerHTML = `<div class="feed-empty"><p>Could not load profile: ${escHtml(err.message)}</p></div>`;
@@ -3858,8 +3860,80 @@
       el.appendChild(viewTimelineBtn);
     }
 
+    // M15: placeholder for interaction graph — populated asynchronously
+    const interactionsEl = document.createElement('div');
+    interactionsEl.className = 'profile-interactions';
+    interactionsEl.hidden = true;
+    el.appendChild(interactionsEl);
+
     profileHeaderEl.innerHTML = '';
     profileHeaderEl.appendChild(el);
+  }
+
+  /**
+   * M15: Profile Interaction Graph
+   * Fetches the last 100 posts (with replies) for actor, tallies who they
+   * reply to most, and injects avatar chips into .profile-interactions.
+   */
+  async function loadProfileInteractionGraph(actor, selfDid) {
+    const container = profileHeaderEl.querySelector('.profile-interactions');
+    if (!container) return;
+    try {
+      const data  = await API.getAuthorFeedWithReplies(actor, 100);
+      const items = data.feed || [];
+
+      // Count reply-to authors (excluding self)
+      const freq = new Map();
+      for (const item of items) {
+        const parentAuthor = item.reply?.parent?.author;
+        if (!parentAuthor) continue;
+        if (parentAuthor.did === selfDid) continue;
+        const key = parentAuthor.did;
+        if (!freq.has(key)) freq.set(key, { author: parentAuthor, count: 0 });
+        freq.get(key).count++;
+      }
+
+      const top = [...freq.values()]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+
+      if (top.length === 0) return;
+
+      const label = document.createElement('div');
+      label.className = 'profile-interactions-label';
+      label.textContent = 'Frequent conversations with';
+      container.appendChild(label);
+
+      const chips = document.createElement('div');
+      chips.className = 'profile-interactions-chips';
+
+      top.forEach(({ author, count }) => {
+        const chip = document.createElement('button');
+        chip.type      = 'button';
+        chip.className = 'profile-interaction-chip';
+        chip.setAttribute('aria-label', `View profile of @${author.handle} (${count} repl${count === 1 ? 'y' : 'ies'})`);
+        chip.title = `${count} repl${count === 1 ? 'y' : 'ies'}`;
+
+        const img = document.createElement('img');
+        setAvatarSrc(img, author.avatar);
+        img.alt       = '';
+        img.className = 'profile-interaction-avatar';
+
+        const handle = document.createElement('span');
+        handle.className   = 'profile-interaction-handle';
+        handle.textContent = `@${author.handle}`;
+
+        chip.appendChild(img);
+        chip.appendChild(handle);
+        chip.addEventListener('click', () => openProfile(author.handle));
+        chips.appendChild(chip);
+      });
+
+      container.appendChild(chips);
+      container.hidden = false;
+    } catch {
+      // Non-fatal — interaction graph is decorative
+    }
   }
 
   let profileScrollObserver = null;
@@ -8188,7 +8262,11 @@
         </div>
         <div class="timeline-card-text">${escHtml(text)}</div>
         <div class="timeline-card-footer">
-          <span class="timeline-card-eng">♥ ${formatCount(post.likeCount||0)} ↺ ${formatCount(post.repostCount||0)}</span>
+          <span class="timeline-card-eng">
+            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${formatCount(post.replyCount||0)}
+            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>${formatCount(post.repostCount||0)}
+            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${formatCount(post.likeCount||0)}
+          </span>
         </div>
       `;
       card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));

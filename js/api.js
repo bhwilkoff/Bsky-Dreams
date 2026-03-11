@@ -517,6 +517,13 @@ const API = (() => {
     });
   }
 
+  /** Fetch author feed including replies, for M15 interaction graph analysis. */
+  async function getAuthorFeedWithReplies(actor, limit = 100) {
+    return authGet('app.bsky.feed.getAuthorFeed', {
+      actor, limit, filter: 'posts_with_replies',
+    });
+  }
+
   async function getLikes(uri, limit = 50, cursor) {
     return authGet('app.bsky.feed.getLikes', { uri, limit, cursor });
   }
@@ -555,6 +562,7 @@ const API = (() => {
     blockActor,
     unblockActor,
     getAuthorFeedFull,
+    getAuthorFeedWithReplies,
     getLikes,
     getRepostedBy,
   };
