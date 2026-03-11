@@ -2265,6 +2265,11 @@
   const inappReaderContent  = $('inapp-reader-content');
 
   function closeInAppReader() {
+    // If URL currently shows an article, pop back to plain reader URL
+    if (new URLSearchParams(window.location.search).get('url')) {
+      history.replaceState({ view: 'reader' }, '', '?view=reader');
+    }
+
     inappReaderOverlay.hidden = true;
     inappReaderArticle.hidden = true;
     inappReaderLoading.hidden = true;
@@ -2292,6 +2297,15 @@
    */
   async function openInAppReader(url, cardTitle, post) {
     if (!inappReaderOverlay) return;
+
+    // Push (or replace if same URL already loaded) so Back closes the article
+    const articleUrlParam = `?view=reader&url=${encodeURIComponent(url)}`;
+    const alreadyHere = new URLSearchParams(window.location.search).get('url') === url;
+    if (alreadyHere) {
+      history.replaceState({ view: 'reader', url }, '', articleUrlParam);
+    } else {
+      history.pushState({ view: 'reader', url }, '', articleUrlParam);
+    }
 
     const progressBar   = $('inapp-reader-progress-bar');
     const progressLabel = $('inapp-reader-progress-label');
@@ -2666,9 +2680,21 @@
       loadGallery();
     } else if (urlView === 'analytics') {
       showView('analytics', true);
+      const analyticsActor = p.get('actor');
+      if (analyticsActor) {
+        $('analytics-actor-input').value = analyticsActor;
+        loadAnalytics(analyticsActor);
+      }
     } else if (urlView === 'reader') {
       showView('reader', true);
-      loadReader();
+      const readerUrl = p.get('url');
+      if (readerUrl) {
+        // Load the reader list in background and open the article overlay immediately
+        loadReader();
+        openInAppReader(readerUrl, '', null);
+      } else {
+        loadReader();
+      }
     } else if (urlView === 'compose') {
       showView('compose', true);
       const shareText = p.get('shareText');
@@ -2684,10 +2710,25 @@
       history.replaceState({ view: 'compose' }, '', '?view=compose');
     } else if (urlView === 'timeline') {
       showView('timeline', true);
+      const tlQ = p.get('q');
+      if (tlQ) {
+        $('timeline-search-input').value = tlQ;
+        tlQuery = tlQ;
+        tlDoSearch();
+      }
     } else if (urlView === 'dms') {
       showView('dms', true);
     } else if (urlView === 'constellation') {
       showView('constellation', true);
+      const cActor = p.get('actor');
+      const cQ     = p.get('q');
+      if (cActor) {
+        $('constellation-search-input').value = '@' + cActor;
+        runConstellation('@' + cActor);
+      } else if (cQ) {
+        $('constellation-search-input').value = cQ;
+        runConstellation(cQ);
+      }
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -2979,10 +3020,45 @@
         }
       }
       if (view === 'reader') {
-        if (readerFeed.children.length === 0) {
-          loadReader();
-        } else if (!readerAllDone) {
-          setupReaderScrollObserver();
+        const readerUrl = state?.url || params.get('url');
+        if (readerUrl) {
+          // Navigated forward/back to a specific article
+          if (readerFeed.children.length === 0) loadReader();
+          openInAppReader(readerUrl, '', null);
+        } else {
+          // Plain reader list — close overlay if open, restore list
+          closeInAppReader();
+          if (readerFeed.children.length === 0) {
+            loadReader();
+          } else if (!readerAllDone) {
+            setupReaderScrollObserver();
+          }
+        }
+      }
+      if (view === 'analytics') {
+        const actor = state?.actor || params.get('actor');
+        if (actor) {
+          $('analytics-actor-input').value = actor;
+          loadAnalytics(actor);
+        }
+      }
+      if (view === 'timeline') {
+        const tlQ = state?.q || params.get('q');
+        if (tlQ) {
+          $('timeline-search-input').value = tlQ;
+          tlQuery = tlQ;
+          tlDoSearch();
+        }
+      }
+      if (view === 'constellation') {
+        const cActor = state?.actor || params.get('actor');
+        const cQ     = state?.q     || params.get('q');
+        if (cActor) {
+          $('constellation-search-input').value = '@' + cActor;
+          runConstellation('@' + cActor);
+        } else if (cQ) {
+          $('constellation-search-input').value = cQ;
+          runConstellation(cQ);
         }
       }
       if (view === 'notifications' && !notifLoaded) loadNotifications();
@@ -7881,6 +7957,13 @@
       if (!actor) return;
       analyticsActor = actor;
 
+      // Update URL so this analysis is bookmarkable/shareable
+      history.replaceState(
+        { view: 'analytics', actor },
+        '',
+        `?view=analytics&actor=${encodeURIComponent(actor)}`
+      );
+
       errEl.hidden     = true;
       contentEl.hidden = true;
       profileStrip.hidden = true;
@@ -8047,6 +8130,14 @@
     const raw = $('timeline-search-input').value.trim();
     if (!raw) return;
     tlQuery = raw;
+
+    // Update URL so this timeline search is bookmarkable/shareable
+    history.replaceState(
+      { view: 'timeline', q: tlQuery },
+      '',
+      `?view=timeline&q=${encodeURIComponent(tlQuery)}`
+    );
+
     // Reset window to default zoom (1 day ending now)
     tlZoomLevel   = 2;
     tlWindowEnd   = Date.now();
@@ -8735,6 +8826,21 @@
       // Detect profile-mode: query starts with @ or looks like a single handle
       const isProfileMode = /^@?\S+$/.test(query.trim()) && !query.includes(' ');
       const seedHandle    = isProfileMode ? query.trim().replace(/^@/, '') : null;
+
+      // Update URL so this constellation is bookmarkable/shareable
+      if (isProfileMode && seedHandle) {
+        history.replaceState(
+          { view: 'constellation', actor: seedHandle },
+          '',
+          `?view=constellation&actor=${encodeURIComponent(seedHandle)}`
+        );
+      } else {
+        history.replaceState(
+          { view: 'constellation', q: query.trim() },
+          '',
+          `?view=constellation&q=${encodeURIComponent(query.trim())}`
+        );
+      }
 
       if (isProfileMode && seedHandle) {
         const [postsData, followsData, followersData] = await Promise.allSettled([
