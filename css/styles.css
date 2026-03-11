@@ -6999,14 +6999,71 @@ a.post-timestamp:hover {
 .c-node-label {
   font-family: 'Inter', sans-serif;
   font-size: 9px;
-  fill: var(--color-text-muted);
+  fill: transparent;
   text-anchor: middle;
   pointer-events: none;
   user-select: none;
+  transition: fill 0.15s;
+}
+
+.c-node-label--visible {
+  fill: var(--color-text-muted);
 }
 
 .c-node--dim .c-node-label {
-  fill: transparent;
+  fill: transparent !important;
+}
+
+/* Mutual follow edges — solid blue, slightly thicker */
+.c-link--mutual {
+  stroke: var(--color-blue);
+  stroke-opacity: 0.7;
+  stroke-width: 1.5;
+  stroke-dasharray: none;
+}
+
+/* Constellation node mini-panel */
+.constellation-node-panel {
+  position: absolute;
+  background: var(--color-surface);
+  border: 2px solid var(--nb-black);
+  box-shadow: 4px 4px 0 var(--nb-black);
+  padding: var(--space-xs) var(--space-sm);
+  z-index: 200;
+  min-width: 140px;
+  max-width: 200px;
+  pointer-events: all;
+}
+
+.cnp-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cnp-handle {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cnp-btns {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.cnp-btn {
+  flex: 1;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .constellation-tooltip {
