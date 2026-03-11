@@ -8680,6 +8680,9 @@
   let constellationSvg        = null;
   let constellationActiveNode = null;
 
+  // Max nodes — keep it legible
+  const CONSTELLATION_MAX_NODES = 60;
+
   async function runConstellation(query) {
     const graphEl   = $('constellation-graph');
     const loadingEl = $('constellation-loading');
@@ -8689,6 +8692,7 @@
     if (constellationSimulation) { constellationSimulation.stop(); constellationSimulation = null; }
     if (constellationSvg)        { constellationSvg.remove(); constellationSvg = null; }
     constellationActiveNode = null;
+    dismissConstellationPanel();
     graphEl.innerHTML = '';
     loadingEl.hidden  = false;
     emptyEl.hidden    = true;
@@ -8698,7 +8702,7 @@
       const nodeMap = new Map();
       const edgeMap = new Map();
 
-      const addNode = (author, weight = 1) => {
+      const addNode = (author, bonus = 0) => {
         if (!author?.did) return;
         if (!nodeMap.has(author.did)) {
           nodeMap.set(author.did, {
@@ -8709,74 +8713,77 @@
             count:  0,
           });
         }
-        nodeMap.get(author.did).count += weight;
+        nodeMap.get(author.did).count += 1 + bonus;
       };
 
       const addEdge = (didA, didB, type = 'reply') => {
         if (!didA || !didB || didA === didB) return;
         const key = [didA, didB].sort().join('|');
         if (!edgeMap.has(key)) edgeMap.set(key, { source: didA, target: didB, weight: 0, type });
-        edgeMap.get(key).weight++;
+        const e = edgeMap.get(key);
+        e.weight++;
+        // Upgrade type: reply < follow < mutual
+        if (type === 'mutual' || (type === 'follow' && e.type === 'reply')) e.type = type;
       };
 
-      // Detect profile-mode: query is @handle or handle.tld
-      const handleMatch = query.trim().match(/^@?([\w.-]+\.\w+|[\w-]+)$/);
-      const isProfileMode = query.trim().startsWith('@') || (handleMatch && !query.includes(' '));
+      // Detect profile-mode: query starts with @ or looks like a single handle
+      const isProfileMode = /^@?\S+$/.test(query.trim()) && !query.includes(' ');
       const seedHandle    = isProfileMode ? query.trim().replace(/^@/, '') : null;
 
       if (isProfileMode && seedHandle) {
-        // Profile mode: seed from posts + follows + followers of the actor
         const [postsData, followsData, followersData] = await Promise.allSettled([
           API.getAuthorFeedWithReplies(seedHandle, 100),
           API.getActorFollows(seedHandle, 100),
           API.getActorFollowers(seedHandle, 100),
         ]);
 
-        // Resolve the actor's DID from profile data for central node
         let seedDid = null;
 
-        // Posts: add authors as nodes, reply edges
+        // Posts → reply edges
         const posts = postsData.status === 'fulfilled' ? (postsData.value.feed || []) : [];
         posts.forEach(item => {
           const p = item.post;
           if (!p) return;
           addNode(p.author);
-          if (!seedDid && p.author?.handle === seedHandle) seedDid = p.author.did;
-          const parentUri = p.record?.reply?.parent?.uri;
-          if (parentUri) {
-            const m = parentUri.match(/^at:\/\/(did:[^/]+)\//);
-            if (m) addEdge(p.author.did, m[1], 'reply');
-          }
-          // Feed-level reply context (includes parent author view)
+          if (!seedDid && p.author?.handle?.toLowerCase() === seedHandle.toLowerCase()) seedDid = p.author.did;
+          // Feed-level reply context gives us the parent author object directly
           if (item.reply?.parent?.author) {
             addNode(item.reply.parent.author);
             addEdge(p.author.did, item.reply.parent.author.did, 'reply');
+          } else {
+            const m = (p.record?.reply?.parent?.uri || '').match(/^at:\/\/(did:[^/]+)\//);
+            if (m) addEdge(p.author.did, m[1], 'reply');
           }
         });
 
-        // Follows: add as nodes + follow edges to seed
+        // Follows + followers → mutual detection
+        const followsDids    = new Set();
+        const followersDids  = new Set();
+
         const follows = followsData.status === 'fulfilled' ? (followsData.value.follows || []) : [];
-        follows.forEach(actor => {
-          addNode(actor);
-          if (!seedDid && seedHandle) {
-            // try to get seed DID from any post
-          }
-          if (seedDid) addEdge(seedDid, actor.did, 'follow');
-        });
+        follows.forEach(a => { addNode(a, 1); followsDids.add(a.did); });
 
-        // Followers: add as nodes + follow edges from follower to seed
         const followers = followersData.status === 'fulfilled' ? (followersData.value.followers || []) : [];
-        followers.forEach(actor => {
-          addNode(actor);
-          if (seedDid) addEdge(actor.did, seedDid, 'follow');
-        });
+        followers.forEach(a => { addNode(a, 1); followersDids.add(a.did); });
 
-        // Ensure seed actor is in node map
-        if (seedDid && !nodeMap.has(seedDid)) {
-          const seedProfile = await API.getActorProfile(seedHandle).catch(() => null);
-          if (seedProfile) addNode(seedProfile, 5);
+        // Resolve seed DID if not found from posts
+        if (!seedDid) {
+          const sp = await API.getActorProfile(seedHandle).catch(() => null);
+          if (sp) { addNode(sp, 5); seedDid = sp.did; }
         }
-        if (seedDid) nodeMap.get(seedDid).isSeed = true;
+
+        if (seedDid) {
+          nodeMap.get(seedDid).isSeed = true;
+          // Mutual follows — stronger edge
+          followsDids.forEach(did => {
+            const type = followersDids.has(did) ? 'mutual' : 'follow';
+            addEdge(seedDid, did, type);
+          });
+          // Followers who don't follow back
+          followersDids.forEach(did => {
+            if (!followsDids.has(did)) addEdge(did, seedDid, 'follow');
+          });
+        }
 
       } else {
         // Keyword mode: search posts, reply edges only
@@ -8784,27 +8791,55 @@
         const posts = data.posts || [];
         posts.forEach(p => {
           addNode(p.author);
-          const replyParentUri = p.record?.reply?.parent?.uri;
-          if (replyParentUri) {
-            const m = replyParentUri.match(/^at:\/\/(did:[^/]+)\//);
-            if (m) addEdge(p.author.did, m[1], 'reply');
-          }
+          const m = (p.record?.reply?.parent?.uri || '').match(/^at:\/\/(did:[^/]+)\//);
+          if (m) addEdge(p.author.did, m[1], 'reply');
         });
       }
 
-      // Remove edges where one end isn't in the node map
-      for (const [key, edge] of edgeMap) {
-        if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) edgeMap.delete(key);
+      // Compute degree for each node (number of edges)
+      nodeMap.forEach(n => { n.degree = 0; });
+      edgeMap.forEach(e => {
+        if (nodeMap.has(e.source)) nodeMap.get(e.source).degree++;
+        if (nodeMap.has(e.target)) nodeMap.get(e.target).degree++;
+      });
+
+      // Prune: remove edges with very low weight in large graphs (keep weight ≥ 2 for reply, all for follow/mutual)
+      const totalNodes = nodeMap.size;
+      if (totalNodes > 30) {
+        for (const [key, e] of edgeMap) {
+          if (e.type === 'reply' && e.weight < 2) edgeMap.delete(key);
+        }
       }
 
-      // Cap at 150 nodes, keeping highest-count
+      // Remove edges where one end isn't in the node map
+      for (const [key, e] of edgeMap) {
+        if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) edgeMap.delete(key);
+      }
+
+      // Score nodes: seed > mutual > high-degree > count
+      const scoreNode = n => {
+        if (n.isSeed) return 1e9;
+        const edgesFromMap = [...edgeMap.values()].filter(e =>
+          (e.source === n.id || e.target === n.id)
+        );
+        const mutualScore = edgesFromMap.filter(e => e.type === 'mutual').length * 10;
+        return mutualScore + n.degree * 3 + n.count;
+      };
+
       let nodes = [...nodeMap.values()];
-      if (nodes.length > 150) {
-        nodes = nodes.sort((a, b) => b.count - a.count).slice(0, 150);
+      if (nodes.length > CONSTELLATION_MAX_NODES) {
+        nodes = nodes
+          .sort((a, b) => scoreNode(b) - scoreNode(a))
+          .slice(0, CONSTELLATION_MAX_NODES);
         const keepDids = new Set(nodes.map(n => n.id));
-        for (const [key, edge] of edgeMap) {
-          if (!keepDids.has(edge.source) || !keepDids.has(edge.target)) edgeMap.delete(key);
+        for (const [key, e] of edgeMap) {
+          if (!keepDids.has(e.source) || !keepDids.has(e.target)) edgeMap.delete(key);
         }
+      }
+
+      // After final node set, re-remove dangling edges
+      for (const [key, e] of edgeMap) {
+        if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) edgeMap.delete(key);
       }
 
       const links = [...edgeMap.values()];
@@ -8817,11 +8852,13 @@
       }
 
       const replyCount  = links.filter(l => l.type === 'reply').length;
+      const mutualCount = links.filter(l => l.type === 'mutual').length;
       const followCount = links.filter(l => l.type === 'follow').length;
-      let infoText = `${nodes.length} people`;
-      if (replyCount)  infoText += ` · ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`;
-      if (followCount) infoText += ` · ${followCount} follow connection${followCount === 1 ? '' : 's'}`;
-      infoEl.textContent = infoText;
+      let parts = [`${nodes.length} people`];
+      if (replyCount)  parts.push(`${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`);
+      if (mutualCount) parts.push(`${mutualCount} mutual${mutualCount === 1 ? '' : 's'}`);
+      if (followCount) parts.push(`${followCount} follow${followCount === 1 ? '' : 's'}`);
+      infoEl.textContent = parts.join(' · ');
       infoEl.hidden = false;
 
       renderConstellationGraph(graphEl, nodes, links, query);
@@ -8833,9 +8870,76 @@
     }
   }
 
+  // Active node panel state
+  let constellationPanel = null;
+
+  function dismissConstellationPanel() {
+    if (constellationPanel) { constellationPanel.remove(); constellationPanel = null; }
+    constellationActiveNode = null;
+  }
+
+  function showConstellationPanel(container, d, screenX, screenY) {
+    dismissConstellationPanel();
+    constellationActiveNode = d.id;
+
+    const panel = document.createElement('div');
+    panel.className = 'constellation-node-panel';
+    panel.style.left = `${Math.min(screenX + 12, container.offsetWidth - 190)}px`;
+    panel.style.top  = `${Math.min(screenY + 12, container.offsetHeight - 90)}px`;
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'cnp-name';
+    nameEl.textContent = d.name || `@${d.handle}`;
+
+    const handleEl = document.createElement('div');
+    handleEl.className = 'cnp-handle';
+    handleEl.textContent = `@${d.handle}`;
+
+    const btns = document.createElement('div');
+    btns.className = 'cnp-btns';
+
+    const recenterBtn = document.createElement('button');
+    recenterBtn.className = 'btn btn-primary cnp-btn';
+    recenterBtn.textContent = 'Explore';
+    recenterBtn.title = 'Re-center constellation on this person';
+    recenterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissConstellationPanel();
+      $('constellation-search-input').value = '@' + d.handle;
+      runConstellation('@' + d.handle);
+    });
+
+    const profileBtn = document.createElement('button');
+    profileBtn.className = 'btn btn-ghost cnp-btn';
+    profileBtn.textContent = 'Profile';
+    profileBtn.title = 'Open profile page';
+    profileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissConstellationPanel();
+      openProfile(d.handle);
+    });
+
+    btns.appendChild(recenterBtn);
+    btns.appendChild(profileBtn);
+    panel.appendChild(nameEl);
+    panel.appendChild(handleEl);
+    panel.appendChild(btns);
+    container.appendChild(panel);
+    constellationPanel = panel;
+  }
+
   function renderConstellationGraph(container, nodes, links, query) {
     const W = container.offsetWidth  || 600;
     const H = container.offsetHeight || 500;
+
+    // Compute radius per node: seed bigger, others scaled by degree
+    const maxDeg = Math.max(...nodes.map(n => n.degree || 1), 1);
+    const nodeR = d => {
+      if (d.isSeed) return 18;
+      const base = 7;
+      const scale = Math.sqrt((d.degree || 1) / maxDeg);
+      return Math.round(base + scale * 8);
+    };
 
     const svg = d3.select(container)
       .append('svg')
@@ -8847,16 +8951,28 @@
     constellationSvg = svg;
 
     const g = svg.append('g');
-    const zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+    const zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', (event) => {
       g.attr('transform', event.transform);
     });
     svg.call(zoom);
 
+    // Link distance varies by type
+    const linkDist = l => {
+      if (l.type === 'mutual') return 80;
+      if (l.type === 'follow' || l.type === 'follower') return 110;
+      return 70;
+    };
+    const linkStr = l => {
+      if (l.type === 'mutual') return 0.8;
+      if (l.type === 'follow' || l.type === 'follower') return 0.4;
+      return 0.6;
+    };
+
     const sim = d3.forceSimulation(nodes)
-      .force('link',    d3.forceLink(links).id(d => d.id).distance(60).strength(0.5))
-      .force('charge',  d3.forceManyBody().strength(-80))
+      .force('link',    d3.forceLink(links).id(d => d.id).distance(linkDist).strength(linkStr))
+      .force('charge',  d3.forceManyBody().strength(d => d.isSeed ? -400 : -180))
       .force('center',  d3.forceCenter(W / 2, H / 2))
-      .force('collide', d3.forceCollide(14));
+      .force('collide', d3.forceCollide(d => nodeR(d) + 6).strength(0.9));
     constellationSimulation = sim;
 
     const linkEls = g.append('g').attr('class', 'c-links')
@@ -8864,7 +8980,7 @@
       .data(links)
       .join('line')
       .attr('class', d => `c-link c-link--${d.type || 'reply'}`)
-      .attr('stroke-width', d => Math.min(1 + d.weight, 4));
+      .attr('stroke-width', d => d.type === 'mutual' ? 2.5 : 1.5);
 
     const nodeEls = g.append('g').attr('class', 'c-nodes')
       .selectAll('g')
@@ -8875,76 +8991,100 @@
       .attr('aria-label', d => `@${d.handle}`);
 
     nodeEls.append('circle')
-      .attr('r', d => 6 + Math.min(d.count, 10))
+      .attr('r', d => nodeR(d))
       .attr('class', 'c-node-circle');
 
+    // Clip paths for avatar images
     const defs = svg.append('defs');
     nodes.forEach(n => {
       defs.append('clipPath')
         .attr('id', `c-clip-${n.id.replace(/[^a-z0-9]/gi, '_')}`)
         .append('circle')
-        .attr('r', 6 + Math.min(n.count, 10));
+        .attr('r', nodeR(n));
     });
 
     nodeEls.append('image')
       .attr('href',   d => d.avatar || '')
-      .attr('x',      d => -(6 + Math.min(d.count, 10)))
-      .attr('y',      d => -(6 + Math.min(d.count, 10)))
-      .attr('width',  d => 2 * (6 + Math.min(d.count, 10)))
-      .attr('height', d => 2 * (6 + Math.min(d.count, 10)))
+      .attr('x',      d => -nodeR(d))
+      .attr('y',      d => -nodeR(d))
+      .attr('width',  d => 2 * nodeR(d))
+      .attr('height', d => 2 * nodeR(d))
       .attr('clip-path', d => `url(#c-clip-${d.id.replace(/[^a-z0-9]/gi, '_')})`)
       .style('pointer-events', 'none');
 
-    nodeEls.append('text')
-      .attr('class', 'c-node-label')
-      .attr('dy', d => (6 + Math.min(d.count, 10)) + 11)
+    // Labels: only for seed node (always) and top 5 by degree (always visible)
+    // All others: hidden unless hovered
+    const topDids = new Set(
+      [...nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0)).slice(0, 5).map(n => n.id)
+    );
+
+    const labelEls = nodeEls.append('text')
+      .attr('class', d => `c-node-label${(d.isSeed || topDids.has(d.id)) ? ' c-node-label--visible' : ''}`)
+      .attr('dy', d => nodeR(d) + 10)
       .text(d => `@${d.handle.split('.')[0]}`);
 
     const tooltip = $('constellation-tooltip');
 
+    // Drag behavior — separate from click
+    const drag = d3.drag()
+      .on('start', (event, d) => {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+        svg.style('cursor', 'grabbing');
+        d._dragging = true;
+      })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end',  (event, d) => {
+        if (!event.active) sim.alphaTarget(0);
+        d.fx = null; d.fy = null;
+        svg.style('cursor', 'grab');
+        // Small delay so the click handler can check _dragging
+        setTimeout(() => { d._dragging = false; }, 50);
+      });
+
     nodeEls
       .on('mouseenter', (event, d) => {
-        tooltip.textContent = `@${d.handle} \u00b7 ${d.count} post${d.count !== 1 ? 's' : ''}`;
+        tooltip.textContent = `@${d.handle}${d.name && d.name !== d.handle ? ' · ' + d.name : ''}`;
         tooltip.hidden = false;
+        // Temporarily show label on hover for nodes that don't always show it
+        labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', true);
       })
       .on('mousemove', (event) => {
         const rect = container.getBoundingClientRect();
         tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
-        tooltip.style.top  = (event.clientY - rect.top  + 12) + 'px';
+        tooltip.style.top  = (event.clientY - rect.top  - 28) + 'px';
       })
-      .on('mouseleave', () => { tooltip.hidden = true; })
+      .on('mouseleave', (event, d) => {
+        tooltip.hidden = true;
+        if (!d.isSeed && !topDids.has(d.id)) {
+          labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', false);
+        }
+      })
       .on('click', (event, d) => {
         event.stopPropagation();
+        if (d._dragging) return;
+        const rect = container.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
         if (constellationActiveNode === d.id) {
-          constellationActiveNode = null;
-          applyConstellationFilter(nodeEls, linkEls, null, links);
+          dismissConstellationPanel();
         } else {
-          constellationActiveNode = d.id;
-          applyConstellationFilter(nodeEls, linkEls, d.id, links);
+          showConstellationPanel(container, d, x, y);
         }
       })
       .on('dblclick', (event, d) => {
         event.stopPropagation();
         tooltip.hidden = true;
+        dismissConstellationPanel();
         openProfile(d.handle);
       })
-      .call(d3.drag()
-        .on('start', (event, d) => {
-          if (!event.active) sim.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
-          svg.style('cursor', 'grabbing');
-        })
-        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
-        .on('end',  (event, d) => {
-          if (!event.active) sim.alphaTarget(0);
-          d.fx = null; d.fy = null;
-          svg.style('cursor', 'grab');
-        })
-      );
+      .call(drag);
 
-    svg.on('click', () => {
-      constellationActiveNode = null;
-      applyConstellationFilter(nodeEls, linkEls, null, links);
+    // Click on background/SVG → dismiss panel
+    svg.on('click', (event) => {
+      if (event.target === svg.node() || event.target.closest('.c-links')) {
+        dismissConstellationPanel();
+      }
     });
 
     sim.on('tick', () => {
@@ -8954,29 +9094,6 @@
         .attr('x2', d => d.target.x)
         .attr('y2', d => d.target.y);
       nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
-    });
-  }
-
-  function applyConstellationFilter(nodeEls, linkEls, activeDid, links) {
-    if (!activeDid) {
-      nodeEls.classed('c-node--dim', false).classed('c-node--active', false);
-      linkEls.classed('c-link--dim', false);
-      return;
-    }
-    const connected = new Set([activeDid]);
-    links.forEach(l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      if (s === activeDid) connected.add(t);
-      if (t === activeDid) connected.add(s);
-    });
-    nodeEls
-      .classed('c-node--dim',    d => !connected.has(d.id))
-      .classed('c-node--active', d => d.id === activeDid);
-    linkEls.classed('c-link--dim', l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      return !connected.has(s) || !connected.has(t);
     });
   }
 
