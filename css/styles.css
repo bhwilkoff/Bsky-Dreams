@@ -3119,6 +3119,73 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
+   M15: PROFILE INTERACTION GRAPH
+================================================================ */
+.profile-interactions {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 2px solid var(--color-border);
+}
+
+.profile-interactions-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-sm);
+}
+
+.profile-interactions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.profile-interaction-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  background: var(--color-surface);
+  border: 2px solid var(--nb-black);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.profile-interaction-chip:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+
+.profile-interaction-chip:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--nb-black);
+}
+
+.profile-interaction-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--nb-black);
+}
+
+.profile-interaction-handle {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-blue);
+}
+
+/* ================================================================
    NOTIFICATION BADGE (nav bell)
 ================================================================ */
 .nav-notif-wrap {
@@ -4148,19 +4215,14 @@ a.post-timestamp:hover {
   min-width: 0;
 }
 
-/* Unread count badge */
+/* Unread indicator dot */
 .channel-badge {
   flex-shrink: 0;
   background: var(--color-accent);
-  color: #fff;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   border: 1.5px solid var(--nb-black);
-  min-width: 18px;
-  text-align: center;
-  line-height: 1.5;
 }
 
 /* ⋯ options button — revealed on hover */
@@ -5965,7 +6027,13 @@ a.post-timestamp:hover {
   color: var(--color-text-light);
   overflow: hidden;
 }
-.timeline-card-eng { color: var(--color-accent); font-weight: 700; }
+.timeline-card-eng {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* Timeline: full-height flex column, no vertical scrolling */
 #view-timeline.view {
