@@ -3118,6 +3118,47 @@ a.post-timestamp:hover {
   font-size: 0.8125rem;
 }
 
+/* Profile action buttons row */
+.profile-actions-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-sm);
+}
+
+/* Follow button — primary action, grows to fill */
+.profile-actions-row .follow-btn {
+  flex: 1;
+  min-width: 80px;
+  max-width: 160px;
+}
+
+/* Icon-only tool buttons — fixed square size, consistent style */
+.profile-tool-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid var(--nb-black);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  color: var(--color-text-muted);
+}
+
+.profile-tool-btn:hover {
+  color: var(--color-text);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+
+.profile-tool-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--nb-black);
+}
+
 /* ================================================================
    M15: PROFILE INTERACTION GRAPH
 ================================================================ */
@@ -6911,13 +6952,24 @@ a.post-timestamp:hover {
 }
 
 .c-link {
-  stroke: var(--color-border);
-  stroke-opacity: 0.7;
   fill: none;
+  stroke-opacity: 0.6;
+}
+
+/* Reply edges — muted gray */
+.c-link--reply {
+  stroke: var(--color-text-muted);
+}
+
+/* Follow edges — blue accent */
+.c-link--follow {
+  stroke: var(--color-blue);
+  stroke-opacity: 0.5;
+  stroke-dasharray: 4 3;
 }
 
 .c-link--dim {
-  stroke-opacity: 0.1;
+  stroke-opacity: 0.08;
 }
 
 .c-node-circle {
@@ -6927,8 +6979,15 @@ a.post-timestamp:hover {
   transition: opacity 0.2s;
 }
 
-.c-node--active .c-node-circle {
+/* Seed node (central profile) */
+.c-node--seed .c-node-circle {
   stroke: var(--color-accent);
+  stroke-width: 3;
+  fill: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+}
+
+.c-node--active .c-node-circle {
+  stroke: var(--color-lime);
   stroke-width: 3;
   filter: drop-shadow(2px 2px 0 var(--nb-black));
 }
