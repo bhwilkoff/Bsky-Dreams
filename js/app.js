@@ -8629,6 +8629,29 @@
     loadDmsList();
   });
 
+  $('dms-leave-btn').addEventListener('click', async () => {
+    if (!dmsActiveConvoId) return;
+    const convoId = dmsActiveConvoId;
+    const name    = $('dms-chat-title').textContent;
+    if (!confirm(`Leave your conversation with ${name}? This cannot be undone.`)) return;
+    const btn = $('dms-leave-btn');
+    btn.disabled = true;
+    try {
+      await API.leaveConvo(convoId);
+      stopDmsPolling();
+      dmsActiveConvoId = null;
+      dmsActiveConvo   = null;
+      $('dms-chat-panel').hidden = true;
+      $('dms-list-panel').hidden = false;
+      loadDmsList();
+      showBanner('Left conversation.');
+    } catch (err) {
+      showBanner(`Could not leave conversation: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   /* ================================================================
      M14: NETWORK CONSTELLATION
   ================================================================ */

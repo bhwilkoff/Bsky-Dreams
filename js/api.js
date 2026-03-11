@@ -602,6 +602,10 @@ const API = (() => {
     return chatPost('chat.bsky.convo.updateRead', { convoId, messageId });
   }
 
+  async function leaveConvo(convoId) {
+    return chatPost('chat.bsky.convo.leaveConvo', { convoId });
+  }
+
   return {
     searchPosts,
     searchActors,
@@ -641,5 +645,6 @@ const API = (() => {
     sendMessage,
     getConvoForMembers,
     updateRead,
+    leaveConvo,
   };
 })();
