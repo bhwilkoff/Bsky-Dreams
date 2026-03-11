@@ -7174,15 +7174,3 @@ a.post-timestamp:hover {
   justify-content: center;
 }
 
-.constellation-tooltip {
-  position: absolute;
-  background: var(--nb-black);
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 4px 10px;
-  pointer-events: none;
-  z-index: 100;
-  white-space: nowrap;
-  box-shadow: 2px 2px 0 var(--color-accent);
-}
