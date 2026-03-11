@@ -524,6 +524,16 @@ const API = (() => {
     });
   }
 
+  /** Get actors that a given actor follows (app.bsky.graph.getFollows). */
+  async function getActorFollows(actor, limit = 100, cursor) {
+    return authGet('app.bsky.graph.getFollows', { actor, limit, cursor });
+  }
+
+  /** Get actors that follow a given actor (app.bsky.graph.getFollowers). */
+  async function getActorFollowers(actor, limit = 100, cursor) {
+    return authGet('app.bsky.graph.getFollowers', { actor, limit, cursor });
+  }
+
   async function getLikes(uri, limit = 50, cursor) {
     return authGet('app.bsky.feed.getLikes', { uri, limit, cursor });
   }
@@ -637,6 +647,8 @@ const API = (() => {
     unblockActor,
     getAuthorFeedFull,
     getAuthorFeedWithReplies,
+    getActorFollows,
+    getActorFollowers,
     getLikes,
     getRepostedBy,
     listConvos,

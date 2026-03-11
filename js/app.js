@@ -3864,32 +3864,53 @@
           btn.disabled = false;
         }
       });
-      el.appendChild(followBtn);
+      // Profile action buttons row (follow + tool buttons)
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'profile-actions-row';
+      actionsRow.appendChild(followBtn);
 
-      // Report account button
+      // More options button
       const reportActorBtn = document.createElement('button');
       reportActorBtn.type      = 'button';
-      reportActorBtn.className = 'btn btn-ghost report-actor-btn';
+      reportActorBtn.className = 'btn btn-ghost profile-tool-btn';
+      reportActorBtn.title     = 'More options';
       reportActorBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
       reportActorBtn.setAttribute('aria-label', `More options for @${profile.handle}`);
       reportActorBtn.addEventListener('click', () => {
         showPostActionsMenu(reportActorBtn, { uri: '', cid: '' }, profile);
       });
-      el.appendChild(reportActorBtn);
+      actionsRow.appendChild(reportActorBtn);
 
-      // View Timeline button
+      // Timeline button
       const viewTimelineBtn = document.createElement('button');
-      viewTimelineBtn.type = 'button';
-      viewTimelineBtn.className = 'report-actor-btn';
-      viewTimelineBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>`;
-      viewTimelineBtn.setAttribute('aria-label', `View ${profile.handle} timeline`);
+      viewTimelineBtn.type      = 'button';
+      viewTimelineBtn.className = 'btn btn-ghost profile-tool-btn';
+      viewTimelineBtn.title     = 'View timeline';
+      viewTimelineBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>`;
+      viewTimelineBtn.setAttribute('aria-label', `View @${profile.handle} timeline`);
       viewTimelineBtn.addEventListener('click', () => {
         showView('timeline');
         $('timeline-search-input').value = '@' + profile.handle;
         tlQuery = '@' + profile.handle;
         tlDoSearch();
       });
-      el.appendChild(viewTimelineBtn);
+      actionsRow.appendChild(viewTimelineBtn);
+
+      // Constellation button
+      const viewConstellationBtn = document.createElement('button');
+      viewConstellationBtn.type      = 'button';
+      viewConstellationBtn.className = 'btn btn-ghost profile-tool-btn';
+      viewConstellationBtn.title     = 'View network constellation';
+      viewConstellationBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="2"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/><line x1="6" y1="7" x2="10" y2="11"/><line x1="14" y1="11" x2="18" y2="7"/><line x1="6" y1="17" x2="10" y2="13"/><line x1="14" y1="13" x2="18" y2="17"/></svg>`;
+      viewConstellationBtn.setAttribute('aria-label', `View @${profile.handle} constellation`);
+      viewConstellationBtn.addEventListener('click', () => {
+        showView('constellation');
+        $('constellation-search-input').value = '@' + profile.handle;
+        runConstellation('@' + profile.handle);
+      });
+      actionsRow.appendChild(viewConstellationBtn);
+
+      el.appendChild(actionsRow);
     }
 
     // M15: placeholder for interaction graph — populated asynchronously
@@ -8674,17 +8695,10 @@
     infoEl.hidden     = true;
 
     try {
-      const data  = await API.searchPosts(query, 'latest', 100);
-      const posts = data.posts || [];
-
-      if (!posts.length) {
-        loadingEl.hidden = true;
-        emptyEl.hidden   = false;
-        return;
-      }
-
       const nodeMap = new Map();
-      const addNode = (author) => {
+      const edgeMap = new Map();
+
+      const addNode = (author, weight = 1) => {
         if (!author?.did) return;
         if (!nodeMap.has(author.did)) {
           nodeMap.set(author.did, {
@@ -8695,37 +8709,101 @@
             count:  0,
           });
         }
-        nodeMap.get(author.did).count++;
+        nodeMap.get(author.did).count += weight;
       };
 
-      posts.forEach(p => addNode(p.author));
-
-      const edgeMap = new Map();
-      posts.forEach(p => {
-        const replyParentUri = p.record?.reply?.parent?.uri;
-        if (!replyParentUri) return;
-        const m = replyParentUri.match(/^at:\/\/(did:[^/]+)\//);
-        if (!m) return;
-        const parentDid = m[1];
-        const authorDid = p.author?.did;
-        if (!authorDid || !parentDid || authorDid === parentDid) return;
-        if (!nodeMap.has(parentDid)) return;
-        const key = [authorDid, parentDid].sort().join('|');
-        if (!edgeMap.has(key)) {
-          edgeMap.set(key, { source: authorDid, target: parentDid, weight: 0 });
-        }
+      const addEdge = (didA, didB, type = 'reply') => {
+        if (!didA || !didB || didA === didB) return;
+        const key = [didA, didB].sort().join('|');
+        if (!edgeMap.has(key)) edgeMap.set(key, { source: didA, target: didB, weight: 0, type });
         edgeMap.get(key).weight++;
-      });
+      };
 
+      // Detect profile-mode: query is @handle or handle.tld
+      const handleMatch = query.trim().match(/^@?([\w.-]+\.\w+|[\w-]+)$/);
+      const isProfileMode = query.trim().startsWith('@') || (handleMatch && !query.includes(' '));
+      const seedHandle    = isProfileMode ? query.trim().replace(/^@/, '') : null;
+
+      if (isProfileMode && seedHandle) {
+        // Profile mode: seed from posts + follows + followers of the actor
+        const [postsData, followsData, followersData] = await Promise.allSettled([
+          API.getAuthorFeedWithReplies(seedHandle, 100),
+          API.getActorFollows(seedHandle, 100),
+          API.getActorFollowers(seedHandle, 100),
+        ]);
+
+        // Resolve the actor's DID from profile data for central node
+        let seedDid = null;
+
+        // Posts: add authors as nodes, reply edges
+        const posts = postsData.status === 'fulfilled' ? (postsData.value.feed || []) : [];
+        posts.forEach(item => {
+          const p = item.post;
+          if (!p) return;
+          addNode(p.author);
+          if (!seedDid && p.author?.handle === seedHandle) seedDid = p.author.did;
+          const parentUri = p.record?.reply?.parent?.uri;
+          if (parentUri) {
+            const m = parentUri.match(/^at:\/\/(did:[^/]+)\//);
+            if (m) addEdge(p.author.did, m[1], 'reply');
+          }
+          // Feed-level reply context (includes parent author view)
+          if (item.reply?.parent?.author) {
+            addNode(item.reply.parent.author);
+            addEdge(p.author.did, item.reply.parent.author.did, 'reply');
+          }
+        });
+
+        // Follows: add as nodes + follow edges to seed
+        const follows = followsData.status === 'fulfilled' ? (followsData.value.follows || []) : [];
+        follows.forEach(actor => {
+          addNode(actor);
+          if (!seedDid && seedHandle) {
+            // try to get seed DID from any post
+          }
+          if (seedDid) addEdge(seedDid, actor.did, 'follow');
+        });
+
+        // Followers: add as nodes + follow edges from follower to seed
+        const followers = followersData.status === 'fulfilled' ? (followersData.value.followers || []) : [];
+        followers.forEach(actor => {
+          addNode(actor);
+          if (seedDid) addEdge(actor.did, seedDid, 'follow');
+        });
+
+        // Ensure seed actor is in node map
+        if (seedDid && !nodeMap.has(seedDid)) {
+          const seedProfile = await API.getActorProfile(seedHandle).catch(() => null);
+          if (seedProfile) addNode(seedProfile, 5);
+        }
+        if (seedDid) nodeMap.get(seedDid).isSeed = true;
+
+      } else {
+        // Keyword mode: search posts, reply edges only
+        const data  = await API.searchPosts(query, 'latest', 100);
+        const posts = data.posts || [];
+        posts.forEach(p => {
+          addNode(p.author);
+          const replyParentUri = p.record?.reply?.parent?.uri;
+          if (replyParentUri) {
+            const m = replyParentUri.match(/^at:\/\/(did:[^/]+)\//);
+            if (m) addEdge(p.author.did, m[1], 'reply');
+          }
+        });
+      }
+
+      // Remove edges where one end isn't in the node map
+      for (const [key, edge] of edgeMap) {
+        if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) edgeMap.delete(key);
+      }
+
+      // Cap at 150 nodes, keeping highest-count
       let nodes = [...nodeMap.values()];
       if (nodes.length > 150) {
         nodes = nodes.sort((a, b) => b.count - a.count).slice(0, 150);
         const keepDids = new Set(nodes.map(n => n.id));
-        for (const [key] of edgeMap) {
-          const edge = edgeMap.get(key);
-          if (!keepDids.has(edge.source) || !keepDids.has(edge.target)) {
-            edgeMap.delete(key);
-          }
+        for (const [key, edge] of edgeMap) {
+          if (!keepDids.has(edge.source) || !keepDids.has(edge.target)) edgeMap.delete(key);
         }
       }
 
@@ -8738,7 +8816,12 @@
         return;
       }
 
-      infoEl.textContent = `${nodes.length} people \u00b7 ${links.length} connections`;
+      const replyCount  = links.filter(l => l.type === 'reply').length;
+      const followCount = links.filter(l => l.type === 'follow').length;
+      let infoText = `${nodes.length} people`;
+      if (replyCount)  infoText += ` · ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`;
+      if (followCount) infoText += ` · ${followCount} follow connection${followCount === 1 ? '' : 's'}`;
+      infoEl.textContent = infoText;
       infoEl.hidden = false;
 
       renderConstellationGraph(graphEl, nodes, links, query);
@@ -8780,14 +8863,14 @@
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('class', 'c-link')
+      .attr('class', d => `c-link c-link--${d.type || 'reply'}`)
       .attr('stroke-width', d => Math.min(1 + d.weight, 4));
 
     const nodeEls = g.append('g').attr('class', 'c-nodes')
       .selectAll('g')
       .data(nodes)
       .join('g')
-      .attr('class', 'c-node')
+      .attr('class', d => `c-node${d.isSeed ? ' c-node--seed' : ''}`)
       .attr('tabindex', '0')
       .attr('aria-label', d => `@${d.handle}`);
 
