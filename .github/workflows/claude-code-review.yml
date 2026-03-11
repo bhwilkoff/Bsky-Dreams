@@ -24,6 +24,8 @@ jobs:
       pull-requests: read
       issues: read
       id-token: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository

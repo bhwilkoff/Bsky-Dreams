@@ -6505,3 +6505,422 @@ a.post-timestamp:hover {
     left: var(--sidebar-width, 240px);
   }
 }
+
+/* ================================================================
+   M16: DIRECT MESSAGES
+================================================================ */
+#view-dms {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.dms-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.dms-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md);
+  border-bottom: 3px solid var(--nb-black);
+  flex-shrink: 0;
+}
+
+.dms-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+}
+
+.dms-new-search {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 2px solid var(--nb-black);
+  flex-shrink: 0;
+  background: var(--color-surface-alt, var(--color-surface));
+}
+
+.dms-new-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid var(--nb-black);
+  background: var(--color-bg);
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  box-sizing: border-box;
+}
+
+.dms-new-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.dms-new-results {
+  margin-top: var(--space-xs, 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dms-new-result-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--color-bg);
+  border: 2px solid var(--color-border);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.dms-new-result-btn:hover {
+  border-color: var(--nb-black);
+  background: var(--color-surface-alt, var(--color-surface));
+}
+
+.dms-status-msg {
+  padding: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+.dms-error {
+  color: #c0392b;
+}
+
+.dms-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dms-convo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.1s;
+}
+
+.dms-convo-item:hover {
+  background: var(--color-surface-alt, var(--color-surface));
+}
+
+.dms-convo-item.dms-convo-unread {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg));
+}
+
+.dms-convo-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--nb-black);
+}
+
+.dms-convo-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dms-convo-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dms-convo-name {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dms-convo-ts {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.dms-convo-handle {
+  font-size: 0.8125rem;
+  color: var(--color-blue);
+  margin-bottom: 2px;
+}
+
+.dms-convo-preview {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dms-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 1.5px solid var(--nb-black);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.dms-chat-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px var(--space-md);
+  border-bottom: 3px solid var(--nb-black);
+  flex-shrink: 0;
+}
+
+.dms-chat-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dms-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dms-no-msgs {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  padding: var(--space-lg) 0;
+}
+
+.dms-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%;
+}
+
+.dms-bubble-mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.dms-bubble-theirs {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.dms-bubble {
+  padding: 8px 14px;
+  border: 2px solid var(--nb-black);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.dms-bubble-mine .dms-bubble {
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 2px 2px 0 var(--nb-black);
+}
+
+.dms-bubble-theirs .dms-bubble {
+  background: var(--color-surface);
+  box-shadow: 2px 2px 0 var(--nb-black);
+}
+
+.dms-bubble-ts {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  padding: 0 2px;
+}
+
+.dms-compose-form {
+  border-top: 3px solid var(--nb-black);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.dms-compose-text {
+  width: 100%;
+  border: 2px solid var(--nb-black);
+  background: var(--color-bg);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  padding: 8px 12px;
+  resize: none;
+  font-family: 'Inter', sans-serif;
+  box-shadow: 2px 2px 0 var(--nb-black);
+  box-sizing: border-box;
+  color: var(--color-text);
+  min-height: 38px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.dms-compose-text:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.dms-compose-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: 6px;
+}
+
+.dms-compose-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ================================================================
+   M14: NETWORK CONSTELLATION
+================================================================ */
+.constellation-view-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.constellation-search-form {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 2px solid var(--nb-black);
+  flex-shrink: 0;
+}
+
+.constellation-search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid var(--nb-black);
+  background: var(--color-bg);
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  box-shadow: 2px 2px 0 var(--nb-black);
+}
+
+.constellation-search-input:focus {
+  outline: none;
+  box-shadow: 3px 3px 0 var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.constellation-info {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  padding: 6px var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.constellation-loading,
+.constellation-empty {
+  padding: var(--space-lg) var(--space-md);
+  text-align: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.constellation-graph {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: var(--color-bg);
+}
+
+.constellation-graph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.c-link {
+  stroke: var(--color-border);
+  stroke-opacity: 0.7;
+  fill: none;
+}
+
+.c-link--dim {
+  stroke-opacity: 0.1;
+}
+
+.c-node-circle {
+  fill: var(--color-surface);
+  stroke: var(--nb-black);
+  stroke-width: 2;
+  transition: opacity 0.2s;
+}
+
+.c-node--active .c-node-circle {
+  stroke: var(--color-accent);
+  stroke-width: 3;
+  filter: drop-shadow(2px 2px 0 var(--nb-black));
+}
+
+.c-node--dim {
+  opacity: 0.15;
+}
+
+.c-node-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  fill: var(--color-text-muted);
+  text-anchor: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+.c-node--dim .c-node-label {
+  fill: transparent;
+}
+
+.constellation-tooltip {
+  position: absolute;
+  background: var(--nb-black);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+  box-shadow: 2px 2px 0 var(--color-accent);
+}
