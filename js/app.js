@@ -26,8 +26,10 @@
   const navTvBtn        = $('nav-tv-btn');
   const navProfileBtn   = $('nav-profile-btn');
   const navAnalyticsBtn = $('nav-analytics-btn');
-  const navTimelineBtn  = $('nav-timeline-btn');
-  const navReaderBtn    = $('nav-reader-btn');
+  const navTimelineBtn       = $('nav-timeline-btn');
+  const navReaderBtn         = $('nav-reader-btn');
+  const navDmsBtn            = $('nav-dms-btn');
+  const navConstellationBtn  = $('nav-constellation-btn');
   const navAvatar      = $('nav-avatar');
   const navHandle      = $('nav-handle');
 
@@ -41,6 +43,8 @@
   const viewAnalytics     = $('view-analytics');
   const viewTimeline      = $('view-timeline');
   const viewReader        = $('view-reader');
+  const viewDms           = $('view-dms');
+  const viewConstellation = $('view-constellation');
 
   const feedResults    = $('feed-results');
   const ptrIndicator   = $('ptr-indicator');
@@ -2680,6 +2684,10 @@
       history.replaceState({ view: 'compose' }, '', '?view=compose');
     } else if (urlView === 'timeline') {
       showView('timeline', true);
+    } else if (urlView === 'dms') {
+      showView('dms', true);
+    } else if (urlView === 'constellation') {
+      showView('constellation', true);
     } else if (urlQ) {
       // Restore a saved search from URL
       searchInput.value = urlQ;
@@ -2731,6 +2739,8 @@
       analytics:     viewAnalytics,
       timeline:      viewTimeline,
       reader:        viewReader,
+      dms:           viewDms,
+      constellation: viewConstellation,
     };
     const navBtns = {
       feed:          navFeedBtn,
@@ -2742,6 +2752,8 @@
       analytics:     navAnalyticsBtn,
       timeline:      navTimelineBtn,
       reader:        navReaderBtn,
+      dms:           navDmsBtn,
+      constellation: navConstellationBtn,
     };
 
     Object.entries(views).forEach(([n, el]) => {
@@ -2810,6 +2822,10 @@
         url = '?view=timeline';
       } else if (name === 'reader') {
         url = '?view=reader';
+      } else if (name === 'dms') {
+        url = '?view=dms';
+      } else if (name === 'constellation') {
+        url = '?view=constellation';
       }
       history.pushState(state, '', url);
     }
@@ -2857,6 +2873,20 @@
       searchScrollObserver.disconnect();
     }
 
+    // M16: stop DMs polling when leaving DMs view
+    if (name !== 'dms') {
+      stopDmsPolling();
+    }
+
+    // M16: on entering DMs view, load list or resume chat polling
+    if (name === 'dms') {
+      if (dmsActiveConvoId) {
+        startDmsPolling(); // resume polling if returning to an open chat
+      } else {
+        loadDmsList();
+      }
+    }
+
     // Show/hide scroll-to-top button based on the newly active view's scroll position
     const SCROLL_SHOW_THRESHOLD = 300;
     const nextView = document.getElementById('view-' + name);
@@ -2900,6 +2930,8 @@
       setupReaderScrollObserver();
     }
   });
+  navDmsBtn.addEventListener('click', () => showView('dms'));
+  navConstellationBtn.addEventListener('click', () => showView('constellation'));
 
   // Use browser history for the Back button so Forward/Back both work
   threadBackBtn.addEventListener('click',  () => history.back());
@@ -3577,7 +3609,7 @@
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline, viewReader];
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline, viewReader, viewDms, viewConstellation];
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -8312,6 +8344,541 @@
 
   // Attach autocomplete to timeline search
   attachMentionAutocomplete($('timeline-search-input'));
+
+  /* ================================================================
+     M16: DIRECT MESSAGES
+  ================================================================ */
+  let dmsActiveConvoId  = null;
+  let dmsActiveConvo    = null;
+  let dmsMessageCursor  = null;
+  let dmsOwnDid         = null;
+  let dmsPollTimer      = null;
+  let dmsLastMessageId  = null;
+  let dmsConvoCursor    = null;
+
+  function startDmsPolling() {
+    stopDmsPolling();
+    dmsPollTimer = setInterval(() => {
+      if (dmsActiveConvoId) pollNewMessages();
+    }, 30000);
+  }
+
+  function stopDmsPolling() {
+    if (dmsPollTimer) { clearInterval(dmsPollTimer); dmsPollTimer = null; }
+  }
+
+  async function loadDmsList(append = false) {
+    dmsOwnDid = ownProfile?.did;
+    const listEl    = $('dms-list');
+    const loadingEl = $('dms-loading');
+    const emptyEl   = $('dms-empty');
+    const errorEl   = $('dms-error');
+
+    if (!append) {
+      dmsConvoCursor   = null;
+      listEl.innerHTML = '';
+      loadingEl.hidden = false;
+      emptyEl.hidden   = true;
+      errorEl.hidden   = true;
+    }
+
+    try {
+      const data   = await API.listConvos(append ? dmsConvoCursor : undefined);
+      const convos = data.convos || [];
+      dmsConvoCursor = data.cursor || null;
+      loadingEl.hidden = true;
+
+      if (!convos.length && !append) {
+        emptyEl.hidden = false;
+        return;
+      }
+
+      convos.forEach(convo => {
+        const li = buildConvoItem(convo);
+        listEl.appendChild(li);
+      });
+    } catch (err) {
+      loadingEl.hidden = true;
+      errorEl.textContent = `Could not load messages: ${err.message}`;
+      errorEl.hidden = false;
+    }
+  }
+
+  function buildConvoItem(convo) {
+    const li = document.createElement('li');
+    li.className = 'dms-convo-item' + (convo.unreadCount > 0 ? ' dms-convo-unread' : '');
+    li.dataset.convoId = convo.id;
+
+    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
+    const displayMember = others[0] || convo.members?.[0] || {};
+    const name = displayMember.displayName || displayMember.handle || 'Unknown';
+    const handle = displayMember.handle ? `@${displayMember.handle}` : '';
+    const avatarSrc = displayMember.avatar || window._bskyAvatarFallback || '';
+
+    const lastMsg = convo.lastMessage;
+    const preview = lastMsg?.text ? lastMsg.text.slice(0, 60) + (lastMsg.text.length > 60 ? '\u2026' : '') : '';
+    const ts = lastMsg?.sentAt ? formatTimestamp(lastMsg.sentAt) : '';
+
+    li.innerHTML = `
+      <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">\
+      <div class="dms-convo-info">
+        <div class="dms-convo-name-row">
+          <span class="dms-convo-name">${escHtml(name)}</span>
+          <span class="dms-convo-ts">${escHtml(ts)}</span>
+        </div>
+        <div class="dms-convo-handle">${escHtml(handle)}</div>
+        <div class="dms-convo-preview">${escHtml(preview)}</div>
+      </div>
+      ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
+    `;
+
+    li.addEventListener('click', () => openDmsChat(convo));
+    return li;
+  }
+
+  async function openDmsChat(convo) {
+    dmsActiveConvoId = convo.id;
+    dmsActiveConvo   = convo;
+    dmsMessageCursor = null;
+    dmsLastMessageId = null;
+    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
+    const displayMember = others[0] || convo.members?.[0] || {};
+    const name = displayMember.displayName || displayMember.handle || 'Messages';
+
+    $('dms-chat-title').textContent = name;
+    $('dms-list-panel').hidden  = true;
+    $('dms-chat-panel').hidden  = false;
+    $('dms-messages').innerHTML = '';
+    $('dms-messages-loading').hidden = false;
+
+    await loadMessages(false);
+    startDmsPolling();
+  }
+
+  async function loadMessages(append = false) {
+    const messagesEl = $('dms-messages');
+    const loadingEl  = $('dms-messages-loading');
+
+    try {
+      const data = await API.getConvoMessages(dmsActiveConvoId, append ? dmsMessageCursor : undefined);
+      const msgs = (data.messages || []).reverse();
+      dmsMessageCursor = data.cursor || null;
+      loadingEl.hidden = true;
+
+      if (!msgs.length && !append) {
+        messagesEl.innerHTML = '<div class="dms-no-msgs">No messages yet. Say hello!</div>';
+        return;
+      }
+
+      const scrollBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+      const wasAtBottom  = scrollBottom < 60;
+
+      msgs.forEach(msg => {
+        const bubble = buildMessageBubble(msg);
+        if (append) {
+          messagesEl.insertBefore(bubble, messagesEl.firstChild);
+        } else {
+          messagesEl.appendChild(bubble);
+        }
+      });
+
+      if (!append && msgs.length > 0) {
+        dmsLastMessageId = msgs[msgs.length - 1].id;
+        API.updateRead(dmsActiveConvoId, dmsLastMessageId).catch(() => {});
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (wasAtBottom) {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    } catch (err) {
+      loadingEl.hidden = true;
+      console.warn('DM load error:', err.message);
+    }
+  }
+
+  async function pollNewMessages() {
+    if (!dmsActiveConvoId) return;
+    try {
+      const data = await API.getConvoMessages(dmsActiveConvoId);
+      const msgs = (data.messages || []).reverse();
+      if (!msgs.length) return;
+
+      const newestId = msgs[msgs.length - 1]?.id;
+      if (newestId === dmsLastMessageId) return;
+
+      const messagesEl = $('dms-messages');
+      const wasAtBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) < 60;
+
+      let foundLast = (dmsLastMessageId === null);
+      msgs.forEach(msg => {
+        if (!foundLast) {
+          if (msg.id === dmsLastMessageId) foundLast = true;
+          return;
+        }
+        messagesEl.appendChild(buildMessageBubble(msg));
+      });
+
+      dmsLastMessageId = newestId;
+      API.updateRead(dmsActiveConvoId, newestId).catch(() => {});
+
+      if (wasAtBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    } catch { /* silent */ }
+  }
+
+  function buildMessageBubble(msg) {
+    const isMine = msg.sender?.did === dmsOwnDid;
+    const wrap = document.createElement('div');
+    wrap.className = 'dms-bubble-wrap ' + (isMine ? 'dms-bubble-mine' : 'dms-bubble-theirs');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'dms-bubble';
+    bubble.textContent = msg.text || '';
+
+    const ts = document.createElement('time');
+    ts.className = 'dms-bubble-ts';
+    ts.textContent = msg.sentAt ? formatTimestamp(msg.sentAt) : '';
+
+    wrap.appendChild(bubble);
+    wrap.appendChild(ts);
+    return wrap;
+  }
+
+  $('dms-new-btn').addEventListener('click', () => {
+    const searchEl = $('dms-new-search');
+    searchEl.hidden = !searchEl.hidden;
+    if (!searchEl.hidden) $('dms-new-input').focus();
+  });
+
+  let dmsNewSearchTimer = null;
+  $('dms-new-input').addEventListener('input', (e) => {
+    clearTimeout(dmsNewSearchTimer);
+    const q = e.target.value.trim();
+    if (!q) { $('dms-new-results').innerHTML = ''; return; }
+    dmsNewSearchTimer = setTimeout(async () => {
+      try {
+        const data   = await API.searchActors(q, 8);
+        const actors = data.actors || [];
+        const resultsEl = $('dms-new-results');
+        resultsEl.innerHTML = '';
+        actors.forEach(actor => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'dms-new-result-btn';
+          btn.innerHTML = `
+            <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">
+            <div>
+              <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
+              <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
+            </div>
+          `;
+          btn.addEventListener('click', async () => {
+            try {
+              const convoData = await API.getConvoForMembers([actor.did]);
+              $('dms-new-search').hidden = true;
+              $('dms-new-input').value = '';
+              $('dms-new-results').innerHTML = '';
+              await openDmsChat(convoData.convo);
+            } catch (err) {
+              showBanner(`Could not open conversation: ${err.message}`);
+            }
+          });
+          resultsEl.appendChild(btn);
+        });
+      } catch { /* silent */ }
+    }, 300);
+  });
+
+  $('dms-compose-text').addEventListener('input', (e) => {
+    const len = e.target.value.length;
+    $('dms-compose-count').textContent = `${len}/1000`;
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  });
+
+  $('dms-compose-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const textEl = $('dms-compose-text');
+    const text   = textEl.value.trim();
+    if (!text || !dmsActiveConvoId) return;
+    const sendBtn = $('dms-send-btn');
+    sendBtn.disabled = true;
+    try {
+      const msg = await API.sendMessage(dmsActiveConvoId, text);
+      textEl.value = '';
+      textEl.style.height = 'auto';
+      $('dms-compose-count').textContent = '0/1000';
+      const messagesEl = $('dms-messages');
+      const noMsgs = messagesEl.querySelector('.dms-no-msgs');
+      if (noMsgs) noMsgs.remove();
+      messagesEl.appendChild(buildMessageBubble({ ...msg, sender: { did: dmsOwnDid } }));
+      dmsLastMessageId = msg.id;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } catch (err) {
+      showBanner(`Send failed: ${err.message}`);
+    } finally {
+      sendBtn.disabled = false;
+      textEl.focus();
+    }
+  });
+
+  $('dms-back-btn').addEventListener('click', () => {
+    stopDmsPolling();
+    dmsActiveConvoId = null;
+    dmsActiveConvo   = null;
+    $('dms-chat-panel').hidden = true;
+    $('dms-list-panel').hidden = false;
+    loadDmsList();
+  });
+
+  /* ================================================================
+     M14: NETWORK CONSTELLATION
+  ================================================================ */
+  let constellationSimulation = null;
+  let constellationSvg        = null;
+  let constellationActiveNode = null;
+
+  async function runConstellation(query) {
+    const graphEl   = $('constellation-graph');
+    const loadingEl = $('constellation-loading');
+    const emptyEl   = $('constellation-empty');
+    const infoEl    = $('constellation-info');
+
+    if (constellationSimulation) { constellationSimulation.stop(); constellationSimulation = null; }
+    if (constellationSvg)        { constellationSvg.remove(); constellationSvg = null; }
+    constellationActiveNode = null;
+    graphEl.innerHTML = '';
+    loadingEl.hidden  = false;
+    emptyEl.hidden    = true;
+    infoEl.hidden     = true;
+
+    try {
+      const data  = await API.searchPosts(query, 'latest', 100);
+      const posts = data.posts || [];
+
+      if (!posts.length) {
+        loadingEl.hidden = true;
+        emptyEl.hidden   = false;
+        return;
+      }
+
+      const nodeMap = new Map();
+      const addNode = (author) => {
+        if (!author?.did) return;
+        if (!nodeMap.has(author.did)) {
+          nodeMap.set(author.did, {
+            id:     author.did,
+            handle: author.handle || '',
+            name:   author.displayName || author.handle || '',
+            avatar: author.avatar || '',
+            count:  0,
+          });
+        }
+        nodeMap.get(author.did).count++;
+      };
+
+      posts.forEach(p => addNode(p.author));
+
+      const edgeMap = new Map();
+      posts.forEach(p => {
+        const replyParentUri = p.record?.reply?.parent?.uri;
+        if (!replyParentUri) return;
+        const m = replyParentUri.match(/^at:\/\/(did:[^/]+)\//);
+        if (!m) return;
+        const parentDid = m[1];
+        const authorDid = p.author?.did;
+        if (!authorDid || !parentDid || authorDid === parentDid) return;
+        if (!nodeMap.has(parentDid)) return;
+        const key = [authorDid, parentDid].sort().join('|');
+        if (!edgeMap.has(key)) {
+          edgeMap.set(key, { source: authorDid, target: parentDid, weight: 0 });
+        }
+        edgeMap.get(key).weight++;
+      });
+
+      let nodes = [...nodeMap.values()];
+      if (nodes.length > 150) {
+        nodes = nodes.sort((a, b) => b.count - a.count).slice(0, 150);
+        const keepDids = new Set(nodes.map(n => n.id));
+        for (const [key] of edgeMap) {
+          const edge = edgeMap.get(key);
+          if (!keepDids.has(edge.source) || !keepDids.has(edge.target)) {
+            edgeMap.delete(key);
+          }
+        }
+      }
+
+      const links = [...edgeMap.values()];
+
+      loadingEl.hidden = true;
+
+      if (!nodes.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+
+      infoEl.textContent = `${nodes.length} people \u00b7 ${links.length} connections`;
+      infoEl.hidden = false;
+
+      renderConstellationGraph(graphEl, nodes, links, query);
+    } catch (err) {
+      loadingEl.hidden = true;
+      emptyEl.hidden   = false;
+      const p = emptyEl.querySelector('p');
+      if (p) p.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  function renderConstellationGraph(container, nodes, links, query) {
+    const W = container.offsetWidth  || 600;
+    const H = container.offsetHeight || 500;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', W)
+      .attr('height', H)
+      .attr('aria-label', `Network constellation for "${query}"`)
+      .style('cursor', 'grab');
+
+    constellationSvg = svg;
+
+    const g = svg.append('g');
+    const zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+      g.attr('transform', event.transform);
+    });
+    svg.call(zoom);
+
+    const sim = d3.forceSimulation(nodes)
+      .force('link',    d3.forceLink(links).id(d => d.id).distance(60).strength(0.5))
+      .force('charge',  d3.forceManyBody().strength(-80))
+      .force('center',  d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide(14));
+    constellationSimulation = sim;
+
+    const linkEls = g.append('g').attr('class', 'c-links')
+      .selectAll('line')
+      .data(links)
+      .join('line')
+      .attr('class', 'c-link')
+      .attr('stroke-width', d => Math.min(1 + d.weight, 4));
+
+    const nodeEls = g.append('g').attr('class', 'c-nodes')
+      .selectAll('g')
+      .data(nodes)
+      .join('g')
+      .attr('class', 'c-node')
+      .attr('tabindex', '0')
+      .attr('aria-label', d => `@${d.handle}`);
+
+    nodeEls.append('circle')
+      .attr('r', d => 6 + Math.min(d.count, 10))
+      .attr('class', 'c-node-circle');
+
+    const defs = svg.append('defs');
+    nodes.forEach(n => {
+      defs.append('clipPath')
+        .attr('id', `c-clip-${n.id.replace(/[^a-z0-9]/gi, '_')}`)
+        .append('circle')
+        .attr('r', 6 + Math.min(n.count, 10));
+    });
+
+    nodeEls.append('image')
+      .attr('href',   d => d.avatar || '')
+      .attr('x',      d => -(6 + Math.min(d.count, 10)))
+      .attr('y',      d => -(6 + Math.min(d.count, 10)))
+      .attr('width',  d => 2 * (6 + Math.min(d.count, 10)))
+      .attr('height', d => 2 * (6 + Math.min(d.count, 10)))
+      .attr('clip-path', d => `url(#c-clip-${d.id.replace(/[^a-z0-9]/gi, '_')})`)
+      .style('pointer-events', 'none');
+
+    nodeEls.append('text')
+      .attr('class', 'c-node-label')
+      .attr('dy', d => (6 + Math.min(d.count, 10)) + 11)
+      .text(d => `@${d.handle.split('.')[0]}`);
+
+    const tooltip = $('constellation-tooltip');
+
+    nodeEls
+      .on('mouseenter', (event, d) => {
+        tooltip.textContent = `@${d.handle} \u00b7 ${d.count} post${d.count !== 1 ? 's' : ''}`;
+        tooltip.hidden = false;
+      })
+      .on('mousemove', (event) => {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+        tooltip.style.top  = (event.clientY - rect.top  + 12) + 'px';
+      })
+      .on('mouseleave', () => { tooltip.hidden = true; })
+      .on('click', (event, d) => {
+        event.stopPropagation();
+        if (constellationActiveNode === d.id) {
+          constellationActiveNode = null;
+          applyConstellationFilter(nodeEls, linkEls, null, links);
+        } else {
+          constellationActiveNode = d.id;
+          applyConstellationFilter(nodeEls, linkEls, d.id, links);
+        }
+      })
+      .on('dblclick', (event, d) => {
+        event.stopPropagation();
+        tooltip.hidden = true;
+        openProfile(d.handle);
+      })
+      .call(d3.drag()
+        .on('start', (event, d) => {
+          if (!event.active) sim.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+          svg.style('cursor', 'grabbing');
+        })
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on('end',  (event, d) => {
+          if (!event.active) sim.alphaTarget(0);
+          d.fx = null; d.fy = null;
+          svg.style('cursor', 'grab');
+        })
+      );
+
+    svg.on('click', () => {
+      constellationActiveNode = null;
+      applyConstellationFilter(nodeEls, linkEls, null, links);
+    });
+
+    sim.on('tick', () => {
+      linkEls
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+      nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+  }
+
+  function applyConstellationFilter(nodeEls, linkEls, activeDid, links) {
+    if (!activeDid) {
+      nodeEls.classed('c-node--dim', false).classed('c-node--active', false);
+      linkEls.classed('c-link--dim', false);
+      return;
+    }
+    const connected = new Set([activeDid]);
+    links.forEach(l => {
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+      if (s === activeDid) connected.add(t);
+      if (t === activeDid) connected.add(s);
+    });
+    nodeEls
+      .classed('c-node--dim',    d => !connected.has(d.id))
+      .classed('c-node--active', d => d.id === activeDid);
+    linkEls.classed('c-link--dim', l => {
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+      return !connected.has(s) || !connected.has(t);
+    });
+  }
+
+  $('constellation-search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = $('constellation-search-input').value.trim();
+    if (q) runConstellation(q);
+  });
 
   /* ================================================================
      BOOT

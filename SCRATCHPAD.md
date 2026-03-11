@@ -2,9 +2,9 @@
 
 ## Current Status
 
-All milestones through M-Reader are complete. App is fully functional for daily Bluesky use.
+All milestones through M16 are complete. App is fully functional for daily Bluesky use.
 
-**Next focus:** M14 (Network Constellation), M16 (Direct Messages).
+**Next focus:** M17 (Text Shot Builder), M18 (Post Collections + Export).
 
 ---
 
@@ -28,6 +28,25 @@ All milestones through M-Reader are complete. App is fully functional for daily 
 ### M22: Analytics Dashboard
 Canvas API bar chart (last 25 posts, likes + reposts stacked), post-frequency heatmap (GitHub-style, 12 weeks), top-posts table (sortable), actor switcher. No external chart library.
 
+### M15: Profile Interaction Graph
+After header renders, fetches last 100 posts (with replies) for the viewed actor via `API.getAuthorFeedWithReplies`. Tallies reply-to author frequency (excluding self), shows top 6 as avatar chips in a "Frequent conversations with" section. Chips link to those profiles. Hidden if no replies found.
+
+### M14: Network Constellation Visualization
+- **Entry**: "Constellation" sidebar nav; `?view=constellation`
+- Search-seeded: query → `searchPosts` 100 posts; nodes = unique authors, edges = reply relationships (AT URI DID extraction)
+- Cap 150 nodes (highest-count kept); D3.js v7 force-directed layout, served locally as `/js/d3.min.js`
+- Zoom/pan; drag nodes; click node → filter to direct connections; second click deselects; double-click opens profile; hover tooltip
+- Avatar images clipped to circles on each node; handle labels below
+
+### M16: Direct Messages
+- **Entry**: "Messages" sidebar nav; `?view=dms`
+- Two-panel layout: conversation list (left/full) + bubble chat (right/full on mobile)
+- API: `chat.bsky.convo.*` at `https://api.bsky.chat/xrpc/`; `chatGet`/`chatPost` helpers in api.js
+- Conversation list: avatar, name, handle, last-message preview, timestamp, unread dot
+- Chat: bubble UI (accent for own, surface for theirs), 30s polling for new messages, `updateRead` on open
+- Compose: auto-grow textarea, 1,000-char limit with counter
+- New conversation: "New" button → handle search via `searchActors` → `getConvoForMembers` to open/create
+
 ### M13: Horizontal Timeline Scrubber
 Search → "Timeline" toggle. Posts positioned absolutely on horizontal rail by fractional time offset; 220px minimum step prevents overlap. Hours/Days zoom. Accessed via `openTimeline(query, posts)`.
 
@@ -45,19 +64,6 @@ Search → "Timeline" toggle. Posts positioned absolutely on horizontal rail by 
 ---
 
 ## Planned Milestones
-
-### M14: Network Constellation Visualization
-- Search-seeded (query → `searchPosts` 100 posts); nodes = users, edges = replies; cap 150 nodes
-- D3.js v7 force-directed layout, served locally as `/js/d3.min.js`
-- Click node to filter; hover tooltip; double-click opens profile
-
-### M16: Direct Messages
-- API: `chat.bsky.convo.*` at `https://api.bsky.chat/xrpc/` (same `accessJwt`, separate base URL)
-- Conversation list, bubble chat view, 1,000-char limit, 30s polling, new-conversation search
-- Needs `chatGet`/`chatPost` helpers in `api.js`
-
-### M15: Profile Interaction Graph
-Last 100 posts → count `reply.parent.author` frequency → "Frequent conversations with" avatar chips
 
 ### M17: Text Shot Builder (partial — link preview + GIF in M41)
 Canvas-based editor: background, font, alignment → PNG attached to compose

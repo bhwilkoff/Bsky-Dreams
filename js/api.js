@@ -532,6 +532,76 @@ const API = (() => {
     return authGet('app.bsky.feed.getRepostedBy', { uri, limit, cursor });
   }
 
+  /* ---- Chat API helpers (M16) ---- */
+  const CHAT_BASE = 'https://api.bsky.chat/xrpc/';
+
+  async function chatGet(nsid, params = {}) {
+    const session = AUTH.getSession();
+    if (!session?.accessJwt) throw new Error('Not authenticated');
+    const url = new URL(CHAT_BASE + nsid);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null) return;
+      if (Array.isArray(v)) {
+        v.forEach(item => url.searchParams.append(k, item));
+      } else {
+        url.searchParams.set(k, v);
+      }
+    });
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${session.accessJwt}` },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Chat GET ${nsid} failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function chatPost(nsid, body = {}) {
+    const session = AUTH.getSession();
+    if (!session?.accessJwt) throw new Error('Not authenticated');
+    const res = await fetch(CHAT_BASE + nsid, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.accessJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Chat POST ${nsid} failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function listConvos(cursor) {
+    return chatGet('chat.bsky.convo.listConvos', { limit: 30, cursor });
+  }
+
+  async function getConvo(convoId) {
+    return chatGet('chat.bsky.convo.getConvo', { convoId });
+  }
+
+  async function getConvoMessages(convoId, cursor) {
+    return chatGet('chat.bsky.convo.getMessages', { convoId, limit: 50, cursor });
+  }
+
+  async function sendMessage(convoId, text) {
+    return chatPost('chat.bsky.convo.sendMessage', {
+      convoId,
+      message: { $type: 'chat.bsky.convo.defs#messageInput', text },
+    });
+  }
+
+  async function getConvoForMembers(members) {
+    return chatGet('chat.bsky.convo.getConvoForMembers', { members });
+  }
+
+  async function updateRead(convoId, messageId) {
+    return chatPost('chat.bsky.convo.updateRead', { convoId, messageId });
+  }
+
   return {
     searchPosts,
     searchActors,
@@ -565,5 +635,11 @@ const API = (() => {
     getAuthorFeedWithReplies,
     getLikes,
     getRepostedBy,
+    listConvos,
+    getConvo,
+    getConvoMessages,
+    sendMessage,
+    getConvoForMembers,
+    updateRead,
   };
 })();
