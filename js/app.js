@@ -8915,6 +8915,9 @@
     const viewEl = $('view-constellation');
     const card = document.createElement('div');
     card.className = 'c-node-focus';
+    const exploreHtml = d.isSeed ? '' : `
+        <button class="btn btn-primary cnf-btn" id="cnf-explore-btn">Explore connections</button>`;
+
     card.innerHTML = `
       <div class="cnf-header">
         <div class="cnf-avatar-wrap">
@@ -8928,15 +8931,11 @@
             <span class="cnf-stat-loading">···</span>
           </div>
         </div>
-        <button class="cnf-close btn-icon" aria-label="Dismiss">
+        <button class="cnf-close" aria-label="Dismiss">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="cnf-btns">
-        <button class="btn btn-primary cnf-btn" id="cnf-explore-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="12" x2="15" y2="15"/></svg>
-          Explore connections
-        </button>
+      <div class="cnf-btns">${exploreHtml}
         <button class="btn btn-ghost cnf-btn" id="cnf-profile-btn">View profile</button>
       </div>
     `;
@@ -8959,12 +8958,15 @@
       if (statsEl) statsEl.innerHTML = '';
     });
 
-    card.querySelector('#cnf-explore-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      dismissConstellationPanel();
-      $('constellation-search-input').value = '@' + d.handle;
-      runConstellation('@' + d.handle);
-    });
+    const exploreBtn = card.querySelector('#cnf-explore-btn');
+    if (exploreBtn) {
+      exploreBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        dismissConstellationPanel();
+        $('constellation-search-input').value = '@' + d.handle;
+        runConstellation('@' + d.handle);
+      });
+    }
 
     card.querySelector('#cnf-profile-btn').addEventListener('click', e => {
       e.stopPropagation();
@@ -9077,61 +9079,40 @@
       .attr('dy', d => nodeR(d) + 12)
       .text(d => `@${d.handle.split('.')[0]}`);
 
-    const tooltip = $('constellation-tooltip');
-
-    // Drag behavior — separate from click via _dragging flag
+    // Drag with tap detection via spatial distance (no separate click handler needed)
+    // D3 fires drag events even on simple taps, so we measure movement distance
+    // rather than relying on timing flags.
     const drag = d3.drag()
       .on('start', (event, d) => {
         if (!event.active) sim.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
+        d._tapX = event.x;
+        d._tapY = event.y;
         svg.style('cursor', 'grabbing');
-        d._dragging = true;
-        d._dragMoved = false;
       })
       .on('drag', (event, d) => {
         d.fx = event.x; d.fy = event.y;
-        d._dragMoved = true;
       })
-      .on('end',  (event, d) => {
+      .on('end', (event, d) => {
         if (!event.active) sim.alphaTarget(0);
+        const dx = event.x - (d._tapX ?? event.x);
+        const dy = event.y - (d._tapY ?? event.y);
         d.fx = null; d.fy = null;
         svg.style('cursor', 'grab');
-        setTimeout(() => { d._dragging = false; }, 50);
+
+        // If pointer barely moved, treat as a tap
+        if (Math.sqrt(dx * dx + dy * dy) < 8) {
+          if (constellationActiveNode === d.id) {
+            dismissConstellationPanel();
+          } else {
+            showNodeFocusCard(d);
+          }
+        }
       });
 
-    nodeEls
-      // Desktop hover: show tooltip + reveal label temporarily
-      .on('mouseenter', (event, d) => {
-        tooltip.textContent = `@${d.handle}${d.name && d.name !== d.handle ? '  ·  ' + d.name : ''}`;
-        tooltip.hidden = false;
-        if (!constellationAlwaysVisible.has(d.id) && constellationActiveNode !== d.id) {
-          labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', true);
-        }
-      })
-      .on('mousemove', (event) => {
-        const rect = container.getBoundingClientRect();
-        tooltip.style.left = (event.clientX - rect.left + 14) + 'px';
-        tooltip.style.top  = (event.clientY - rect.top  - 32) + 'px';
-      })
-      .on('mouseleave', (event, d) => {
-        tooltip.hidden = true;
-        if (!constellationAlwaysVisible.has(d.id) && constellationActiveNode !== d.id) {
-          labelEls.filter(n => n.id === d.id).classed('c-node-label--visible', false);
-        }
-      })
-      // Tap/click: open focus card (works on both mobile and desktop)
-      .on('click', (event, d) => {
-        event.stopPropagation();
-        if (d._dragging || d._dragMoved) return;
-        if (constellationActiveNode === d.id) {
-          dismissConstellationPanel();
-        } else {
-          showNodeFocusCard(d);
-        }
-      })
-      .call(drag);
+    nodeEls.call(drag);
 
-    // Tap/click on background → dismiss focus card
+    // Tap on background SVG → dismiss focus card
     svg.on('click', (event) => {
       if (event.target === svg.node() || event.target.closest('.c-links')) {
         dismissConstellationPanel();
@@ -9146,6 +9127,10 @@
         .attr('y2', d => d.target.y);
       nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
     });
+
+    // Auto-show focus card for the seed node on initial render
+    const seedNode = nodes.find(n => n.isSeed);
+    if (seedNode) showNodeFocusCard(seedNode);
   }
 
   $('constellation-search-form').addEventListener('submit', (e) => {
