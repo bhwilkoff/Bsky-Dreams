@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>BskyDreams uses your camera to attach photos and videos to posts.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>BskyDreams accesses your photo library to attach images and videos to posts.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>BskyDreams uses your microphone to record videos for posts.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bskydreams</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.bskydreams.app</string>
+		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+</dict>
+</plist>
