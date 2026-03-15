@@ -1,528 +1,339 @@
 # Bsky Dreams — Architecture & Technology Decisions
 
-Entries are ordered roughly by date of decision. Superseded entries have been removed;
-the current state of each topic is captured in the most recent relevant entry.
+Entries are ordered roughly by date. Superseded entries have been removed.
 
 ---
 
 ## No Framework — Vanilla HTML/CSS/JS
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Use plain HTML, CSS, and JavaScript with no front-end framework.
-- **Rationale:** GitHub Pages serves static files. A framework adds a build step, CI/CD complexity, and npm dependencies. For an app this size the abstractions cost more than they save.
-- **Alternatives considered:** React, Vue, Svelte — all rejected due to build step requirement.
-- **Trade-offs:** No component encapsulation, no reactive state management. DOM manipulation is manual.
-- **Revisit if:** The component count grows beyond ~20 distinct UI elements or DOM manipulation becomes error-prone.
+Plain HTML/CSS/JS, no build step. GitHub Pages serves static files; framework abstractions cost more than they save at this scale. React/Vue/Svelte all rejected for requiring a build step. Trade-off: manual DOM manipulation, no reactive state. Revisit if component count exceeds ~20 or DOM work becomes error-prone.
 
 ---
 
 ## AT Protocol HTTP API via fetch (no SDK)
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Call BlueSky AT Protocol XRPC endpoints directly using the browser's native `fetch` API.
-- **Rationale:** `@atproto/api` requires a bundler. Loading it from a CDN is possible but the package is not tree-shaken and pulls in significant dependencies.
-- **Alternatives considered:** `@atproto/api` via skypack CDN (unstable ESM build, large bundle); Cloudflare Worker proxy to run SDK server-side (adds infrastructure).
-- **Trade-offs:** Manual request construction; must track lexicon changes manually. Token refresh handled in `auth.js`.
-- **Revisit if:** The app needs Firehose/WebSocket subscriptions or complex record operations.
+Direct `fetch` against XRPC endpoints. `@atproto/api` requires a bundler; CDN build is unstable and bloated. Trade-off: manual request construction, must track lexicon changes. Token refresh in `auth.js`. Revisit if Firehose/WebSocket or complex record operations are needed.
 
 ---
 
 ## App Passwords for Authentication
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Use BlueSky "App Passwords" rather than the user's main account password.
-- **Rationale:** BlueSky's documentation recommends app passwords for third-party clients. They can be revoked independently and have scoped permissions.
-- **Alternatives considered:** AT Protocol OAuth (complex, not yet widely supported); main password (dangerous).
-- **Trade-offs:** Extra setup step for users. Mitigated by clear in-app instructions.
-- **Revisit if:** AT Protocol OAuth becomes stable and widely supported.
+App passwords only — recommended by BlueSky for third-party clients, independently revocable, scoped permissions. AT Protocol OAuth not yet stable. Trade-off: one extra setup step, mitigated by in-app instructions.
 
 ---
 
 ## localStorage for Session Persistence
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Store the BlueSky session (`accessJwt`, `refreshJwt`, handle, DID) in `localStorage` under `bsky_session`.
-- **Rationale:** No server-side session store available (static app). localStorage survives page reloads and browser restarts. Credentials are only ever sent to bsky.social.
-- **Alternatives considered:** sessionStorage (requires re-login on every tab close); IndexedDB (overkill); cookies (require a server for HttpOnly).
-- **Trade-offs:** XSS could expose the stored token. Mitigated by: no third-party scripts loaded, strict CSP, GitHub Pages HTTPS.
-- **Revisit if:** The app loads any third-party script that could create an XSS vector.
+Session (`accessJwt`, `refreshJwt`, handle, DID) stored under `bsky_session`. No server available; localStorage survives reloads and restarts; credentials only sent to bsky.social. XSS risk mitigated by no third-party scripts, strict CSP, HTTPS. Revisit if any third-party script is loaded.
 
 ---
 
-## GitHub Pages Root Deployment (no subdirectory)
+## GitHub Pages Root Deployment
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Deploy from the root `/` of the `main` branch. All asset paths are relative.
-- **Rationale:** Simplest possible GitHub Pages setup. No subdirectory path prefix to manage.
-- **Alternatives considered:** `/docs` publish directory (adds indirection); separate `gh-pages` branch (requires a deploy workflow).
-- **Trade-offs:** Main branch must always contain deployable code. Development on feature branches only.
-- **Revisit if:** A build step is introduced, at which point a GitHub Actions workflow to `gh-pages` is preferable.
+Deploy from root `/` of `main`. No subdirectory prefix to manage. Trade-off: main must always be deployable — dev on feature branches only. Switch to a `gh-pages` Actions workflow if a build step is introduced.
 
 ---
 
-## HLS.js Served Locally (no CDN)
+## Third-Party Libraries — Served Locally (no CDN)
+*2026-02-20 – 2026-03-10*
 
-- **Date:** 2026-02-20
-- **Decision:** Bundle HLS.js v1.5.13 as `/js/hls.min.js` rather than loading from a CDN.
-- **Rationale:** CSP `script-src 'self'` blocks scripts from any external origin. Serving locally keeps the strict policy intact.
-- **Alternatives considered:** CDN load with explicit domain in script-src (weakens CSP); no video support (too much regression).
-- **Trade-offs:** 413 KB added to the repo. No automatic HLS.js updates — must manually update for security fixes.
+All third-party JS (`hls.min.js`, `d3.min.js`, `Readability.js`) served from `/js/`. CSP `script-src 'self'` blocks CDN scripts. Trade-off: manual updates for security fixes; HLS.js adds 413 KB, D3 ~270 KB, Readability ~80 KB.
 
 ---
 
-## CSP connect-src Widened to * for Video CDN Compatibility
+## CSP connect-src Widened to `*`
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Changed `connect-src` from an explicit allowlist to `*`.
-- **Rationale:** HLS.js fetches manifests and segments via `fetch()`. BlueSky's video CDN may redirect to Cloudflare edge nodes whose hostnames are not known at deploy time. Widening to `*` matches the already-permissive `img-src *` and `media-src *` posture.
-- **Alternatives considered:** Adding known subdomains (`*.bsky.app`, `*.bsky.network`) — fragile because CDN topology is opaque.
-- **Trade-offs:** Removes network-destination restriction from CSP. Risk is low: no third-party scripts loaded (`script-src 'self'`), all output is HTML-escaped.
-- **Revisit if:** A security audit recommends tighter egress control.
+HLS.js fetches video manifests via `fetch()`; BlueSky's CDN redirects to Cloudflare edge nodes with unpredictable hostnames. Explicit allowlist is too fragile. Risk is low: `script-src 'self'` still blocks foreign scripts and all output is HTML-escaped. Revisit if a security audit demands tighter egress.
 
 ---
 
-## AT Protocol Facets for Rich Text (TextEncoder/TextDecoder)
+## AT Protocol Facets — Byte-Accurate UTF-8 Slicing
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Render post text using AT Protocol `record.facets` with byte-accurate UTF-8 slicing via `TextEncoder` / `TextDecoder`.
-- **Rationale:** AT Protocol facets use byte offsets, not character offsets. JavaScript string `.charAt()` indices are incorrect for non-ASCII text. Converting to `Uint8Array` and slicing by byte offset is the only correct approach.
-- **Alternatives considered:** Character-index slicing (incorrect for non-ASCII); regex-only linkification (misses hashtags and mentions).
-- **Revisit if:** AT Protocol changes facet index semantics (unlikely given spec stability).
+Post text rendered via `record.facets` using `TextEncoder`/`TextDecoder` for byte-offset slicing. AT Protocol facets use byte offsets, not JS character indices — plain `.charAt()` is wrong for non-ASCII. Character-index slicing and regex-only linkification both rejected.
 
 ---
 
-## History API Integration (pushState / popstate)
+## History API Routing (pushState / popstate)
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** Use the browser History API (`pushState`, `replaceState`, `popstate`) to make the Back and Forward buttons work across view transitions.
-- **Rationale:** Without history integration every navigation breaks the Back button and page refresh resets to the auth screen.
-- **Alternatives considered:** Hash-based routing (simpler but ugly URLs, no Forward); a client-side router library (overkill).
-- **Trade-offs:** State is stored in `history.state` (not persisted across hard refresh).
-- **Revisit if:** Deep-link support requires encoding AT URIs in clean paths.
+Browser History API for Back/Forward across view transitions. Without it, every navigation breaks the Back button. Hash routing produces ugly URLs with no Forward; a router library is overkill. Trade-off: state lost on hard refresh.
 
 ---
 
-## CORS — No Proxy Needed (bsky.social uses open CORS)
+## CORS — No Proxy for bsky.social
+*2026-02-20*
 
-- **Date:** 2026-02-20
-- **Decision:** No Cloudflare Worker CORS proxy. Direct browser fetch to all `bsky.social` and `video.bsky.app` endpoints.
-- **Rationale:** Both endpoints serve `Access-Control-Allow-Origin: *`. The earlier concern was unfounded; the actual video failure was a CSP `connect-src` restriction (resolved separately).
-- **Trade-offs:** If BlueSky changes their CORS policy the app breaks with no fallback.
-- **Revisit if:** Any fetch call returns a CORS error in the browser console.
+Direct `fetch` to `bsky.social` and `video.bsky.app` — both serve `Access-Control-Allow-Origin: *`. The original concern was unfounded; the video issue was CSP (fixed separately). Revisit if a CORS error appears in the console.
 
 ---
 
-## Image Upload via Raw Binary POST (not JSON)
+## Image Upload via Raw Binary POST
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** `com.atproto.repo.uploadBlob` is called with the raw `File` object as the request body (binary), with `Content-Type` set to the file's MIME type.
-- **Rationale:** The AT Protocol `uploadBlob` endpoint explicitly requires raw binary POST — the only XRPC endpoint that is not JSON-encoded. A separate `uploadBlobRaw(file, token)` helper calls `fetch` directly.
-- **Alternatives considered:** Base64-encoding as JSON (not supported); FormData (not supported — endpoint expects raw binary).
-- **Revisit if:** AT Protocol changes uploadBlob to accept multipart or JSON.
+`com.atproto.repo.uploadBlob` called with raw `File` body and `Content-Type` set to the file's MIME type. It's the only non-JSON XRPC endpoint; Base64 JSON and FormData are both unsupported.
 
 ---
 
-## Image Upload Before Post Creation (separate async step)
+## Blobs Uploaded Before Post Creation
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** All blobs are uploaded via `Promise.all` before `createPost` is called. Blob refs (CID + mimeType) are passed as an `images` array to `createPost`.
-- **Rationale:** AT Protocol requires blob CIDs at post-creation time — no way to attach a blob after a post is created.
-- **Trade-offs:** If upload succeeds but `createPost` fails, blobs are orphaned (harmless; GC'd eventually).
-- **Revisit if:** AT Protocol adds a transactional blob+post endpoint.
+All blobs uploaded via `Promise.all` before `createPost`. AT Protocol requires blob CIDs at post-creation time — no post-hoc attachment. Trade-off: orphaned blobs if `createPost` fails (GC'd eventually).
 
 ---
 
-## Notifications: Load-on-Demand, No Polling
+## Notifications — Load-on-Demand, No Polling
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Notifications load the first time the user navigates to the view, not on a timer.
-- **Rationale:** No server component available. WebSocket Firehose subscriptions are not feasible from a static site. Load-on-demand is simpler and sufficient.
-- **Alternatives considered:** `setInterval` polling every 60s (burns battery/bandwidth); Firehose WebSocket (requires relay server).
-- **Trade-offs:** Badge count and list are stale until the user taps Refresh or re-opens the view.
-- **Revisit if:** Users find the stale badge confusing.
+Notifications load on first navigation to the view. No server, no Firehose possible from a static site. `setInterval` polling rejected (battery/bandwidth). Trade-off: badge may be stale until user refreshes.
 
 ---
 
-## URL Routing — Query-Parameter Based (Not Hash, Not Clean Paths)
+## URL Routing — Query Parameters
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Use query-parameter routing (`?view=post&uri=...`) for all deep-linkable views.
-- **Rationale:** GitHub Pages serves `index.html` for the root path, but `/post/at://...` returns a 404 (no server-side rewrite rules). Hash routing would work but produces noisier URLs. Query parameters are safe, human-readable, and parse cleanly via `URLSearchParams`.
-- **Scheme:**
-  - Thread: `?view=post&uri=at%3A%2F%2F...&handle=...`
-  - Profile: `?view=profile&actor=handle.bsky.social`
-  - Search: `?q=query&filter=posts`
-  - Feed: `?view=feed` / Notifications: `?view=notifications`
-- **On navigation:** `openThread` and `openProfile` include the full URL in `pushState` calls. `showView` adds view-specific URL params. Successful searches use `replaceState`.
-- **On load:** `init()` parses `window.location.search` and routes to the correct view after the session profile loads.
-- **Bsky.app URL import:** Search input detects `bsky.app/profile/.../post/...` patterns and uses `API.resolvePostUrl()` to convert them to AT URIs.
-- **Copy link:** Each post card has a chain-link icon that copies the full Bsky Dreams URL to the clipboard with 1.5s "Copied!" feedback.
-- **Alternatives considered:** Hash routing (safe but ugly); clean paths with 404.html redirect trick (adds complexity and a redirect hop).
-- **Revisit if:** A GitHub Actions deploy pipeline is added, enabling a proper SPA with clean-path rewrites.
+`?view=post&uri=...` style routing. GitHub Pages can't rewrite clean paths; hash routing works but produces ugly URLs. Scheme: Thread `?view=post&uri=...&handle=...`, Profile `?view=profile&actor=...`, Search `?q=...&filter=posts`. `init()` parses `window.location.search` after session loads. bsky.app URLs auto-converted to AT URIs via `API.resolvePostUrl()`. Each card has a copy-link button (1.5s feedback). Revisit if a CI/CD pipeline enables clean-path SPA rewrites.
 
 ---
 
-## Cross-Device Persistence — AT Protocol Repo as Sync Backend
+## Cross-Device Prefs — AT Protocol Repo
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** User preferences and saved channels are stored as a JSON record in the user's own AT Protocol repository under collection `app.bsky-dreams.prefs`, rkey `self`. Written via `com.atproto.repo.putRecord`, read via `com.atproto.repo.getRecord`. Falls back to localStorage if the record doesn't exist yet.
-- **Rationale:** The zero-cost constraint rules out any traditional backend. The AT Protocol repo is effectively a user-owned hosted key-value store. Since the user authenticates to their own PDS, we already have write access.
-- **Alternatives considered:** localStorage only (no cross-device sync); export/import JSON file (manual); Cloudflare Workers KV (free tier but adds infrastructure).
-- **Trade-offs:** AT Protocol repo records are publicly readable by anyone who knows the DID + collection + rkey. Preferences are non-sensitive, so this is acceptable. Secrets must never be stored here.
-- **Revisit if:** BlueSky adds private/encrypted record support to the AT Protocol spec.
+Preferences stored as JSON in `app.bsky-dreams.prefs` / rkey `self` via `putRecord`/`getRecord`; falls back to localStorage. Zero-cost constraint rules out a traditional backend; the PDS is effectively a user-owned key-value store. Trade-off: records are publicly readable — non-sensitive prefs only, never secrets.
 
 ---
 
-## Sidebar — Mobile Drawer, Desktop Always-Open (M43)
+## Sidebar — Always-Open Desktop, Drawer Mobile
+*2026-02-25 (evolved through M38, finalized M43)*
 
-- **Date:** 2026-02-25 (drawer pattern: 2026-02-21; evolved through M38, finalized M43)
-- **Decision:** `#channels-sidebar` contains all navigation. On desktop (≥768px) the sidebar is always open (`left: 0`, no toggle). The top bar collapses to zero height on desktop. On mobile the sidebar is a slide-in drawer triggered by a hamburger in a minimal top bar.
-- **Rationale:** A persistent sidebar on mobile leaves too little horizontal space. The drawer pattern is the standard mobile solution (Gmail, Slack, Discord). The always-open desktop approach (M43) eliminates the confusing `body.sidebar-open` toggle from M38 that required localStorage state and caused layout jitter.
-- **Alternatives considered:** Channels as a nav tab (simpler but loses workspace feel); always-open with toggle-collapse mini mode (complexity not justified).
-- **Trade-offs:** Top bar disappears on desktop; breadcrumb context visible only via sidebar active state.
-- **Revisit if:** A breadcrumb or view-title bar becomes necessary for deeper navigation.
+`#channels-sidebar` holds all navigation. Desktop (≥768px): always visible, top bar hidden. Mobile: slide-in drawer via hamburger. Replaces the `body.sidebar-open` toggle from M38 which caused localStorage dependency and layout jitter. Top bar disappears on desktop; breadcrumb context via sidebar active state only.
 
 ---
 
-## Channels Unread Checking — Load-on-Login, Throttled, Session-Once
+## Channel Unread Checking — Once Per Session
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Unread counts checked once per login session via `checkChannelUnreads()`, a background async task after `enterApp()` resolves. Fetches latest 5 posts per channel, spaced 700ms apart. No polling.
-- **Rationale:** Polling would consume battery and bandwidth. Checking once per login is predictable and low cost.
-- **Alternatives considered:** Per-channel polling every 60s (too expensive); WebSocket Firehose (requires server); no checking at all.
-- **Trade-offs:** Badges may be stale later in the session.
-- **Revisit if:** Users find stale badges confusing.
+`checkChannelUnreads()` runs once after login, fetching the latest 5 posts per channel with 700ms spacing. Per-channel polling and Firehose both rejected (too expensive or require a server). Trade-off: badges stale later in the session.
 
 ---
 
-## Bsky Dreams TV — Splash Screen for Audio Autoplay
+## TV — Splash Screen for Audio Autoplay
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** TV requires a deliberate "▶ Start TV" user interaction before any video plays.
-- **Rationale:** Browsers block audio autoplay until the page has received a user gesture. Without a Start button the first video would be muted and users would have to hunt for an unmute button.
-- **Alternatives considered:** Auto-play muted with a prominent unmute button (less appropriate for a "TV" metaphor).
-- **Trade-offs:** One extra tap before content plays. Worth it for reliable audio.
+"▶ Start TV" button required before any video plays. Browsers block audio autoplay without a user gesture. Auto-play muted with an unmute button was rejected as inconsistent with the "TV" metaphor.
 
 ---
 
-## Bsky Dreams TV — Two-Slot Slide System + Dual-Feed Seeding
+## TV — Two-Slot Slide System + Dual-Feed Seeding
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** TV uses two `position: absolute` video containers (`tv-slide-a`, `tv-slide-b`) that swap roles on each transition, enabling simultaneous outgoing/incoming CSS `translateY` animations. The no-topic queue seeds from both `API.getTimeline()` and `API.getFeed(DISCOVER_FEED_URI)` in parallel via `Promise.allSettled()`. Custom-topic queries fire both a hashtag search and a plain-text search in parallel.
-- **Rationale:** A single `<video>` element cannot transition out while a new one transitions in. Dual-feed seeding overcomes the sparsity of video-only content in a single feed. Dual-topic search fixes the bug where text results rarely included video posts.
-- **Alternatives considered:** Single video element with CSS fade (no directional slide); single search only (returned no results for most custom topics).
-- **Trade-offs:** Two HLS instances exist simultaneously; the off-screen slot is kept alive (paused) to enable instant back-navigation. Memory cost is acceptable on a mobile device.
-- **Revisit if:** Memory pressure on low-end devices causes crashes.
+Two `position: absolute` video containers (`tv-slide-a/b`) swap roles per transition, enabling simultaneous outgoing/incoming `translateY` animations. Feed seeded from `getTimeline()` + `getFeed(DISCOVER_FEED_URI)` in parallel; custom topics fire hashtag + plain-text searches in parallel. Single `<video>` can't animate out while a new one animates in; dual seeding overcomes video sparsity in a single feed. Trade-off: two HLS instances live simultaneously. Revisit if low-end devices show memory pressure.
 
 ---
 
-## Network Constellation — Search-Seeded, D3.js, Served Locally
+## Network Constellation — Search-Seeded, D3.js
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** The constellation visualization (M14, not yet implemented) seeds from a user-entered search term, not the logged-in user's follow graph. D3.js v7 will be served locally as `/js/d3.min.js`.
-- **Rationale:** Search-seeded graph is more broadly useful and avoids mapping the user's own social graph without explicit intent. Serving D3 locally is consistent with the HLS.js pattern.
-- **Alternatives considered:** Seeding from the user's own network (narrower use case); Vis.js or Cytoscape.js (heavier); WebGL renderer (faster but complex).
-- **Trade-offs:** D3.js adds ~270 KB to the repo. Cap enforced at 150 nodes to avoid jank.
+Constellation (M14) seeded from a user-entered search term, not the follow graph. D3.js v7 served locally. Search-seeded graph avoids mapping the user's social graph without intent. Vis.js and Cytoscape.js rejected as heavier; WebGL rejected as complex. Cap at 150 nodes to avoid jank.
 
 ---
 
-## Direct Messages — Native Chat API, Separate Base URL
+## Direct Messages — Native Chat API
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** DMs (M16, not yet implemented) will use BlueSky's native `chat.bsky.convo.*` lexicon at `https://api.bsky.chat/xrpc/`. Same `accessJwt`. A dedicated `chatGet`/`chatPost` helper pair will be added to `api.js`.
-- **Rationale:** BlueSky's native chat is the only zero-cost, standards-compliant option. The separate base URL is a minor inconvenience handled cleanly by a second set of fetch helpers.
-- **Alternatives considered:** Custom messaging via AT Protocol repo records (not real-time, not encrypted); third-party messaging APIs (cost, privacy).
-- **Trade-offs:** `chat.bsky.convo.*` is relatively new; documentation sparse. Monitor AT Protocol changelog.
+`chat.bsky.convo.*` at `https://api.bsky.chat/xrpc/` with the same `accessJwt`. `chatGet`/`chatPost` helpers in `api.js`. Only zero-cost, standards-compliant option. Custom AT Protocol repo messaging (not real-time/encrypted) and third-party APIs both rejected. Monitor AT Protocol changelog; docs are sparse.
 
 ---
 
-## Quoted Post Rendering — Separate `buildQuotedPost` Card
+## Quoted Posts — Compact `buildQuotedPost` Card
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Quoted posts render as a distinct compact card (`buildQuotedPost`) — avatar, name, handle, truncated text. Clicking opens the quoted post's own thread.
-- **Rationale:** Quote-posts and replies are semantically different relationships. A compact card matches bsky.app and keeps navigation semantically correct.
-- **Alternatives considered:** Nested full `buildPostCard` (too heavy, recursive action buttons); ignoring the record embed (was previous behaviour — caused silent data loss).
-- **Trade-offs:** Quoted card does not render facets (plain `textContent`). Acceptable for a truncated preview.
+Quoted posts render as a compact card (avatar, name, handle, truncated text). Clicking opens the quoted thread. Nested full `buildPostCard` is too heavy with recursive action buttons; ignoring record embeds caused silent data loss. Trade-off: no facet rendering in quoted card preview.
 
 ---
 
-## Feed Reply Context — Compact Parent Preview, Root-First Navigation
+## Feed Reply Context — Parent Preview, Root-First Navigation
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** When a feed item is a reply, a compact clickable preview of the parent post appears above the reply card (`buildParentPreview`). Clicking either card navigates to the **root** of the thread, not the reply's own URI.
-- **Rationale:** BlueSky's timeline delivers replies mid-thread with no context. Root-first navigation ensures the user always sees the full conversation from the top. The parent `PostView` is already present in the timeline response — no extra API call needed.
-- **Alternatives considered:** Fetching the full parent thread on render (too expensive); "Replying to @handle" text label (previous behaviour — not enough context); opening the reply's own URI (disorienting).
-- **Trade-offs:** Parent preview shows only the first line of parent text. If parent is `notFoundPost` or `blockedPost`, preview is omitted.
+Replies in the feed show a compact `buildParentPreview` above the reply card. Clicking either card navigates to the thread root. Parent `PostView` is already in the timeline response — no extra fetch needed. Full thread fetch on render is too expensive; "Replying to @handle" label was insufficient. Preview omitted if parent is `notFoundPost` or `blockedPost`.
 
 ---
 
 ## Thread Depth Limit — Depth 4, "Continue This Thread →"
+*2026-02-21 (lowered from 8 to 4 in M46)*
 
-- **Date:** 2026-02-21 (initial: depth ≥ 8); updated 2026-02-25 (M46: changed to depth ≥ 4)
-- **Decision:** `renderThread` tracks nesting depth (0 = root). At depth ≥ 4, further recursion is replaced by a "Continue this thread →" button that re-opens the thread from that reply node. Clicking uses `history.pushState` so the Back button returns to the parent. A "← Back to parent thread" breadcrumb appears when `fromContinue: true` is in `history.state`.
-- **Rationale:** Deep threads cause DOM bloat and layout jank with indented connector lines. At ~12px indent per level, depth 5+ causes visible horizontal overflow on 375px screens. Depth 4 leaves ~315px for content — tight but readable.
-- **Alternatives considered:** No depth limit (DOM performance degrades); 3-level cap (too shallow); collapsing the sub-tree (hides context).
-- **Trade-offs:** Very long chains require multiple "Continue" navigations.
-- **Revisit if:** Users report that 4 levels is too shallow for their typical threads.
+`renderThread` stops at depth ≥ 4, replacing further recursion with a "Continue this thread →" button. The button uses `pushState` so Back returns to the parent; a "← Back to parent thread" breadcrumb appears via `history.state`. At ~12px indent per level, depth 5+ causes horizontal overflow on 375px screens; depth 4 leaves ~315px. Revisit if users find 4 levels too shallow.
 
 ---
 
-## Lightbox Carousel — Shared Image Array, startIndex
+## Lightbox Carousel — Shared Array, startIndex
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** `openLightbox(images, startIndex)` accepts an array of `{src, alt}` objects. `buildImageGrid` passes a shared `lightboxPayload` array so all images in a post are browsable from any starting thumbnail.
-- **Rationale:** Posts with 2–4 images previously required closing and reopening the lightbox for each. Carousel navigation is standard UX.
-- **Alternatives considered:** Scrollable strip inside the lightbox (less common, harder to caption per image).
-- **Trade-offs:** The lightbox holds an in-memory copy of the image URL array; negligible for 2–4 URLs.
+`openLightbox(images, startIndex)` takes an `{src, alt}[]` array. `buildImageGrid` passes a shared `lightboxPayload` so all post images are browsable from any thumbnail. Scrollable strip inside the lightbox was rejected as less standard.
 
 ---
 
-## Adaptive Image Sizing — Natural Ratio for Singles, Fixed Crop for Grids
+## Adaptive Image Sizing
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Single-image posts use `object-fit: contain` with `max-height: 480px`. Multi-image grids (2–4) retain uniform fixed-height crop (180px / 220px on desktop).
-- **Rationale:** Portrait screenshots were previously sliced to a 180px landscape strip. Natural aspect ratio for single images fixes this without requiring the server to supply dimensions. Grids need uniform height for a clean tiled layout.
-- **Alternatives considered:** `aspect-ratio` CSS property from image metadata (AT Protocol doesn't expose width/height in the embed view); uniform height for all counts (reverts the portrait regression).
-- **Trade-offs:** Very wide panoramas may show black pillarboxing in the 480px box.
+Single images: `object-fit: contain`, `max-height: 480px`. Grids (2–4): fixed-height crop (180px / 220px desktop). Preserves portrait screenshots that were previously cropped to landscape strips; grids need uniform height for clean tiling. AT Protocol embed views don't expose width/height metadata. Trade-off: wide panoramas may pillarbox.
 
 ---
 
-## Thread Nesting — Depth-Colored Left Border, No Connector Element
+## Thread Nesting — Depth-Colored Left Border
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** `border-left` on `.reply-group` elements (not an absolutely-positioned connector element). Color driven by CSS custom property set via `[data-depth]` attribute selectors — 8 cycling colors. Post cards inside each reply group carry the same depth color. Collapse button on the connector line (Reddit-style).
-- **Rationale:** The old `top: -8px` connector element intruded into the post card above. `border-left` on the container ties the visual connector directly to the grouped content with no overflow or z-index issues.
-- **Alternatives considered:** `::before` pseudo-element (same overlap problem); avatar-column threading like Twitter/X (requires restructuring post card layout).
-- **Trade-offs:** No "flow line" emerging from the parent card's avatar — visually clean but slightly less explicit. Depth colors compensate.
+`border-left` on `.reply-group` driven by `[data-depth]` CSS selectors — 8 cycling colors. Reddit-style collapse button on the connector line. Old `top: -8px` connector element intruded into the card above; `border-left` on the container eliminates overflow and z-index issues. `::before` pseudo-element had the same overlap problem; avatar-column threading requires layout restructure.
 
 ---
 
-## Inline Reply Compose — Context-Preserving, Toggle, Dismiss
+## Inline Reply Compose — Context-Preserving
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** `expandInlineReply(postCard, post)` inserts a compose box directly after the target post card in the DOM. Only one inline box at a time; opening a second closes the first; clicking Reply on the same card toggles it closed.
-- **Rationale:** The previous flow (reply → scroll to bottom of thread → type) forced users to lose visual context. The inline approach keeps the parent post visible immediately above the textarea.
-- **Alternatives considered:** Fixed overlay panel at the bottom of the viewport (covers content); modal dialog (harder to dismiss); keeping the bottom reply area with an anchor (still loses visual context).
-- **Trade-offs:** Reloading the thread after a successful post destroys and rebuilds the DOM, closing the box. Acceptable — the post was just submitted.
+`expandInlineReply(postCard, post)` inserts a compose box directly after the target card. One box at a time; opening a second closes the first; tapping Reply again toggles it. Keeps the parent post visible while composing. Fixed overlay, modal, and scroll-to-anchor all rejected for losing context. Trade-off: DOM rebuild on successful post closes the box (acceptable).
 
 ---
 
-## Discover Feed — `whats-hot` URI, Tab-Based Toggle, Default Tab
+## Discover Feed — `whats-hot`, Default Tab
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** The "Discover" tab uses `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot` via `app.bsky.feed.getFeed`. The home feed header is a two-tab toggle (Following / Discover). Discover is the default tab on load (`feedMode` initialises to `'discover'`).
-- **Rationale:** `whats-hot` is the canonical AT URI for BlueSky's curated discovery feed. Tab bar is the lightest-weight toggle. Discover as default provides a populated feed on first load rather than an empty Following feed.
-- **Alternatives considered:** Dropdown/select (less discoverable on mobile); separate nav tab (adds clutter); Following as default (empty for new users).
-- **Trade-offs:** `whats-hot` feed content policy is controlled by BlueSky. If the URI changes, the constant in `app.js` must be updated.
+"Discover" tab uses `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot` via `getFeed`. Two-tab toggle (Following / Discover); Discover is default (`feedMode = 'discover'`). Provides a populated feed on first load; tab bar is the lightest toggle on mobile. Trade-off: feed content policy controlled by BlueSky — update the constant if the URI changes.
 
 ---
 
-## Elastic Overscroll Suppression — `overscroll-behavior: none` on `.view`
+## Elastic Overscroll Suppression
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** `overscroll-behavior: none` added to `.view` (the `overflow-y: auto` container used by all views).
-- **Rationale:** `body` already had this property, but `.view` is the *actual* scroll container for all views. Inner scroll containers have independent overscroll behavior; without the property on `.view`, iOS Safari and Chrome on Android exhibited elastic rubber-banding inside those containers.
-- **Alternatives considered:** `overscroll-behavior: contain` on `.view` (still allows the bounce within the element itself).
-- **Trade-offs:** Suppresses the bounce effect entirely. This is intentional — the app implements its own pull-to-refresh gesture.
+`overscroll-behavior: none` on `.view` (the actual scroll container, not `body`). Without it, iOS Safari and Android Chrome rubber-banded inside `.view`. `overscroll-behavior: contain` still allows bounce within the element. Intentional suppression — the app implements its own PTR gesture.
 
 ---
 
-## Mention Links — DID-based Navigation via Data Attribute + Event Delegation
+## Mention Links — DID in Data Attribute + Event Delegation
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** Mention facets embed the DID in a `data-mention-did` attribute on the rendered `<span>`. Click/keyboard handlers are wired via `querySelectorAll('[data-mention-did]')` inside `buildPostCard()` after innerHTML is set.
-- **Rationale:** `renderPostText()` returns an HTML string (set via `innerHTML`), so direct listener attachment during construction is not possible. Embedding the DID in a data attribute and delegating from `buildPostCard` is the minimal correct pattern.
-- **Alternatives considered:** Switching `renderPostText` to return DOM nodes (large refactor, not justified).
-- **Trade-offs:** One `querySelectorAll` per card render. Negligible performance cost.
+Mention facets store the DID in `data-mention-did` on the `<span>`. Listeners wired via `querySelectorAll('[data-mention-did]')` inside `buildPostCard()` after `innerHTML` is set. `renderPostText()` returns an HTML string so direct listener attachment during construction isn't possible. Refactoring to return DOM nodes rejected as too large a change.
 
 ---
 
 ## Like Button — Optimistic Update with Rollback
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** The like button applies the UI change (toggle class, count, SVG fill) before the API call resolves. On API error, the pre-change state is restored from a snapshot. Button is disabled during the in-flight request.
-- **Rationale:** Optimistic updates feel instant on slow connections. The previous code updated inside the `try` block and had no error rollback, leaving the UI desynced on failure.
-- **Alternatives considered:** Non-optimistic (update only after API confirms — laggy); no rollback (previous behaviour — leaves UI desynced).
-- **Trade-offs:** A snapshot of three fields (likeUri, count text, class) is held in closure for each API call. Negligible memory cost.
+UI updates (class, count, SVG fill) applied before the API call; on error a closure snapshot restores prior state; button disabled during the request. Non-optimistic updates feel laggy; the old code had no rollback and left UI desynced on failure.
 
 ---
 
 ## Timestamp as External Link to bsky.app
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** The relative-time badge on each post card is wrapped in `<a href="https://bsky.app/profile/{handle}/post/{rkey}" target="_blank" rel="noopener">`. The `rkey` is derived from the AT URI (`uri.split('/').pop()`). Falls back to a plain `<time>` element if handle or rkey cannot be determined.
-- **Rationale:** Tapping the time badge is a natural affordance for "see the original post." It gives users a quick escape hatch to the official Bluesky app for actions not yet supported in Bsky Dreams.
-- **Trade-offs:** Opens bsky.app in a new tab.
-- **Revisit if:** The app adds all major post actions and there is less reason to link out.
+Relative-time badge wrapped in `<a href="https://bsky.app/profile/{handle}/post/{rkey}" target="_blank">`. The `rkey` is `uri.split('/').pop()`. Falls back to a plain `<time>` element if handle/rkey are unavailable. Gives users an escape hatch to the official app for unsupported actions. Revisit when the app covers all major post actions.
 
 ---
 
-## GIF Detection — Hostname + URL Extension Heuristic
+## GIF Detection — Hostname + Extension Heuristic
+*2026-02-24 (Klipy added 2026-02-25)*
 
-- **Date:** 2026-02-24 (updated 2026-02-25 to add Klipy)
-- **Decision:** `isGifExternalEmbed(external)` checks the hostname for `tenor.com`, `c.tenor.com`, `media.giphy.com`, `giphy.com`, and `klipy.com`, and also checks whether the URL path ends in `.gif`. Matching embeds are rendered as `<img>` via `buildGifEmbed()`.
-- **Rationale:** GIFs posted via Tenor/Giphy/Klipy are attached as `app.bsky.embed.external` link cards. The browser's native `<img>` element handles GIF animation without autoplay policy restrictions.
-- **Alternatives considered:** MIME type sniffing (requires a HEAD request per embed — too slow); always rendering external links as images (breaks ordinary link cards).
-- **Trade-offs:** If any GIF provider changes their CDN domain structure, the hostname list must be updated.
-- **Revisit if:** BlueSky adds a native GIF embed type with a dedicated `$type`.
+`isGifExternalEmbed()` checks for `tenor.com`, `c.tenor.com`, `giphy.com`, `media.giphy.com`, `klipy.com`, or a `.gif` URL path. Matching embeds render as `<img>` via `buildGifEmbed()`. MIME sniffing (requires HEAD per embed) and always-as-image (breaks link cards) both rejected. Revisit if BlueSky adds a native GIF `$type`.
 
 ---
 
 ## Quote Post — Action Sheet on Repost Button
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** The repost toggle button is replaced with a two-option action sheet: "Repost / Undo repost" and "Quote Post". Quote posts open a full modal with a compose textarea and a read-only quoted-post preview card.
-- **Rationale:** The native BlueSky app uses the same action-sheet pattern. Splitting into a sheet avoids adding a new button to the already-crowded post actions row.
-- **Alternatives considered:** Separate "Quote" button on the actions row (too crowded); long-press context menu (not discoverable on mobile).
-- **Trade-offs:** Plain reposting now requires two taps instead of one.
+Repost button opens a two-option sheet: "Repost / Undo repost" and "Quote Post". Quote opens a modal with a compose textarea and read-only quoted-post preview. Matches native BlueSky UX; avoids adding another button to the crowded actions row. Trade-off: plain repost now takes two taps.
 
 ---
 
-## iOS Safari PWA Session Persistence — `visibilitychange` JWT Refresh
+## iOS Safari PWA — `visibilitychange` JWT Refresh
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** A `document.visibilitychange` listener in `app.js` checks `accessJwt` expiry on every app foreground. If within 15 minutes of expiry, `AUTH.refreshSession(refreshJwt)` is called proactively. If fully expired, session is cleared and the auth screen is shown with a message.
-- **Rationale:** Safari standalone PWA mode suspends JavaScript timers while backgrounded. A ~2-hour `accessJwt` can expire between launches without any timer firing. `visibilitychange` is the only reliable hook that fires immediately on cold launch or foreground.
-- **Alternatives considered:** `setInterval` polling (suspended by Safari background throttling); decoding JWT `exp` on every API call (adds latency); Service Worker background sync (unreliable on iOS).
-- **Trade-offs:** One async operation on every app foreground. If the refresh fails (network offline), the original token remains and will expire naturally.
+`visibilitychange` listener checks `accessJwt` expiry on every foreground. Proactively refreshes if within 15 minutes of expiry; clears session and shows auth screen if fully expired. Safari PWA suspends JS timers while backgrounded — `setInterval`, JWT decode on every API call, and Service Worker sync all rejected as unreliable. Trade-off: one async op on every foreground; offline failures let the original token expire naturally.
 
 ---
 
 ## PTR Resistance — Two-Stage Threshold
+*2026-02-24 (reduced from 96px to 48px in M65)*
 
-- **Date:** 2026-02-24 (threshold reduced to 48px in M65)
-- **Decision:** Pull-to-refresh requires a drag of ≥ 48px *plus* a 400ms hold before `ptrReadyToRelease` becomes true.
-- **Rationale:** Original 96px was too stiff on mobile; reduced to 48px in M65. The hold timer prevents accidental refreshes from fast scrolls.
-- **Trade-offs:** 400ms delay is imperceptible in practice.
+Pull-to-refresh requires ≥ 48px drag *plus* 400ms hold before `ptrReadyToRelease` is true. Hold timer prevents accidental triggers from fast scrolls. The 400ms delay is imperceptible in use.
 
 ---
 
-## Seen-Posts Deduplication — Map + Viral Threshold + Show-Anyway Escape
+## Seen-Posts Deduplication — Viral Threshold + Escape Hatch
+*2026-02-24*
 
-- **Date:** 2026-02-24
-- **Decision:** Seen feed posts stored as `Map<uri, { seenAt, likeCount, repostCount }>` in `localStorage` under `bsky_feed_seen` with a 5,000-entry FIFO cap. Posts are filtered before render unless engagement has grown by ≥ 50 interactions since first view ("gone viral" threshold). A "N posts filtered (show anyway)" link below the feed bypasses the filter for the current session.
-- **Rationale:** Deduplication prevents seeing the same posts repeatedly. The viral threshold resurfaces genuinely popular content. The show-anyway escape hatch respects user agency.
-- **Alternatives considered:** Simple URI blocklist with no viral threshold (misses resurging content); time-based expiry (doesn't account for slow-to-trend posts).
-- **Trade-offs:** The viral threshold of 50 is arbitrary.
-- **Revisit if:** User feedback suggests the threshold is too high or too low.
+Seen posts stored as `Map<uri, { seenAt, likeCount, repostCount }>` in `bsky_feed_seen` (5,000-entry FIFO). Posts are filtered unless engagement grew by ≥ 50 since first view. "N posts filtered (show anyway)" link bypasses the filter for the session. Simple blocklist misses resurging content; time-based expiry ignores engagement. Threshold of 50 is arbitrary — revisit based on user feedback.
 
 ---
 
-## Sidebar Navigation Redesign — Always-Open Desktop, Drawer Mobile (M43)
+## OG Link Preview — allorigins.win Proxy
+*2026-02-25*
 
-- **Date:** 2026-02-25
-- **Decision:** `#channels-sidebar` expanded to contain all navigation. On desktop (≥768px) the sidebar is always visible (`left: 0`, no class required, no toggle). Top bar shrinks to zero height on desktop. On mobile it is a slide-in drawer triggered by a hamburger in the top bar.
-- **Rationale:** Moving all navigation into a persistent sidebar matches standard desktop app patterns (Slack, Discord, Gmail). The always-open approach eliminates the confusing `body.sidebar-open` toggle from M38, which required localStorage persistence and caused content-layout jitter.
-- **Alternatives considered:** Horizontal top-bar nav on desktop (limited space for new entries); always-open with toggle-collapse mini mode (complexity not justified).
-- **Trade-offs:** Top bar disappears on desktop; breadcrumb context visible only via sidebar active state.
-
----
-
-## OG Link Preview via allorigins.win Proxy
-
-- **Date:** 2026-02-25
-- **Decision:** OpenGraph metadata fetched via `https://api.allorigins.win/get?url=…` (free, open CORS proxy) and parsed with browser `DOMParser`. Title and description rendered as editable inputs. Thumbnail stored as `_thumbUrl` and uploaded as a blob at submit time so native Bluesky renders an image card.
-- **Rationale:** Direct `fetch()` of third-party pages is blocked by CORS. `allorigins.win` is the lightest zero-cost proxy. Uploading the thumbnail (same pattern as GIF thumbnails) ensures rich cards in native clients.
-- **Alternatives considered:** Cloudflare Worker proxy (adds infrastructure); server-side OG fetch (no server available); skipping thumbnail upload (bare text link in native clients).
-- **Trade-offs:** `allorigins.win` is a third-party service with no SLA. If it is down, link preview silently fails without blocking the compose flow.
-- **Revisit if:** `allorigins.win` becomes unreliable; at that point self-host a Cloudflare Worker proxy.
+OG metadata fetched via `https://api.allorigins.win/get?url=…`, parsed with `DOMParser`. Thumbnail uploaded as a blob at submit time so native Bluesky renders a rich card. Direct `fetch` blocked by CORS; Cloudflare Worker adds infrastructure; skipping thumbnail upload produces a bare text link. Trade-off: allorigins.win has no SLA; preview silently skips on failure. Revisit if it becomes unreliable.
 
 ---
 
 ## Thread Gate and Post Gate via putRecord
+*2026-02-25*
 
-- **Date:** 2026-02-25
-- **Decision:** After a successful `createPost`, if non-default restrictions are selected, `API.putRecord` creates `app.bsky.feed.threadgate` and/or `app.bsky.feed.postgate` records. The rkey for both matches the post's rkey.
-- **Rationale:** AT Protocol requires threadgate and postgate to be separate records stored after the post itself. `putRecord` with the same rkey is the prescribed approach.
-- **Trade-offs:** Two extra API calls after each restricted post. If either fails, the post is published without the intended restriction. Silent failure is acceptable given how rarely non-default restrictions are set.
+After `createPost`, non-default restrictions create `app.bsky.feed.threadgate` and/or `app.bsky.feed.postgate` records with rkey matching the post's rkey. AT Protocol requires these as separate records post-creation. Trade-off: two extra API calls; silent failure leaves the post published without restrictions (acceptable — restrictions rarely used).
 
 ---
 
-## GIF Provider — Klipy via External Embed (not Blob Upload)
+## GIF Provider — Klipy as External Embed
+*2026-02-25*
 
-- **Date:** 2026-02-25
-- **Decision:** GIFs selected from Klipy are posted as `app.bsky.embed.external` with the Klipy CDN URL as the embed `uri`. The `xs.jpg` static thumbnail is uploaded as a blob and attached as `thumb`. No GIF file is uploaded to the AT Protocol blob store.
-- **Rationale:** BlueSky's AppView CDN transcodes uploaded image blobs to JPEG, stripping animation. The only way to preserve GIF animation is to reference the source CDN URL directly via an external embed — the same approach the official Bluesky app uses for Tenor and Giphy. Uploading the thumbnail blob ensures native Bluesky renders a rich card (not a bare text link).
-- **Alternatives considered:** Uploading the GIF as an image blob (strips animation); canvas-frame capture (produces pixelated static first frame).
-- **Trade-offs:** Klipy is not yet on Bluesky's animated-GIF allowlist (issue #9728). Native Bluesky shows the thumbnail card but not animation. No code change needed when Klipy is added to the allowlist.
+GIFs posted as `app.bsky.embed.external` with the Klipy CDN URL; `xs.jpg` thumbnail uploaded as blob. BlueSky's AppView CDN transcodes blobs to JPEG, stripping animation — CDN URL reference is the only way to preserve it (same approach as Tenor/Giphy in the native app). Trade-off: Klipy not yet on BlueSky's animated-GIF allowlist (issue #9728); native app shows thumbnail only. No code change needed when allowlist is updated.
 
 ---
 
 ## Scroll-Based Seen Marking — Full-Viewport IntersectionObserver
+*2026-02-25*
 
-- **Date:** 2026-02-25
-- **Decision:** A shared `IntersectionObserver` with `rootMargin: '0px'` (full viewport) and `threshold: 0` marks a post as "seen" when `entry.isIntersecting === false` AND `entry.boundingClientRect.top < 0` (scrolled above the viewport).
-- **Rationale:** The original `-80%` rootMargin shrinks the effective root to the top 20% of the viewport. A post scrolled past quickly (never entering that top-20% zone) stays at intersection ratio 0 throughout — no callback fires, post is never marked seen. With `rootMargin: '0px'`, the callback fires on any transition from visible to above-viewport, regardless of scroll speed.
-- **Alternatives considered:** `-100%` rootMargin (equivalent but less forgiving on slow scrolls); explicit scroll-position tracking per card (complex).
-- **Trade-offs:** Posts at the very bottom of the initial render batch that are partly visible are "intersecting" immediately. They will be marked seen as soon as the user scrolls them above the viewport — the correct behavior.
+`IntersectionObserver` with `rootMargin: '0px'` and `threshold: 0`. Marks seen when `isIntersecting === false` AND `boundingClientRect.top < 0`. The original `-80%` rootMargin meant fast-scrolled posts never entered the top-20% detection zone and were never marked seen. `-100%` rootMargin is equivalent but less forgiving on slow scrolls.
 
 ---
 
 ## Deferred Milestones — Paid API Dependencies
+*2026-02-21*
 
-- **Date:** 2026-02-21
-- **Decision:** Three proposed milestones are deferred pending research into zero-cost implementation paths: fact-checking (M27a), political bias analysis (M27b), and AI-generated content detection (M27c).
-- **Rationale:** Each requires a paid third-party API (ClaimBuster, Ground News, Hive, etc.). The zero-cost constraint rules these out. Partial implementations are possible (static datasets for domain-level bias; C2PA metadata check for AI detection) and are noted in SCRATCHPAD.md.
-- **Revisit if:** The user decides to fund specific API keys, or an open/free alternative emerges.
+Fact-checking (M27a), political bias (M27b), and AI content detection (M27c) deferred — each requires a paid API (ClaimBuster, Ground News, Hive, etc.). Partial zero-cost paths exist: static dataset for domain-level bias, C2PA metadata for AI detection. See SCRATCHPAD.md. Revisit if API keys are funded or free alternatives emerge.
 
 ---
 
-## Analytics Charts — Native Canvas API (no Chart.js)
+## Analytics Charts — Native Canvas API
+*2026-03-08*
 
-- **Date:** 2026-03-08
-- **Decision:** M22 Analytics Dashboard implements all charts using the browser's native Canvas 2D API rather than Chart.js or any external charting library.
-- **Rationale:** Chart.js cannot be fetched from a CDN (`script-src 'self'` CSP blocks it) and the repo has no npm/build pipeline. A locally-bundled Chart.js (≥ 60 KB) adds significant bulk for what amounts to one bar chart. Canvas-native drawing is sufficient and keeps the dependency count at zero.
-- **Alternatives considered:** Chart.js (blocked by CSP + no build pipeline); D3.js (overkill for simple bars); `<canvas>` with a micro-library (no suitable zero-dependency option available offline).
-- **Trade-offs:** Custom canvas rendering is more verbose than a high-level chart API. Accessibility (ARIA labels) must be managed manually. Animations are not implemented.
-- **Revisit if:** Multiple new chart types are added that would justify the bundling overhead.
+M22 charts use the browser Canvas 2D API. Chart.js blocked by CSP and requires a build pipeline; locally-bundled Chart.js (≥ 60 KB) too large for one bar chart; D3.js overkill for simple charts. Trade-off: verbose custom rendering, manual ARIA labels, no animations. Revisit if multiple new chart types justify the overhead.
 
 ---
 
-## Timeline Scrubber — Absolute Positioning with Fractional Time Offset
+## Timeline Scrubber — Fractional Time Offset + 220px Minimum Step
+*2026-03-08*
 
-- **Date:** 2026-03-08
-- **Decision:** M13 Timeline Scrubber positions cards absolutely within a fixed-width rail using a normalized time fraction `(postMs - firstMs) / spanMs`. A minimum per-card step of 220px is enforced so cards never overlap even when posts are clustered in time.
-- **Rationale:** A pure proportional layout collapses clustered posts to a tiny region, making them unclickable. The minimum step ensures visual separation while preserving the left-to-right temporal order. Cards wider than the viewport cause the rail to exceed window width, enabling horizontal scroll.
-- **Alternatives considered:** Fixed-width grid ignoring time (loses temporal meaning); CSS flexbox with equal spacing (not proportional); virtualised scroll (overkill for ≤ 100 posts).
-- **Trade-offs:** The minimum-step enforcement means the apparent x-position of a card may not accurately reflect its exact time when posts are clustered closely. The axis ticks remain accurate regardless.
-- **Revisit if:** Users report confusion between visual position and actual posting time.
+Cards positioned absolutely using `(postMs - firstMs) / spanMs`. Minimum 220px step between cards prevents overlap when posts cluster in time. Pure proportional layout collapses clusters to unclickable regions. Trade-off: visual position may not perfectly reflect exact time in dense clusters; axis ticks remain accurate. Revisit if users report temporal confusion.
 
 ---
 
 ## Timeline Scrubber — MutationObserver Toggle Visibility
+*2026-03-08*
 
-- **Date:** 2026-03-08
-- **Decision:** The "List / Timeline" toggle bar in the search view uses a `MutationObserver` on `#search-results` to detect when post cards have been rendered, then shows the toggle. It hides when results contain no `.post-card` elements or when `lastSearchType !== 'posts'`.
-- **Rationale:** The search handler is asynchronous and the toggle must appear only after a successful post search (not user/actor searches). Hooking into the existing search flow via mutation observation avoids modifying the search submit handler's control flow, keeping the change minimal and non-breaking.
-- **Alternatives considered:** Modifying the search submit handler directly to set toggle visibility (tighter coupling); polling `setInterval` (wasteful); custom event dispatch from search handler (more ceremony).
-- **Trade-offs:** MutationObserver fires on every DOM change to `#search-results`, including intermediate loading states. The `hasPostCards` check gates the show/hide correctly.
-
----
-
-## Readability.js — Bundled Locally (not CDN)
-
-- **Date:** 2026-03-10
-- **Decision:** Mozilla's Readability.js is served as `/js/Readability.js` (downloaded from `raw.githubusercontent.com/mozilla/readability`). Exposes a global `Readability` class.
-- **Rationale:** `script-src 'self'` CSP blocks CDN scripts. Consistent with HLS.js local-bundle pattern.
-- **Trade-offs:** Manual update required for security fixes. ~80 KB added to repo.
+"List / Timeline" toggle appears only after a successful post search, detected via `MutationObserver` on `#search-results`. Hides when no `.post-card` elements present or `lastSearchType !== 'posts'`. Avoids modifying the async search handler's control flow. Direct handler modification (tighter coupling), `setInterval` (wasteful), and custom events (more ceremony) all rejected.
 
 ---
 
 ## Reader View — Three-Proxy CORS Fallback Chain
+*2026-03-10*
 
-- **Date:** 2026-03-10
-- **Decision:** Full article HTML is fetched via a prioritised proxy chain: **codetabs.com → corsproxy.io → allorigins.win**. Each attempt uses an `AbortController` with an 18-second timeout. The first successful response (≥ 500 chars) is passed to Readability. Live step-by-step progress shown to user.
-- **Rationale:** Direct `fetch()` of third-party article pages is blocked by CORS. allorigins.win (used elsewhere for OG preview) times out on large HTML pages (HTTP 408). codetabs.com is most reliable for full pages; corsproxy.io is a solid fallback. allorigins is last because of the 408 failure mode.
-- **Alternatives considered:** Single proxy (no fallback — too fragile); Cloudflare Worker (adds infrastructure).
-- **Trade-offs:** Up to 54 seconds total before all three fail. Users see which proxy is being tried at each step.
-- **Revisit if:** codetabs.com becomes unreliable or adds rate limits.
+Article HTML fetched via **codetabs.com → corsproxy.io → allorigins.win**, each with 18s `AbortController` timeout. First response ≥ 500 chars passed to Readability. allorigins.win times out (HTTP 408) on large pages; codetabs.com is most reliable for full pages. Trade-off: up to 54 seconds before all three fail; users see live per-proxy progress. Revisit if codetabs.com rate-limits.
 
 ---
 
-## PTR Indicator — Fixed Position, Shared Across All Views
+## PTR Indicator — Fixed Position, Shared Across Views
+*2026-03-10*
 
-- **Date:** 2026-03-10
-- **Decision:** `#ptr-indicator` is `position: fixed; top: -52px` (hidden above viewport) and is a sibling of all view sections in the DOM. JS manipulates `style.top` (not `style.marginTop`) to animate it in. Applies to all views that use `makePTR()`.
-- **Rationale:** Previously the indicator lived inside `#view-feed .view-inner`. This made it invisible when any other view (e.g. Reader, Gallery) was active, breaking PTR animation there. Fixed positioning removes the dependency on the scroll container DOM context.
-- **Alternatives considered:** Duplicating the indicator inside each view (DOM bloat); dynamically reparenting it on view switch (fragile).
-- **Trade-offs:** The indicator now overlays above all views rather than scrolling with content — correct for a PTR metaphor. Hidden on desktop via `@media (min-width: 768px) { #ptr-indicator { display: none } }`.
+`#ptr-indicator` is `position: fixed; top: -52px`, sibling to all view sections. JS uses `style.top` (not `style.marginTop`). Previously lived inside `#view-feed .view-inner` and was invisible when other views were active. Duplicating per-view (DOM bloat) and dynamic reparenting (fragile) both rejected. Hidden on desktop via `@media (min-width: 768px)`.
