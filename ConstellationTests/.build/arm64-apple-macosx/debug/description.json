@@ -1,0 +1,654 @@
+{
+  "builtTestProducts" : [
+    {
+      "binaryPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.xctest/Contents/MacOS/ConstellationTestsPackageTests",
+      "packagePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests",
+      "productName" : "ConstellationTestsPackageTests"
+    }
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.ConstellationGestureEngine-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/sources",
+      "importPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/GestureEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/TouchRouter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "ConstellationGestureEngine",
+      "moduleOutputPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngine.swiftmodule",
+      "objects" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.swift.o",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.swift.o",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/include/ConstellationGestureEngine-Swift.h",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "constellationtests"
+      ],
+      "outputFileMapPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/GestureEngine.swift",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/Models.swift",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/TouchRouter.swift"
+      ],
+      "tempsPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.ConstellationGestureEngineTests-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/sources",
+      "importPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/CombinationTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/GestureEngineTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/TouchRouterTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "ConstellationGestureEngineTests",
+      "moduleOutputPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngineTests.swiftmodule",
+      "objects" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/CombinationTests.swift.o",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/GestureEngineTests.swift.o",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/TouchRouterTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "constellationtests"
+      ],
+      "outputFileMapPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/CombinationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/GestureEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/TouchRouterTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngineTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/CombinationTests.swift",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/GestureEngineTests.swift",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/TouchRouterTests.swift"
+      ],
+      "tempsPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.ConstellationTestsPackageTests-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/sources",
+      "importPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationGestureEngineTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "ConstellationTestsPackageTests",
+      "moduleOutputPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationTestsPackageTests.swiftmodule",
+      "objects" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/runner.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/include/ConstellationTestsPackageTests-Swift.h",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "constellationtests"
+      ],
+      "outputFileMapPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules/ConstellationTestsPackageTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift"
+      ],
+      "tempsPath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "ConstellationGestureEngine" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "ConstellationGestureEngine",
+      "-package-name",
+      "constellationtests",
+      "-c",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/GestureEngine.swift",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/Models.swift",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/TouchRouter.swift",
+      "-I",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/include/ConstellationGestureEngine-Swift.h",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "constellationtests",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "ConstellationGestureEngineTests" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "ConstellationGestureEngineTests",
+      "-package-name",
+      "constellationtests",
+      "-c",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/CombinationTests.swift",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/GestureEngineTests.swift",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/TouchRouterTests.swift",
+      "-I",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "constellationtests",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "ConstellationTestsPackageTests" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "ConstellationTestsPackageTests",
+      "-package-name",
+      "constellationtests",
+      "-c",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift",
+      "-I",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/include/ConstellationTestsPackageTests-Swift.h",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "constellationtests",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "ConstellationGestureEngine" : [
+
+    ],
+    "ConstellationGestureEngineTests" : [
+      "ConstellationGestureEngine"
+    ],
+    "ConstellationTestsPackageTests" : [
+      "ConstellationGestureEngineTests",
+      "ConstellationGestureEngine"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift" : {
+      "inputs" : [
+
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift"
+        }
+      ]
+    }
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/GestureEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/TouchRouter.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/sources"
+    },
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/CombinationTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/GestureEngineTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Tests/ConstellationGestureEngineTests/TouchRouterTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/sources"
+    },
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.derived/runner.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/sources"
+    },
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/CombinationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/GestureEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngineTests.build/TouchRouterTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.build/runner.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationTestsPackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "": {
+    "swift-dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/master.swiftdeps"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/GestureEngine.swift": {
+    "dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.d",
+    "object": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.swift.o",
+    "swiftmodule": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.swiftdeps",
+    "diagnostics": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/GestureEngine.dia"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/Models.swift": {
+    "dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.d",
+    "object": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.swift.o",
+    "swiftmodule": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.swiftdeps",
+    "diagnostics": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/Models.dia"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/Sources/ConstellationGestureEngine/TouchRouter.swift": {
+    "dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.d",
+    "object": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.swift.o",
+    "swiftmodule": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter~partial.swiftmodule",
+    "swift-dependencies": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.swiftdeps",
+    "diagnostics": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/TouchRouter.dia"
+  }
+}
