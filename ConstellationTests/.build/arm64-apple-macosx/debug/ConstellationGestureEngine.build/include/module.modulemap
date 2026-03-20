@@ -1,0 +1,3 @@
+module ConstellationGestureEngine {
+    header "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/ConstellationTests/.build/arm64-apple-macosx/debug/ConstellationGestureEngine.build/include/ConstellationGestureEngine-Swift.h"
+}

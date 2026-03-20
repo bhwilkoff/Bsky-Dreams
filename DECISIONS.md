@@ -458,3 +458,61 @@ Seen-posts are synced across devices using the AT Protocol repo as a key-value s
 *2026-03-17*
 
 The POST button in `FeedView` and `ComposeView` toolbars uses a plain `Text` view with `.onTapGesture` rather than a SwiftUI `Button`. When a `Button` is placed inside a `ToolbarItem`, SwiftUI maps it to a `UIBarButtonItem` backed by a `UIButton` with `UIButtonConfiguration` — iOS 15+ uses this to render a rounded rect highlight background that cannot be suppressed via SwiftUI modifiers (`.buttonStyle(.plain)`) or the legacy `UIBarButtonItem.appearance().setBackgroundImage()` API. A plain view (non-Button) results in `UIBarButtonItem(customView: UIView)` which never receives `UIButtonConfiguration` treatment and therefore renders no rounded rect. Accessibility restored via `.accessibilityLabel` + `.accessibilityAddTraits(.isButton)`. `BskyDreamsApp.init()` also sets `UINavigationBarAppearance.buttonAppearance.backgroundEffect = nil` via the `UINavigationBar.appearance()` proxy (correct modern API; legacy `setBackgroundImage` had no effect). Trade-off: no automatic UIKit press-state feedback; the button visually looks identical pressed vs unpressed (acceptable for the neubrutalist style which doesn't use press states).
+
+---
+
+## [iOS] ConstellationView — UIGestureRecognizer Subclass for Touch Capture
+*2026-03-18*
+
+Gesture input in `ConstellationView` uses a custom `_ConstellationGestureRecognizer: UIGestureRecognizer` subclass whose `touchesBegan/touchesMoved/touchesEnded` overrides implement all four gesture types (tap, single-finger node drag, two-finger pinch, background pan). The subclass is attached to a `UIView` via `UIViewRepresentable` (`ConstellationGestureCapture`) placed as the frontmost layer of the graph ZStack.
+
+Rejected: SwiftUI `DragGesture`/`TapGesture` — both pass through `_UIHostingView` recognizers with `delaysTouchesBegan = true`, causing gestures to require a "warm-up" before firing reliably. `UIView.touchesBegan` override on a descendant — delayed by the same mechanism. A recognizer subclass's own touch override methods are dispatched by the gesture recognizer system before responder-chain delivery, making them structurally immune to ancestor `delaysTouchesBegan` flags.
+
+The recognizer stays passive (never transitions to `.recognized`; resets to `.failed` at sequence end). `cancelsTouchesInView = false`. `canPrevent`/`canBePrevented` both return `false`. Callbacks pass `view.bounds.size` so callers never need a `GeometryProxy` (which can be stale on first render). `ConstellationTests/` SPM package contains 43 unit tests for the `ConstellationTouchRouter` logic, runnable via `swift test`.
+
+---
+
+## [iOS] ConstellationView — GraphNode.Equatable Must Include Position
+*2026-03-18*
+
+`GraphNode.Equatable` compares `id AND x AND y`. The original id-only equality caused a silent, complete failure of all gesture hit-testing.
+
+The physics simulation updates `nodes[idx].x/y` every 16ms. SwiftUI uses `Equatable` on `@State` values to skip re-renders when the new value equals the old. With id-only equality: every simulation write appeared identical to the previous state — SwiftUI never re-rendered the graph during simulation. The visual was permanently frozen at the initial circular layout. The hit test read simulation-updated positions from `@State`. Every tap missed by the full distance the physics had moved the nodes (~99pt in testing). Panning worked because `panOffset: CGSize` has correct memberwise equality and its change forced a re-render — which is why all gestures appeared to "work after the first pan."
+
+Fix: `lhs.id == rhs.id && lhs.x == rhs.x && lhs.y == rhs.y`. Each simulation tick now properly invalidates the view. Trade-off: more re-render work per tick, acceptable at 60fps with ~60 nodes. `ForEach` uses `Identifiable` (by `id`) for stable child identity — existing node views are updated in place, not recreated.
+
+---
+
+## [iOS] Share Extension — Opening the Containing App via Responder Chain
+*2026-03-19*
+
+To open the containing app from a Share Extension, traverse the UIResponder chain to reach UIApplication and call `open:options:completionHandler:` with `nil` options. UIApplication exists in the extension's process but `UIApplication.shared` is restricted; the responder chain bypasses that restriction.
+
+```swift
+let selector = NSSelectorFromString("openURL:options:completionHandler:")
+var responder: UIResponder? = self
+while let r = responder {
+    if r.responds(to: selector) {
+        typealias OpenFunc = @convention(c) (AnyObject, Selector, NSURL, NSDictionary?, ((Bool) -> Void)?) -> Void
+        let open = unsafeBitCast(r.method(for: selector), to: OpenFunc.self)
+        open(r, selector, url as NSURL, nil, nil)
+        break
+    }
+    responder = r.next
+}
+extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+```
+
+The Share Extension's Info.plist must also declare `LSApplicationQueriesSchemes: [bskydreams]` — without it `extensionContext?.open()` returns `false`.
+
+**All rejected approaches (do not retry):**
+
+| Approach | Result | Reason |
+|---|---|---|
+| `extensionContext?.open(url)` | Returns `false` | iOS routes through the host app (Photos); Photos can't handle custom URL schemes |
+| Responder chain + `openURL:` selector | Force-blocked | Deprecated; iOS logs "needs to migrate to the non-deprecated UIApplication.open" and returns false |
+| `open:options:completionHandler:` with `[:]` | Crash | `Swift.__EmptyDictionarySingleton` doesn't respond to `universalLinksOnly` (private UIKit selector) |
+| `open:options:completionHandler:` with `NSDictionary()` | Crash | `__NSDictionary0` same problem — UIKit casts options to a private `_UIOpenURLOptions` class |
+| `open:options:completionHandler:` with `nil` | **Works** | UIKit skips the options cast entirely |
+
+The main app's `onOpenURL` receives `bskydreams://share` and calls `processPendingShare()`. As a belt-and-suspenders fallback, `processPendingShare()` is also called on `willEnterForegroundNotification` in `MainAppView` so pending shares are never lost if the user manually switches to the app.

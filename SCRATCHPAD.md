@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-03-17
+## Current Date: 2026-03-19
 
 ---
 
@@ -16,6 +16,7 @@
 | Feed infinite scroll + PTR | ✅ | ✅ | |
 | Seen-post deduplication (bypass flag) | ✅ | ✅ | Web: localStorage Map; iOS: SwiftData |
 | Compose (rich text, images, video, GIF, link preview) | ✅ | ✅ | |
+| Share Extension (save image → App Group → open app) | 📱 | ✅ | iOS only; web is browser-native |
 | Post settings (threadgate / postgate) | ✅ | ✅ | |
 | @mention autocomplete in compose | ✅ | ✅ | |
 | Conversation view (depth-colored nesting, depth ≥ 4 → continue) | ✅ | ✅ | |
@@ -38,8 +39,8 @@
 | Reader: seen tracking + mark-read | ✅ | ✅ | iOS: SwiftData SeenPost inserted on article appear; readURLs still in-session for opacity only |
 | Reader: progress bar during Readable extraction | ✅ | ✅ | |
 | Analytics dashboard (post stats, heatmap) | ✅ | ⏳ | iOS view exists, content TBD |
-| Network Constellation (D3 graph) | ✅ | ⏳ | iOS view exists, content TBD |
-| Timeline scrubber (horizontal, time-offset) | ✅ | ⏳ | |
+| Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
+| Timeline scrubber (horizontal, time-offset) | ✅ | ✅ | iOS: full implementation (2026-03-19); sidebar tab, zoom levels, lane layout, profile button |
 | Settings (accent color, default feed, clear history) | ✅ | ✅ | |
 | Cross-device seen-posts sync via AT Protocol repo | ✅ | ✅ | Collection: app.bsky-dreams.seen / rkey: recent |
 | Deep-link / URL routing (bsky.app URL import) | ✅ | ✅ | Web: ?view= params; iOS: NavigationPath |
@@ -106,15 +107,19 @@ Four rounds of polish fixes applied (2026-03-16 through 2026-03-17).
 - URLCache: configured at app launch with 100 MB memory / 500 MB disk to persist AsyncImage/URLSession responses
 - LightboxView: AsyncImage given `.frame(maxWidth: .infinity, maxHeight: .infinity)` inside TabView so images fill the page
 - New Message: error feedback, loading state, `dismiss()` after convo creation
+- Constellation view: full physics simulation (D3-equivalent force/repulsion/spring/gravity), all 4 gestures (tap to select, single-finger node drag, two-finger pinch zoom, background pan), `UIGestureRecognizer` subclass (`_ConstellationGestureRecognizer`) for immediate touch delivery; `ConstellationTests/` SPM package with 43 passing unit tests; root bug was `GraphNode.Equatable` comparing only `id`, causing simulation position updates to not trigger re-renders (visual frozen, hit test used current positions → all gestures missed)
+- Share Extension: saves image/video/URL/text to App Group container + UserDefaults; opens main app via UIApplication responder chain (`open:options:completionHandler:` with nil options); `LSApplicationQueriesSchemes` required in extension Info.plist; `processPendingShare()` also called on `willEnterForegroundNotification` as belt-and-suspenders fallback
+- Lightbox: save-to-camera-roll with PHPhotoLibrary auth pre-check + Settings deep-link alert; pan after zoom via `.simultaneousGesture(DragGesture)` guarded on `imageScale > 1.01`
+- Timeline: auto-loads current user's profile on first open (`.onAppear` check for empty query + `auth.session?.handle`)
+- Sidebar channels: fixed SwiftData lightweight migration crash — `SavedSearch.channelType` must have inline default `= "search"` at property declaration level
 
 ### Next for iOS
 
 - **Reader read-state persistence**: `readURLs` (in-session opacity indicator) should be persisted to SwiftData so articles stay dimmed across sessions — SeenPost already inserted, but `readURLs` set is separate
 - **Analytics view**: implement Canvas-equivalent charts using Swift Charts or Canvas
-- **Constellation view**: implement D3-equivalent force graph (likely using SwiftUI Canvas or a lightweight graph layout)
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Cross-device channel/prefs sync**: read/write `app.bsky-dreams.prefs` via AT Protocol repo (seen-posts sync is done; channels and UI prefs still SwiftData only)
-- **Timeline scrubber**: port horizontal time-offset scrubber to Search view
+- **Timeline scrubber**: ✅ ported as standalone tab (2026-03-19); sidebar nav, zoom levels (7d→20m), engagement filter, lane layout algorithm, connector lines+dots via Canvas, save-as-channel, profile TIMELINE button
 - **Scroll position on back navigation**: investigate using `.scrollPosition(id:)` (iOS 17) to save/restore feed position when popping ThreadView back to FeedView
 
 ---
@@ -131,7 +136,7 @@ Four rounds of polish fixes applied (2026-03-16 through 2026-03-17).
 ### iOS
 1. Reader `readURLs` (`@State`) drives in-session opacity but is separate from SwiftData `SeenPost` inserts — the two need to be reconciled for fully persistent read-state display
 2. `app.bsky-dreams.prefs` sync not yet wired — iOS uses SwiftData `CachedPreferences` only; accent color chosen on device is not synced to web
-3. Analytics and Constellation views exist as shells — implementation needed before parity is achieved
+3. Analytics view exists as a shell — Swift Charts implementation needed before parity is achieved (Constellation is now complete)
 4. Klipy same allowlist issue as web — no code change needed when resolved
 5. Notifications badge count from `refreshBadges()` only counts unread in first page (limit: 1) — may undercount
 6. Accent color: `Color.nbAccent` static var reads UserDefaults on each call — views re-render with new color on next navigation, but not instantaneously mid-session; full live preview would require environment injection across all views

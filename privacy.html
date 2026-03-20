@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — Bsky Dreams</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent:     #FF5C35;
+            --blue:       #0047FF;
+            --lime:       #B8E04A;
+            --black:      #0A0A0A;
+            --white:      #FFFFFF;
+            --bg:         #FFFDF8;
+            --border:     #E0E0E0;
+            --shadow:     3px 3px 0 var(--black);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            background: var(--bg);
+            color: var(--black);
+            min-height: 100vh;
+        }
+
+        /* ── Header ── */
+        header {
+            background: var(--white);
+            border-bottom: 3px solid var(--black);
+            padding: 0 24px;
+        }
+
+        .header-inner {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px 0;
+        }
+
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .logo-cloud {
+            width: 36px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .logo-wordmark {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 18px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--black);
+        }
+
+        /* ── Hero ── */
+        .hero {
+            background: var(--accent);
+            border-bottom: 3px solid var(--black);
+            padding: 40px 24px;
+        }
+
+        .hero-inner {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: clamp(28px, 5vw, 40px);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--white);
+            margin-bottom: 8px;
+        }
+
+        .hero .updated {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            color: rgba(255,255,255,0.85);
+            font-weight: 600;
+        }
+
+        /* ── Main ── */
+        main {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        /* ── Summary card ── */
+        .summary-card {
+            background: var(--lime);
+            border: 3px solid var(--black);
+            box-shadow: var(--shadow);
+            padding: 24px 28px;
+            margin-bottom: 48px;
+        }
+
+        .summary-card h2 {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            color: var(--black);
+        }
+
+        .summary-card ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .summary-card li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .summary-card li::before {
+            content: "✓";
+            font-weight: 800;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* ── Sections ── */
+        section {
+            margin-bottom: 48px;
+        }
+
+        section h2 {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 20px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--black);
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--black);
+            margin-bottom: 20px;
+        }
+
+        section h3 {
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--black);
+            margin: 24px 0 8px;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: #222;
+        }
+
+        p:last-child { margin-bottom: 0; }
+
+        ul, ol {
+            padding-left: 20px;
+            margin-bottom: 14px;
+        }
+
+        li { margin-bottom: 6px; }
+
+        a {
+            color: var(--blue);
+            text-decoration: underline;
+        }
+
+        /* ── Data table ── */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 14px;
+        }
+
+        .data-table th {
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 10px 12px;
+            background: var(--black);
+            color: var(--white);
+            border: 2px solid var(--black);
+        }
+
+        .data-table td {
+            padding: 10px 12px;
+            border: 2px solid var(--black);
+            background: var(--white);
+            vertical-align: top;
+        }
+
+        .data-table tr:nth-child(even) td {
+            background: #f9f9f9;
+        }
+
+        .yes { color: #1a7a1a; font-weight: 600; }
+        .no  { color: #888;    font-weight: 600; }
+
+        /* ── Callout box ── */
+        .callout {
+            background: var(--white);
+            border: 3px solid var(--black);
+            box-shadow: var(--shadow);
+            padding: 20px 24px;
+            margin: 20px 0;
+        }
+
+        .callout.accent {
+            border-left: 6px solid var(--accent);
+        }
+
+        .callout p { margin: 0; }
+
+        /* ── Footer ── */
+        footer {
+            background: var(--black);
+            color: var(--white);
+            text-align: center;
+            padding: 28px 24px;
+            font-size: 13px;
+        }
+
+        footer a { color: var(--lime); }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .data-table { font-size: 12px; }
+            .data-table th, .data-table td { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <div class="header-inner">
+        <a class="logo-link" href="https://bskydreams.com">
+            <svg class="logo-cloud" viewBox="0 0 80 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 8.1 24.5 13.3 24.1C12.5 22.5 12 20.8 12 19C12 12.4 17.4 7 24 7C26.5 7 28.8 7.8 30.7 9.1C33.3 5.4 37.6 3 42.5 3C50.5 3 57 9.5 57 17.5C57 18.2 56.9 18.9 56.8 19.6C57.2 19.5 57.6 19.5 58 19.5C62.4 19.5 66 23.1 66 27.5V44Z" fill="#FF5C35"/>
+                <path d="M66 44H14C8.5 44 4 39.5 4 34C4 28.8 8.1 24.5 13.3 24.1C12.5 22.5 12 20.8 12 19C12 12.4 17.4 7 24 7C26.5 7 28.8 7.8 30.7 9.1C33.3 5.4 37.6 3 42.5 3C50.5 3 57 9.5 57 17.5C57 18.2 56.9 18.9 56.8 19.6C57.2 19.5 57.6 19.5 58 19.5C62.4 19.5 66 23.1 66 27.5V44Z" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/>
+            </svg>
+            <span class="logo-wordmark">Bsky Dreams</span>
+        </a>
+    </div>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+    <div class="hero-inner">
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last updated: March 2026 &nbsp;·&nbsp; Applies to bskydreams.com and the Bsky Dreams iOS app</p>
+    </div>
+</div>
+
+<!-- Main -->
+<main>
+
+    <!-- TL;DR -->
+    <div class="summary-card">
+        <h2>The short version</h2>
+        <ul>
+            <li>Your credentials are stored only on your device — never on any Bsky Dreams server.</li>
+            <li>All API calls go directly from your device to bsky.social. There is no Bsky Dreams backend.</li>
+            <li>We do not collect analytics, crash reports, or behavioral data of any kind.</li>
+            <li>We do not sell, share, or monetize your data.</li>
+            <li>Your cross-device preferences are stored in your own Bluesky AT Protocol repository — not ours.</li>
+            <li>You can delete all local data by logging out and uninstalling the app.</li>
+        </ul>
+    </div>
+
+    <!-- 1. Who we are -->
+    <section>
+        <h2>1. Who We Are</h2>
+        <p>Bsky Dreams is a third-party client for the <a href="https://bsky.app">Bluesky</a> social network, built by <strong>Learning is Change</strong>. The web app is available at <a href="https://bskydreams.com">bskydreams.com</a> and the iOS app is available on the App Store.</p>
+        <p>Bsky Dreams is not affiliated with, endorsed by, or operated by Bluesky Social PBC or the AT Protocol team.</p>
+        <p>Questions about this policy: <a href="mailto:ben@bskydreams.com">ben@bskydreams.com</a></p>
+    </section>
+
+    <!-- 2. What data we collect -->
+    <section>
+        <h2>2. What Data We Collect</h2>
+        <p>Bsky Dreams collects as little data as possible. Here is the complete list:</p>
+
+        <h3>Account credentials</h3>
+        <p>When you log in, your Bluesky handle and App Password are stored locally on your device:</p>
+        <ul>
+            <li><strong>Web app:</strong> stored in your browser's <code>localStorage</code>, on your device only.</li>
+            <li><strong>iOS app:</strong> stored in your device's Keychain, encrypted at rest by iOS.</li>
+        </ul>
+        <p>These credentials are transmitted <strong>only to bsky.social</strong> to create and refresh your session. They are never sent to any Bsky Dreams server (there is none), never logged, and never stored anywhere other than your device.</p>
+
+        <h3>Session tokens</h3>
+        <p>After a successful login, bsky.social issues short-lived access and refresh tokens (JWTs). These are stored alongside your credentials and used to authenticate API calls. They expire automatically and are refreshed transparently.</p>
+
+        <h3>Content you create</h3>
+        <p>Posts, replies, images, videos, and direct messages that you compose in Bsky Dreams are submitted directly to bsky.social via the AT Protocol. Bsky Dreams does not retain copies of this content — it lives in your Bluesky AT Protocol Personal Data Server (PDS).</p>
+
+        <h3>Your preferences and saved searches</h3>
+        <p>Settings like your default feed tab, accent color, saved search channels, and seen-post history are stored in two places:</p>
+        <ul>
+            <li><strong>Locally:</strong> Web app uses <code>localStorage</code>; iOS app uses SwiftData on-device storage.</li>
+            <li><strong>Cross-device sync:</strong> If you are logged in, preferences and seen-post history are written to your own Bluesky AT Protocol repository under the collection <code>app.bsky-dreams.prefs</code> and <code>app.bsky-dreams.seen</code>. This data is stored in <em>your</em> repository on Bluesky's infrastructure — not on any Bsky Dreams server. It is readable by any AT Protocol client you authorize.</li>
+        </ul>
+
+        <h3>What we do not collect</h3>
+        <ul>
+            <li>No analytics or usage tracking of any kind</li>
+            <li>No crash reports or error logs sent to us</li>
+            <li>No device identifiers (IDFA, IDFV, or similar)</li>
+            <li>No IP address logs</li>
+            <li>No advertising profiles</li>
+            <li>No email address (unless you email us directly for support)</li>
+        </ul>
+    </section>
+
+    <!-- 3. Data table -->
+    <section>
+        <h2>3. Data Summary Table</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Data Type</th>
+                    <th>Collected?</th>
+                    <th>Where Stored</th>
+                    <th>Sent To</th>
+                    <th>Linked to You?</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Bluesky handle</td>
+                    <td class="yes">Yes</td>
+                    <td>Your device only</td>
+                    <td>bsky.social only</td>
+                    <td class="yes">Yes</td>
+                </tr>
+                <tr>
+                    <td>App password</td>
+                    <td class="yes">Yes</td>
+                    <td>Your device only (encrypted)</td>
+                    <td>bsky.social only</td>
+                    <td class="yes">Yes</td>
+                </tr>
+                <tr>
+                    <td>Session tokens (JWT)</td>
+                    <td class="yes">Yes</td>
+                    <td>Your device only</td>
+                    <td>bsky.social only</td>
+                    <td class="yes">Yes</td>
+                </tr>
+                <tr>
+                    <td>Posts &amp; replies you create</td>
+                    <td class="no">No (not by us)</td>
+                    <td>Your Bluesky PDS</td>
+                    <td>bsky.social only</td>
+                    <td class="yes">Yes (public)</td>
+                </tr>
+                <tr>
+                    <td>Photos &amp; videos you upload</td>
+                    <td class="no">No (not by us)</td>
+                    <td>Bluesky CDN</td>
+                    <td>bsky.social only</td>
+                    <td class="yes">Yes (public)</td>
+                </tr>
+                <tr>
+                    <td>Saved search channels</td>
+                    <td class="yes">Yes</td>
+                    <td>Device + your AT Protocol repo</td>
+                    <td>bsky.social (your own repo)</td>
+                    <td class="yes">Yes</td>
+                </tr>
+                <tr>
+                    <td>Seen-post history</td>
+                    <td class="yes">Yes</td>
+                    <td>Device + your AT Protocol repo</td>
+                    <td>bsky.social (your own repo)</td>
+                    <td class="yes">Yes</td>
+                </tr>
+                <tr>
+                    <td>Accent color / UI prefs</td>
+                    <td class="yes">Yes</td>
+                    <td>Device only</td>
+                    <td>Nobody</td>
+                    <td class="no">No</td>
+                </tr>
+                <tr>
+                    <td>Analytics / usage data</td>
+                    <td class="no">No</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td class="no">—</td>
+                </tr>
+                <tr>
+                    <td>Crash reports</td>
+                    <td class="no">No</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td class="no">—</td>
+                </tr>
+                <tr>
+                    <td>Advertising identifiers</td>
+                    <td class="no">No</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td class="no">—</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- 4. Third-party services -->
+    <section>
+        <h2>4. Third-Party Services</h2>
+        <p>Bsky Dreams makes network requests to the following third-party services at runtime. No personal data beyond what is described below is shared with any of them.</p>
+
+        <h3>bsky.social and api.bsky.chat (Bluesky Social PBC)</h3>
+        <p>All social data — your feed, posts, profiles, notifications, and direct messages — is fetched from and sent to Bluesky's AT Protocol API. Your use of these services is governed by <a href="https://bsky.social/about/support/privacy-policy">Bluesky's Privacy Policy</a>.</p>
+
+        <h3>api.klipy.com (Klipy)</h3>
+        <p>Used only when you open the GIF picker. Trending GIF searches are sent to Klipy's API to return GIF results. No account or identity information is included in these requests — only the search term. Governed by <a href="https://klipy.com/privacy">Klipy's Privacy Policy</a>.</p>
+
+        <h3>api.allorigins.win (Web app only)</h3>
+        <p>Used only when generating a link preview while composing a post. The URL you are previewing is sent to allorigins.win as a CORS proxy to fetch Open Graph metadata. No login credentials or personal data are included.</p>
+
+        <h3>plc.directory</h3>
+        <p>Used by the iOS app when uploading videos to resolve your Bluesky DID document and identify your Personal Data Server. Your DID (a public, non-sensitive identifier) is sent. No credentials are included.</p>
+
+        <h3>Google Fonts (iOS app only)</h3>
+        <p>The iOS app bundles the Syne and Inter fonts locally — no Google Fonts network requests are made at runtime.</p>
+
+        <h3>GitHub Pages (web app only)</h3>
+        <p>The web app is hosted on GitHub Pages. GitHub may log IP addresses and request metadata per their standard infrastructure logging. Governed by <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's Privacy Statement</a>.</p>
+    </section>
+
+    <!-- 5. iOS-specific -->
+    <section>
+        <h2>5. iOS App — Specific Practices</h2>
+
+        <h3>Keychain storage</h3>
+        <p>The iOS app stores your Bluesky handle, app password, and session tokens in the iOS Keychain with the <code>kSecAttrAccessibleAfterFirstUnlock</code> protection level. This data is encrypted by iOS and is not accessible to other apps.</p>
+
+        <h3>Photo library access</h3>
+        <p>The app requests access to your photo library only when you tap the image or video attachment button in the compose screen. Photos and videos you select are uploaded directly to bsky.social. Bsky Dreams does not retain copies.</p>
+
+        <h3>Camera roll — save to photos</h3>
+        <p>The app requests write access to your photo library only when you explicitly tap "Save to Camera Roll" in the image lightbox viewer. No photos are saved without this action.</p>
+
+        <h3>Push notifications</h3>
+        <p>If you grant notification permission, the app uses iOS Background App Refresh to check for new Bluesky notifications (likes, replies, follows, mentions) and deliver local notifications on your device. This check contacts bsky.social using your stored session token. No notification content is routed through any Bsky Dreams server — the check is made directly from your device to bsky.social.</p>
+
+        <h3>Share Extension</h3>
+        <p>The Share Extension (which lets you share images, videos, and URLs from other apps into Bsky Dreams) temporarily stores shared files in an App Group container on your device. This data is read by the main app immediately and then cleared. Nothing is sent anywhere until you explicitly post it from the Compose screen.</p>
+
+        <h3>Background processing</h3>
+        <p>The app registers for iOS Background App Refresh solely to check for new notifications. No other background activity occurs.</p>
+    </section>
+
+    <!-- 6. Data retention and deletion -->
+    <section>
+        <h2>6. Data Retention and Deletion</h2>
+
+        <h3>Deleting local app data</h3>
+        <ul>
+            <li><strong>Web app:</strong> Go to Settings → "Forget saved login" to clear your credentials. To clear all local data including saved channels and seen posts, open your browser's developer tools → Application → Local Storage → clear all entries for bskydreams.com.</li>
+            <li><strong>iOS app:</strong> Go to Settings → Clear Seen Posts to clear your viewing history. To clear all app data including credentials, go to iOS Settings → Bsky Dreams → and delete the app. All Keychain entries are removed on uninstall.</li>
+        </ul>
+
+        <h3>Deleting cloud-synced preferences</h3>
+        <p>Your cross-device preferences stored in your AT Protocol repository (<code>app.bsky-dreams.prefs</code> and <code>app.bsky-dreams.seen</code>) can be deleted via the AT Protocol API or any AT Protocol-compatible tool. We do not have access to delete these records on your behalf — they are in <em>your</em> repository.</p>
+
+        <h3>Deleting Bluesky content</h3>
+        <p>Posts, images, videos, and messages you have sent through Bluesky are governed by <a href="https://bsky.social/about/support/privacy-policy">Bluesky's Privacy Policy</a>. You can delete them from any Bluesky client.</p>
+    </section>
+
+    <!-- 7. Children -->
+    <section>
+        <h2>7. Children's Privacy</h2>
+        <p>Bsky Dreams is not directed at children under 13. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided personal information through this app, please contact us at <a href="mailto:ben@bskydreams.com">ben@bskydreams.com</a> and we will take steps to delete it.</p>
+    </section>
+
+    <!-- 8. Security -->
+    <section>
+        <h2>8. Security</h2>
+        <p>Because Bsky Dreams has no backend server, there is no central database to breach. Your credentials live on your device and are only ever transmitted to bsky.social over HTTPS.</p>
+        <p>We recommend using a Bluesky <strong>App Password</strong> (not your main account password) with Bsky Dreams. App Passwords are scoped, revocable credentials — if one is ever compromised, you can revoke it from bsky.app without affecting your account or other connected apps.</p>
+
+        <div class="callout accent">
+            <p><strong>Create or manage your App Passwords:</strong> Log into <a href="https://bsky.app">bsky.app</a> → Settings → Privacy and Security → App Passwords.</p>
+        </div>
+    </section>
+
+    <!-- 9. Tracking -->
+    <section>
+        <h2>9. Tracking and Advertising</h2>
+        <p>Bsky Dreams does not track users across apps or websites. We do not use advertising networks, behavioral advertising, or cross-app tracking technologies. There is no analytics SDK embedded in either the web app or the iOS app.</p>
+    </section>
+
+    <!-- 10. Changes -->
+    <section>
+        <h2>10. Changes to This Policy</h2>
+        <p>If we make material changes to this policy, we will update the "Last updated" date at the top of this page and note the change in the app's release notes. Continued use of Bsky Dreams after changes constitutes acceptance of the updated policy.</p>
+        <p>The full history of this file is publicly visible in the <a href="https://github.com/bhwilkoff/Bsky-Dreams">Bsky Dreams GitHub repository</a>.</p>
+    </section>
+
+    <!-- 11. Contact -->
+    <section>
+        <h2>11. Contact</h2>
+        <p>Questions, concerns, or requests related to this privacy policy:</p>
+        <ul>
+            <li><strong>Email:</strong> <a href="mailto:ben@bskydreams.com">ben@bskydreams.com</a></li>
+            <li><strong>Bluesky:</strong> <a href="https://bsky.app/profile/laserdiscleftist.bsky.social">@laserdiscleftist.bsky.social</a></li>
+            <li><strong>GitHub:</strong> <a href="https://github.com/bhwilkoff/Bsky-Dreams/issues">github.com/bhwilkoff/Bsky-Dreams/issues</a></li>
+        </ul>
+    </section>
+
+</main>
+
+<footer>
+    <p>© 2026 Learning is Change &nbsp;·&nbsp; <a href="https://bskydreams.com">bskydreams.com</a> &nbsp;·&nbsp; <a href="mailto:ben@bskydreams.com">ben@bskydreams.com</a></p>
+</footer>
+
+</body>
+</html>

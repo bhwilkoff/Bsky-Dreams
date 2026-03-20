@@ -13,6 +13,64 @@ tool that makes someone more human.
 
 ---
 
+## Debugging and Diagnostic Philosophy
+
+**Do not iterate blindly on behavior you cannot observe.** When a feature
+does not work correctly and the root cause is not immediately clear from
+reading the code, the first move is always diagnostics — not another
+implementation attempt.
+
+### Rule: Instrument before iterating
+
+If a gesture, interaction, layout, or networking issue resists a first fix:
+
+1. **Add console diagnostics immediately.** Print the values that matter:
+   coordinates, sizes, state, what was found, what was nil. Ask the user to
+   run and share the output. One round of real data is worth more than ten
+   rounds of guessing.
+
+2. **Design diagnostics to answer a specific question.** Before adding a
+   print, write down what you expect to see vs. what would indicate the bug.
+   "If `viewSize` matches `geo.size`, that theory is wrong. If `hitNode`
+   returns nil for a tap that should hit, the math is wrong."
+
+3. **Isolate layers.** For gesture issues: confirm the recognizer fires
+   (`touchesBegan` print), then confirm the callback fires (print in
+   `onTap`/`onPanChange`), then confirm the hit test result (print in
+   `hitNode`). Don't assume all three layers work — verify each one.
+
+4. **For iOS interaction bugs, add a temporary visual overlay** (a `Text`
+   showing the last tap coordinate, size, or hit result) when the user
+   cannot easily share a console. This surfaces diagnostic state directly
+   on device without needing Xcode attached.
+
+5. **Remove all diagnostics before considering a fix complete.**
+
+### The lesson from 16 iterations on ConstellationView
+
+Sixteen implementation attempts failed on the same tap/drag gesture problem
+because each attempt changed the gesture infrastructure without first
+verifying which layer was broken. A single round of `print` statements
+revealed in one test that:
+- The gesture recognizer WAS firing correctly
+- `viewSize` and `geo.size` WERE identical
+- `hitNode` WAS being called with the right coordinates
+- But the closest node was 99pt away from where the user tapped
+
+That data pointed immediately to a state/render mismatch: the physics
+simulation was updating `nodes[idx].x/y` every frame but SwiftUI was not
+re-rendering because `GraphNode.Equatable` compared only `id`. The visual
+was frozen at initial positions; the hit test used simulation-updated
+positions. One-line fix. None of the 16 earlier attempts touched this
+because none had instrumented the right layer.
+
+**Protocol for any future interaction/gesture bug:**
+- Do not write a second implementation before adding diagnostics to the first.
+- Share console output with the user after the first failed attempt, not the
+  sixteenth.
+
+---
+
 ## What This App Does
 
 Bsky Dreams is a custom client for the BlueSky social network available as
@@ -171,6 +229,7 @@ install — all third-party code is absent (pure Apple frameworks only).
 - TV: single shared `AVPlayer` instance; mute briefly on item swap to prevent audio pop; `containerRelativeFrame([.horizontal, .vertical])` for full-screen paging (not GeometryReader)
 - Reader: strip external resources (img, script, link, iframe, video) from fetched HTML before loading into extractor WKWebView — prevents network churn and WEBP errors in the extractor process
 - **Conversation view** (formerly "Thread view"): all user-visible text uses "Conversation" — toolbar title, loading indicator, and "Continue" link. Never use "Thread" in UI labels.
+- **Share Extension → open containing app**: Traverse the UIResponder chain with `NSSelectorFromString("openURL:options:completionHandler:")` and pass `nil` for options — full implementation in DECISIONS.md. **Never retry:** `extensionContext?.open()` (returns `false`), deprecated `openURL:` selector (force-blocked), or any dictionary for options (crashes on `universalLinksOnly`). The Share Extension's Info.plist must declare `LSApplicationQueriesSchemes: [bskydreams]`.
 - **Sidebar header**: use `VStack` with `.background(Color.nbWhite)` modifier — never a `ZStack` with a `Color` sibling. `Color` views as ZStack siblings are layout-greedy and cause the ZStack to expand to fill all available height. All children must have fixed heights.
 - **Lightbox / fullScreenCover with data**: use `fullScreenCover(item:)` with an `Identifiable` carrier struct (e.g., `LightboxPresentation(images:startIndex:)`). Never use `fullScreenCover(isPresented:)` + separate `@State` arrays — SwiftUI may evaluate the content closure before batched state mutations are applied, producing stale/empty data.
 - **Image grid cells**: always constrain both width AND height before `.clipped()`. `scaledToFill()` without a width constraint overflows column bounds in a `LazyVGrid`. Use `.frame(maxWidth: .infinity, minHeight: H, maxHeight: H)` then `.clipped()`.
