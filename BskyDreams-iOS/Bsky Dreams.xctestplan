@@ -1,0 +1,30 @@
+{
+  "configurations" : [
+    {
+      "id" : "1BCC5726-EE3D-4544-B73F-304F37877001",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Bsky Dreams.xcodeproj",
+      "identifier" : "B755E3C32F6643DF001882AD",
+      "name" : "Bsky Dreams"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Bsky Dreams.xcodeproj",
+        "identifier" : "B722083C2F6DC97A00FFAC1A",
+        "name" : "BskyDreamsScreenshots"
+      }
+    }
+  ],
+  "version" : 1
+}
