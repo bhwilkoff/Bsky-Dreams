@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" fill="none">
+
+  <!-- Background -->
+  <rect width="1200" height="280" fill="#F8F7F5"/>
+
+  <!-- Section label -->
+  <text x="80" y="42" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" fill="rgba(26,25,22,0.25)">WORKFLOW</text>
+
+  <!-- Section title -->
+  <text x="80" y="74" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="30" font-weight="800" letter-spacing="-1" fill="#1A1916">Recommended pipeline</text>
+
+  <!-- Flow steps -->
+  <!-- Step 1 -->
+  <g transform="translate(80, 104)">
+    <rect width="240" height="90" rx="12" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="20" y="30" font-family="'DM Sans', system-ui, sans-serif" font-size="9" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">STEP 1</text>
+    <text x="20" y="52" font-family="'DM Sans', system-ui, sans-serif" font-size="17" font-weight="700" fill="#1A1916">Review</text>
+    <text x="20" y="72" font-family="'DM Sans', system-ui, sans-serif" font-size="12" font-weight="400" fill="rgba(26,25,22,0.35)">Find what's broken</text>
+  </g>
+
+  <!-- Arrow -->
+  <text x="333" y="153" font-family="'DM Sans', sans-serif" font-size="16" fill="rgba(26,25,22,0.20)">&#x2192;</text>
+
+  <!-- Step 2 -->
+  <g transform="translate(360, 104)">
+    <rect width="240" height="90" rx="12" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="20" y="30" font-family="'DM Sans', system-ui, sans-serif" font-size="9" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">STEP 2</text>
+    <text x="20" y="52" font-family="'DM Sans', system-ui, sans-serif" font-size="17" font-weight="700" fill="#1A1916">System</text>
+    <text x="20" y="72" font-family="'DM Sans', system-ui, sans-serif" font-size="12" font-weight="400" fill="rgba(26,25,22,0.35)">Build design foundations</text>
+  </g>
+
+  <!-- Arrow -->
+  <text x="613" y="153" font-family="'DM Sans', sans-serif" font-size="16" fill="rgba(26,25,22,0.20)">&#x2192;</text>
+
+  <!-- Step 3 -->
+  <g transform="translate(640, 104)">
+    <rect width="240" height="90" rx="12" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="20" y="30" font-family="'DM Sans', system-ui, sans-serif" font-size="9" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">STEP 3</text>
+    <text x="20" y="52" font-family="'DM Sans', system-ui, sans-serif" font-size="17" font-weight="700" fill="#1A1916">Screen</text>
+    <text x="20" y="72" font-family="'DM Sans', system-ui, sans-serif" font-size="12" font-weight="400" fill="rgba(26,25,22,0.35)">Design screens properly</text>
+  </g>
+
+  <!-- Arrow -->
+  <text x="893" y="153" font-family="'DM Sans', sans-serif" font-size="16" fill="rgba(26,25,22,0.20)">&#x2192;</text>
+
+  <!-- Step 4 -->
+  <g transform="translate(920, 104)">
+    <rect width="240" height="90" rx="12" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="20" y="30" font-family="'DM Sans', system-ui, sans-serif" font-size="9" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">STEP 4</text>
+    <text x="20" y="52" font-family="'DM Sans', system-ui, sans-serif" font-size="17" font-weight="700" fill="#1A1916">Ship It</text>
+    <text x="20" y="72" font-family="'DM Sans', system-ui, sans-serif" font-size="12" font-weight="400" fill="rgba(26,25,22,0.35)">Production-ready code</text>
+  </g>
+
+  <!-- Supporting commands label -->
+  <text x="80" y="232" font-family="'DM Sans', system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" fill="rgba(26,25,22,0.25)">RUN ANYTIME</text>
+
+  <!-- Command pills -->
+  <g transform="translate(80, 244)">
+    <rect width="80" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+    <text x="40" y="18" text-anchor="middle" font-family="'DM Mono', ui-monospace, monospace" font-size="11" font-weight="500" fill="rgba(26,25,22,0.55)">/KUI:a11y</text>
+  </g>
+
+  <g transform="translate(172, 244)">
+    <rect width="92" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+    <text x="46" y="18" text-anchor="middle" font-family="'DM Mono', ui-monospace, monospace" font-size="11" font-weight="500" fill="rgba(26,25,22,0.55)">/KUI:brand</text>
+  </g>
+
+  <g transform="translate(276, 244)">
+    <rect width="88" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+    <text x="44" y="18" text-anchor="middle" font-family="'DM Mono', ui-monospace, monospace" font-size="11" font-weight="500" fill="rgba(26,25,22,0.55)">/KUI:figma</text>
+  </g>
+
+  <g transform="translate(376, 244)">
+    <rect width="116" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+    <text x="58" y="18" text-anchor="middle" font-family="'DM Mono', ui-monospace, monospace" font-size="11" font-weight="500" fill="rgba(26,25,22,0.55)">/KUI:darkmode</text>
+  </g>
+
+  <g transform="translate(504, 244)">
+    <rect width="98" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+    <text x="49" y="18" text-anchor="middle" font-family="'DM Mono', ui-monospace, monospace" font-size="11" font-weight="500" fill="rgba(26,25,22,0.55)">/KUI:trends</text>
+  </g>
+</svg>

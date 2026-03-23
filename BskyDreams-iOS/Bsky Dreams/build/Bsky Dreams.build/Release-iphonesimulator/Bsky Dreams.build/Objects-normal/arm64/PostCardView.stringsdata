@@ -1,0 +1,296 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/PostCardView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Repost Options",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 85
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mute @%@?",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 106
+        }
+      },
+      {
+        "comment": "",
+        "key": "Block @%@?",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Undo Repost",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "Repost",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "Quote Post",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unmute",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mute",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 108
+        }
+      },
+      {
+        "comment": "",
+        "key": "You will see their posts again.",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "You won't see their posts in your feed.",
+        "location": {
+          "startingColumn": 64,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Block",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 113
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 114
+        }
+      },
+      {
+        "comment": "",
+        "key": "They won't be able to interact with you.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "@%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 186
+        }
+      },
+      {
+        "comment": "",
+        "key": "Report Post",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 214
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 198
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open in Bluesky",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 204
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unmute @%@",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mute @%@",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "Block @%@",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "@%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 317
+        }
+      },
+      {
+        "comment": "",
+        "key": "Replying to @%@",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 464
+        }
+      },
+      {
+        "comment": "",
+        "key": "Write your reply…",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 521
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 538
+        }
+      },
+      {
+        "comment": "",
+        "key": "…",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 542
+        }
+      },
+      {
+        "comment": "",
+        "key": "POST",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 542
+        }
+      },
+      {
+        "comment": "",
+        "key": "GIF",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 571
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Post",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 652
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 683
+        }
+      },
+      {
+        "comment": "",
+        "key": "Select a reason",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 746
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 782
+        }
+      }
+    ]
+  },
+  "version": 1
+}

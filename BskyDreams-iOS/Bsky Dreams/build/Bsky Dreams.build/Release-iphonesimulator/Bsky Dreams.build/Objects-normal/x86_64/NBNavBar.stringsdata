@@ -1,0 +1,24 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/NBNavBar.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Open sidebar",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 130
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 147
+        }
+      }
+    ]
+  },
+  "version": 1
+}

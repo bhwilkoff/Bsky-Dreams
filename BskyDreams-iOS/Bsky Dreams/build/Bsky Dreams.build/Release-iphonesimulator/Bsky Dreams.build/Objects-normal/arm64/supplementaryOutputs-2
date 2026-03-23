@@ -1,0 +1,12 @@
+{
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Auth/LoginView.swift" : {
+    "abi-baseline-json" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky_Dreams.abi.json",
+    "const-values" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky Dreams-primary.swiftconstvalues",
+    "dependencies" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky Dreams-primary.d",
+    "diagnostics" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky Dreams-primary.dia",
+    "objc-header" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky_Dreams-Swift.h",
+    "swiftdoc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky_Dreams.swiftdoc",
+    "swiftmodule" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky_Dreams.swiftmodule",
+    "swiftsourceinfo" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/arm64/Bsky_Dreams.swiftsourceinfo"
+  }
+}

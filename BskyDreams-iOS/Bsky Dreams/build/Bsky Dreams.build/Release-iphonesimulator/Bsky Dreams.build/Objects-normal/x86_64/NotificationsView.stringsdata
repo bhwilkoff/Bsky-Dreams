@@ -1,0 +1,48 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Notifications/NotificationsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "You're all caught up!",
+        "location": {
+          "startingColumn": 105,
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading notifications...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 16
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Notifications",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "MARK READ",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": " %@",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 134
+        }
+      }
+    ]
+  },
+  "version": 1
+}

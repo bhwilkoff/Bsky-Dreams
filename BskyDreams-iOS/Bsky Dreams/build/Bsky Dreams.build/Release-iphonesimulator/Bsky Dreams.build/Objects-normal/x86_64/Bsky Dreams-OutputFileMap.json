@@ -1,0 +1,201 @@
+{
+  "" : {
+    "const-values" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary.swiftconstvalues",
+    "dependencies" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary.d",
+    "diagnostics" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary.dia",
+    "emit-module-dependencies" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary-emit-module.dia",
+    "pch" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Bsky Dreams-primary.swiftdeps"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Auth/AuthManager.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AuthManager.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AuthManager.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AuthManager.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Auth/KeychainManager.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/KeychainManager.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/KeychainManager.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/KeychainManager.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/BskyDreamsApp.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/BskyDreamsApp.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/BskyDreamsApp.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/BskyDreamsApp.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/AvatarView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AvatarView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AvatarView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AvatarView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/ImageGridView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ImageGridView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ImageGridView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ImageGridView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/NBNavBar.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NBNavBar.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NBNavBar.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NBNavBar.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/PostCardView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/PostCardView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/PostCardView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/PostCardView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/RichTextView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/RichTextView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/RichTextView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/RichTextView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Components/SwipeBackEnabler.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SwipeBackEnabler.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SwipeBackEnabler.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SwipeBackEnabler.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/ContentView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ContentView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ContentView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ContentView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/Actor.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Actor.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Actor.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Actor.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/Message.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Message.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Message.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Message.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/Notification.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Notification.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Notification.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Notification.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/Post.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Post.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Post.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Post.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/SavedSearch.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SavedSearch.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SavedSearch.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SavedSearch.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Models/Thread.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Thread.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Thread.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/Thread.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Networking/ATProtocolClient.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATProtocolClient.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATProtocolClient.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATProtocolClient.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Networking/ActorAPI.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ActorAPI.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ActorAPI.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ActorAPI.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Networking/ChatAPI.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ChatAPI.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ChatAPI.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ChatAPI.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Networking/FeedAPI.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedAPI.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedAPI.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedAPI.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Networking/NotificationAPI.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationAPI.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationAPI.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationAPI.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Store/AppStore.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AppStore.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AppStore.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AppStore.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Utilities/ATURIParser.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATURIParser.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATURIParser.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ATURIParser.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Utilities/DesignSystem.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DesignSystem.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DesignSystem.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DesignSystem.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Analytics/AnalyticsView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AnalyticsView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AnalyticsView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/AnalyticsView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Auth/LoginView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/LoginView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/LoginView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/LoginView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Compose/ComposeView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ComposeView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ComposeView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ComposeView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Constellation/ConstellationView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ConstellationView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ConstellationView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ConstellationView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/DMs/DMsView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DMsView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DMsView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/DMsView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Feed/FeedView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/FeedView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Gallery/GalleryView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GalleryView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GalleryView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GalleryView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Notifications/NotificationsView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationsView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationsView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/NotificationsView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Profile/ProfileView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ProfileView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ProfileView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ProfileView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Reader/ReaderView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ReaderView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ReaderView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ReaderView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Search/SearchView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SearchView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SearchView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/SearchView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/TV/TVView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/TVView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/TVView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/TVView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Thread/ThreadView.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ThreadView.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ThreadView.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/ThreadView.o"
+  },
+  "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Bsky Dreams.build/Release-iphonesimulator/Bsky Dreams.build/Objects-normal/x86_64/GeneratedAssetSymbols.o"
+  }
+}

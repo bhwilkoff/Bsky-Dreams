@@ -1,0 +1,144 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Search/SearchView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Save Channel",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 113
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search Bluesky",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "GO",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "Channel name",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 114
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 115
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save \"%@\" as a channel",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "#",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 131
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete Channel",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 145
+        }
+      },
+      {
+        "comment": "",
+        "key": "Searching...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 237
+        }
+      },
+      {
+        "comment": "",
+        "key": "LATEST",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 207
+        }
+      },
+      {
+        "comment": "",
+        "key": "TOP",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 220
+        }
+      },
+      {
+        "comment": "",
+        "key": "ADVANCED FILTERS",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 310
+        }
+      },
+      {
+        "comment": "",
+        "key": "HIDE ADULT CONTENT",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 301
+        }
+      },
+      {
+        "comment": "",
+        "key": "Filters posts labeled explicit or adult",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 305
+        }
+      },
+      {
+        "comment": "",
+        "key": "@%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 373
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" fill="none">
+  <defs>
+    <linearGradient id="subtleGrad" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8F7F5"/>
+      <stop offset="100%" stop-color="#F0EDE8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="360" fill="url(#subtleGrad)"/>
+
+  <!-- Top border accent -->
+  <rect x="0" y="0" width="1200" height="3" fill="#1A1916"/>
+
+  <!-- Grid dots pattern - subtle -->
+  <g opacity="0.06">
+    <circle cx="100" cy="60" r="1.5" fill="#1A1916"/>
+    <circle cx="140" cy="60" r="1.5" fill="#1A1916"/>
+    <circle cx="180" cy="60" r="1.5" fill="#1A1916"/>
+    <circle cx="100" cy="100" r="1.5" fill="#1A1916"/>
+    <circle cx="140" cy="100" r="1.5" fill="#1A1916"/>
+    <circle cx="180" cy="100" r="1.5" fill="#1A1916"/>
+    <circle cx="100" cy="140" r="1.5" fill="#1A1916"/>
+    <circle cx="140" cy="140" r="1.5" fill="#1A1916"/>
+    <circle cx="180" cy="140" r="1.5" fill="#1A1916"/>
+    <circle cx="1020" cy="220" r="1.5" fill="#1A1916"/>
+    <circle cx="1060" cy="220" r="1.5" fill="#1A1916"/>
+    <circle cx="1100" cy="220" r="1.5" fill="#1A1916"/>
+    <circle cx="1020" cy="260" r="1.5" fill="#1A1916"/>
+    <circle cx="1060" cy="260" r="1.5" fill="#1A1916"/>
+    <circle cx="1100" cy="260" r="1.5" fill="#1A1916"/>
+    <circle cx="1020" cy="300" r="1.5" fill="#1A1916"/>
+    <circle cx="1060" cy="300" r="1.5" fill="#1A1916"/>
+    <circle cx="1100" cy="300" r="1.5" fill="#1A1916"/>
+  </g>
+
+  <!-- Eyebrow pill -->
+  <rect x="80" y="60" width="148" height="26" rx="13" fill="rgba(26,25,22,0.04)" stroke="rgba(26,25,22,0.10)" stroke-width="1"/>
+  <text x="154" y="78" text-anchor="middle" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="rgba(26,25,22,0.45)">Claude Code Skill Set</text>
+
+  <!-- Title -->
+  <text x="80" y="148" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="64" font-weight="900" letter-spacing="-3" fill="#1A1916">Killer UI</text>
+
+  <!-- Tagline -->
+  <text x="84" y="185" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="18" font-weight="400" fill="rgba(26,25,22,0.45)">Your AI's design degree.</text>
+
+  <!-- Description -->
+  <text x="84" y="225" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="15" font-weight="400" fill="rgba(26,25,22,0.35)" line-height="1.7">
+    <tspan x="84" dy="0">Turn vibe-coded UIs into production-grade,</tspan>
+    <tspan x="84" dy="24">Apple-quality interfaces. Design systems, accessibility,</tspan>
+    <tspan x="84" dy="24">dark mode, typography — all from the command line.</tspan>
+  </text>
+
+  <!-- Bottom stats row -->
+  <line x1="80" y1="305" x2="700" y2="305" stroke="rgba(26,25,22,0.08)" stroke-width="1"/>
+
+  <g transform="translate(80, 322)">
+    <text font-family="'DM Sans', system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="0.8" text-transform="uppercase" fill="rgba(26,25,22,0.25)">COMMANDS</text>
+    <text x="82" font-family="'DM Mono', ui-monospace, monospace" font-size="14" font-weight="600" fill="#1A1916">9</text>
+  </g>
+
+  <g transform="translate(200, 322)">
+    <text font-family="'DM Sans', system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">AGENTS</text>
+    <text x="60" font-family="'DM Mono', ui-monospace, monospace" font-size="14" font-weight="600" fill="#1A1916">8</text>
+  </g>
+
+  <g transform="translate(310, 322)">
+    <text font-family="'DM Sans', system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">KNOWLEDGE BASE</text>
+    <text x="120" font-family="'DM Mono', ui-monospace, monospace" font-size="14" font-weight="600" fill="#1A1916">6 guides</text>
+  </g>
+
+  <!-- Right side: mini phone mockup -->
+  <g transform="translate(820, 48)">
+    <!-- Phone frame -->
+    <rect width="280" height="280" rx="28" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+
+    <!-- Status bar area -->
+    <rect x="16" y="16" width="248" height="28" rx="8" fill="#F8F7F5"/>
+    <text x="32" y="35" font-family="'DM Sans', system-ui, sans-serif" font-size="11" font-weight="700" fill="#1A1916" letter-spacing="-0.3">App Name</text>
+    <rect x="200" y="25" width="48" height="10" rx="5" fill="#E5E1DA"/>
+
+    <!-- Hero stat card -->
+    <rect x="16" y="54" width="248" height="72" rx="12" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <rect x="16" y="54" width="4" height="72" rx="2" fill="#2C5F2E"/>
+    <text x="32" y="73" font-family="'DM Sans', system-ui, sans-serif" font-size="8" font-weight="700" letter-spacing="0.8" fill="rgba(26,25,22,0.25)">TOTAL REVENUE</text>
+    <text x="32" y="100" font-family="'DM Sans', system-ui, sans-serif" font-size="26" font-weight="900" fill="#1A1916" letter-spacing="-1">$12,450</text>
+    <text x="32" y="116" font-family="'DM Sans', system-ui, sans-serif" font-size="9" font-weight="600" fill="#2C5F2E">+18% this month</text>
+
+    <!-- Mini stat cards row -->
+    <rect x="16" y="136" width="118" height="52" rx="8" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="28" y="153" font-family="'DM Sans', system-ui, sans-serif" font-size="7" font-weight="700" letter-spacing="0.5" fill="rgba(26,25,22,0.25)">ORDERS</text>
+    <text x="28" y="175" font-family="'DM Sans', system-ui, sans-serif" font-size="20" font-weight="800" fill="#1A1916" letter-spacing="-0.5">247</text>
+
+    <rect x="146" y="136" width="118" height="52" rx="8" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="158" y="153" font-family="'DM Sans', system-ui, sans-serif" font-size="7" font-weight="700" letter-spacing="0.5" fill="rgba(26,25,22,0.25)">MARGIN</text>
+    <text x="158" y="175" font-family="'DM Sans', system-ui, sans-serif" font-size="20" font-weight="800" fill="#2C5F2E" letter-spacing="-0.5">64%</text>
+
+    <!-- List items -->
+    <rect x="16" y="198" width="248" height="52" rx="8" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <rect x="28" y="210" width="28" height="28" rx="6" fill="#F0EDE8"/>
+    <rect x="66" y="214" width="80" height="8" rx="4" fill="#E5E1DA"/>
+    <rect x="66" y="228" width="52" height="6" rx="3" fill="#F0EDE8"/>
+    <rect x="208" y="218" width="40" height="16" rx="8" fill="rgba(44,95,46,0.08)" stroke="rgba(44,95,46,0.20)" stroke-width="0.5"/>
+    <text x="228" y="230" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="8" font-weight="600" fill="#2C5F2E">Paid</text>
+  </g>
+
+  <!-- Bottom border -->
+  <rect x="0" y="357" width="1200" height="3" fill="#E5E1DA"/>
+</svg>

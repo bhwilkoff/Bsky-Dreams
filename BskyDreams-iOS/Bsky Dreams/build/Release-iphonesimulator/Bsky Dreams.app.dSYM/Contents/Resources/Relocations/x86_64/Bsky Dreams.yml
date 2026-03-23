@@ -1,0 +1,5 @@
+---
+triple:          'x86_64-apple-darwin'
+binary-path:     '/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/build/Release-iphonesimulator/Bsky Dreams.app/Bsky Dreams'
+relocations:     []
+...

@@ -1,0 +1,176 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Compose/ComposeView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "What's happening?",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 151
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 156
+        }
+      },
+      {
+        "comment": "",
+        "key": "REPLY",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 161
+        }
+      },
+      {
+        "comment": "",
+        "key": "NEW POST",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 161
+        }
+      },
+      {
+        "comment": "",
+        "key": "Posting...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "POST",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "Posting",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "POST",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 202
+        }
+      },
+      {
+        "comment": "",
+        "key": "GIF",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 232
+        }
+      },
+      {
+        "comment": "",
+        "key": "https://...",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 275
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 285
+        }
+      },
+      {
+        "comment": "",
+        "key": "Replying to @%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 316
+        }
+      },
+      {
+        "comment": "",
+        "key": "GIF",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 552
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search GIFs...",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Powered by",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 539
+        }
+      },
+      {
+        "comment": "",
+        "key": "KLIPY",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 542
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 556
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Alt Text",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 707
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 711
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- No cross-app/cross-site user tracking -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <!-- No tracking domains -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- The app developer collects no data.
+         User credentials (app password, JWTs) are stored locally in the
+         iOS Keychain and transmitted only to bsky.social / api.bsky.chat.
+         No analytics, no crash reporting, no third-party SDKs. -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!-- Required-reason APIs used by this app -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <!-- UserDefaults — used for accent color, color scheme preference,
+                 and App Group shared defaults (Share Extension ↔ main app). -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <!-- CA92.1: Read/write defaults that belong to the app itself
+                     (nb_accent_color_hex, nb_color_scheme stored by this app). -->
+                <string>CA92.1</string>
+                <!-- 1C8F.1: Read/write defaults in an App Group container shared
+                     between the main app and the Share Extension
+                     (group.app.bskydreams.ios). -->
+                <string>1C8F.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
