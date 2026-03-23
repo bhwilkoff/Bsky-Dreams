@@ -2648,6 +2648,28 @@ a.post-timestamp:hover {
   outline-offset: 2px;
 }
 
+.lightbox-download {
+  position: absolute;
+  top: var(--space-md);
+  left: var(--space-md);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+  z-index: 1;
+}
+.lightbox-download:hover { background: rgba(255, 255, 255, 0.3); }
+.lightbox-download:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+.lightbox-download.loading { opacity: 0.6; pointer-events: none; }
+.lightbox-download-success svg { stroke: #B8E04A; }
+
 /* Prev / Next arrow buttons */
 .lightbox-arrow {
   position: absolute;
@@ -7172,5 +7194,321 @@ a.post-timestamp:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ============================================================
+   DARK MODE — html[data-theme="dark"]
+   Design tokens mirror iOS DesignSystem.swift dark values.
+   Accent-colored shadows replace black offset shadows for
+   visibility and Neubrutalist character on dark surfaces.
+============================================================ */
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --color-bg:          #0D1421;
+  --color-surface:     #1A2840;
+  --color-surface-alt: #243040;
+  --color-border:      #405570;
+
+  /* Text */
+  --color-text:        #F0F4F8;
+  --color-text-muted:  #8BA0B5;
+  --color-text-light:  #6D8499;
+  --nb-black:          #F0F4F8;  /* text/stroke color in dark mode */
+
+  /* Shadows → accent-colored, not black */
+  --shadow-card:        3px 3px 0 var(--color-accent);
+  --shadow-elevated:    5px 5px 0 var(--color-accent);
+  --nb-shadow-hover:    6px 6px 0 var(--color-accent);
+
+  /* State colors */
+  --color-error-bg:     #2D1A17;
+  --color-error-text:   #FF8A70;
+  --color-error-border: #FF5C35;
+  --color-success-bg:   #1A2D17;
+  --color-success-text: #B8E04A;
+  --color-success-border: #B8E04A;
+
+  /* Accent light: translucent version of current accent */
+  --color-accent-light: rgba(0, 71, 255, 0.18);
+}
+
+/* Base */
+html[data-theme="dark"] body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Layout */
+html[data-theme="dark"] .app-layout { background: var(--color-bg); }
+
+html[data-theme="dark"] .sidebar {
+  background: var(--color-surface);
+  border-right-color: var(--color-border);
+}
+
+html[data-theme="dark"] .sidebar-header {
+  background: var(--color-surface);
+  border-bottom-color: var(--color-border);
+}
+
+html[data-theme="dark"] .sidebar-footer {
+  background: var(--color-surface);
+  border-top-color: var(--color-border);
+}
+
+html[data-theme="dark"] .top-bar {
+  background: var(--color-surface);
+  border-bottom-color: var(--color-border);
+}
+
+html[data-theme="dark"] .main-content { background: var(--color-bg); }
+html[data-theme="dark"] .view         { background: var(--color-bg); }
+html[data-theme="dark"] .view-inner   { background: var(--color-bg); }
+
+/* Cards and interactive containers */
+html[data-theme="dark"] .post-card,
+html[data-theme="dark"] .notification-item,
+html[data-theme="dark"] .gallery-card,
+html[data-theme="dark"] .channel-card,
+html[data-theme="dark"] .reader-card,
+html[data-theme="dark"] .dm-convo-item,
+html[data-theme="dark"] .search-result-item {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .post-card:hover,
+html[data-theme="dark"] .notification-item:hover,
+html[data-theme="dark"] .gallery-card:hover,
+html[data-theme="dark"] .dm-convo-item:hover {
+  background: var(--color-surface-alt);
+}
+
+/* Feed & thread layout */
+html[data-theme="dark"] .feed-item { border-bottom-color: var(--color-border); }
+html[data-theme="dark"] .thread-connector { background: var(--color-border); }
+html[data-theme="dark"] .thread-indent-line { background: var(--color-border); }
+
+/* Reply context parent card */
+html[data-theme="dark"] .reply-parent-card {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border);
+}
+
+/* Compose */
+html[data-theme="dark"] .compose-card,
+html[data-theme="dark"] .compose-box {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .compose-textarea,
+html[data-theme="dark"] .compose-input {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .compose-toolbar {
+  background: var(--color-surface);
+  border-top-color: var(--color-border);
+}
+
+/* Inputs globally */
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--color-text-light);
+}
+
+/* Navigation items */
+html[data-theme="dark"] .nav-item { color: var(--color-text-muted); }
+html[data-theme="dark"] .nav-item:hover,
+html[data-theme="dark"] .nav-item.active { color: var(--color-text); background: var(--color-surface-alt); }
+
+html[data-theme="dark"] .channel-item { border-bottom-color: var(--color-border); }
+
+/* Buttons */
+html[data-theme="dark"] .btn-ghost {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+html[data-theme="dark"] .btn-ghost:hover {
+  background: var(--color-surface-alt);
+}
+
+/* Tabs / toggle buttons */
+html[data-theme="dark"] .tab-btn {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+html[data-theme="dark"] .tab-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+/* Modals */
+html[data-theme="dark"] .modal-overlay { background: rgba(0, 0, 0, 0.7); }
+html[data-theme="dark"] .modal-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+html[data-theme="dark"] .modal-header {
+  border-bottom-color: var(--color-border);
+}
+
+/* Settings modal */
+html[data-theme="dark"] .settings-modal-card { background: var(--color-surface); }
+html[data-theme="dark"] .settings-section { border-bottom-color: var(--color-border); }
+html[data-theme="dark"] .settings-section-title { color: var(--color-text-muted); }
+html[data-theme="dark"] .settings-value { color: var(--color-text-muted); }
+html[data-theme="dark"] .settings-value-muted { color: var(--color-text-light); }
+html[data-theme="dark"] .settings-select {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+/* Dropdowns & menus */
+html[data-theme="dark"] .channel-dropdown {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-elevated);
+}
+html[data-theme="dark"] .channel-dropdown-item {
+  color: var(--color-text);
+}
+html[data-theme="dark"] .channel-dropdown-item:hover {
+  background: var(--color-surface-alt);
+}
+
+/* Profile */
+html[data-theme="dark"] .profile-header { background: var(--color-surface); border-color: var(--color-border); }
+html[data-theme="dark"] .profile-stats-card { background: var(--color-surface-alt); border-color: var(--color-border); }
+
+/* Search */
+html[data-theme="dark"] .search-bar-wrap { background: var(--color-surface); border-color: var(--color-border); }
+html[data-theme="dark"] .search-filter-panel { background: var(--color-surface); border-color: var(--color-border); }
+html[data-theme="dark"] .saved-channel-chip { background: var(--color-surface-alt); border-color: var(--color-border); }
+
+/* Notifications */
+html[data-theme="dark"] .notif-unread { background: var(--color-surface-alt); }
+
+/* DMs */
+html[data-theme="dark"] .dm-chat-area { background: var(--color-bg); }
+html[data-theme="dark"] .dm-message-own .dm-bubble { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+html[data-theme="dark"] .dm-bubble { background: var(--color-surface-alt); color: var(--color-text); border-color: var(--color-border); }
+html[data-theme="dark"] .dm-input-wrap { background: var(--color-surface); border-top-color: var(--color-border); }
+
+/* Constellation */
+html[data-theme="dark"] .constellation-wrap { background: var(--color-bg); }
+
+/* Analytics */
+html[data-theme="dark"] .analytics-card { background: var(--color-surface); border-color: var(--color-border); }
+
+/* TV */
+html[data-theme="dark"] .tv-topic-screen { background: var(--color-bg); }
+
+/* Reader */
+html[data-theme="dark"] .reader-article-body { color: var(--color-text); }
+html[data-theme="dark"] .reader-toolbar { background: var(--color-surface); border-bottom-color: var(--color-border); }
+
+/* Scrollbar */
+html[data-theme="dark"] ::-webkit-scrollbar-track { background: var(--color-bg); }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--color-border); }
+
+/* Lightbox (already dark, just ensure bg stays correct) */
+html[data-theme="dark"] .image-lightbox { background: rgba(0, 0, 0, 0.95); }
+
+/* Inline reply compose */
+html[data-theme="dark"] .inline-reply-card { background: var(--color-surface); border-color: var(--color-border); }
+
+/* Link/external cards */
+html[data-theme="dark"] .post-external-card { background: var(--color-surface-alt); border-color: var(--color-border); }
+
+/* Quote card */
+html[data-theme="dark"] .quote-card { background: var(--color-surface-alt); border-color: var(--color-border); }
+
+/* PTR indicator */
+html[data-theme="dark"] #ptr-indicator { color: var(--color-text-muted); }
+
+/* Auth screen */
+html[data-theme="dark"] .auth-card { background: var(--color-surface); border-color: var(--color-border); }
+html[data-theme="dark"] .auth-screen { background: var(--color-bg); }
+
+/* Timeline */
+html[data-theme="dark"] .timeline-card { background: var(--color-surface); border-color: var(--color-border); }
+html[data-theme="dark"] .timeline-toolbar { background: var(--color-surface); border-bottom-color: var(--color-border); }
+
+/* Error / success banners */
+html[data-theme="dark"] .error-banner { background: var(--color-error-bg); color: var(--color-error-text); border-color: var(--color-error-border); }
+html[data-theme="dark"] .success-banner { background: var(--color-success-bg); color: var(--color-success-text); }
+
+/* Seen post indicator — keep lime, it works on both themes */
+
+/* Diagonal stripe (sidebar header) — lighter in dark mode */
+html[data-theme="dark"] .diagonal-stripe-bg {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255,255,255,0.04) 0px,
+    rgba(255,255,255,0.04) 2px,
+    transparent 2px,
+    transparent 12px
+  );
+}
+
+/* Loading skeletons */
+html[data-theme="dark"] .skeleton { background: var(--color-surface-alt); }
+html[data-theme="dark"] .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
+
+/* Dark mode toggle button in settings */
+.theme-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--color-surface-alt);
+  border: 2px solid var(--nb-black);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  box-shadow: 2px 2px 0 var(--nb-black);
+}
+
+.theme-toggle-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+
+.theme-toggle-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--nb-black);
+}
+
+html[data-theme="dark"] .theme-toggle-btn {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: 2px 2px 0 var(--color-accent);
 }
 

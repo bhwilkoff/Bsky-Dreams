@@ -5,6 +5,12 @@
  * All API calls go through api.js. All auth operations go through auth.js.
  */
 
+// Apply saved theme immediately on load (before DOM ready, prevent flash)
+(function() {
+  const saved = localStorage.getItem('bsky_theme');
+  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+})();
+
 (function () {
   'use strict';
 
@@ -130,7 +136,8 @@
   const lightboxDots     = $('lightbox-dots');
   const lightboxPrevBtn  = $('lightbox-prev');
   const lightboxNextBtn  = $('lightbox-next');
-  const lightboxCloseBtn = $('lightbox-close');
+  const lightboxCloseBtn    = $('lightbox-close');
+  const lightboxDownloadBtn = $('lightbox-download');
 
   const adultToggle      = $('hide-adult-toggle');
   const advToggleBtn     = $('advanced-toggle-btn');
@@ -545,6 +552,26 @@
   const settingsClearSeen  = $('settings-clear-seen');
   const settingsClearTv    = $('settings-clear-tv');
 
+  /* ── Dark mode ────────────────────────────────────────────────── */
+  const THEME_KEY = 'bsky_theme';
+  const moonSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const sunSVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+
+  function applyTheme(isDark) {
+    if (isDark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    const toggleIcon  = document.getElementById('theme-toggle-icon');
+    const toggleLabel = document.getElementById('theme-toggle-label');
+    if (toggleIcon)  toggleIcon.outerHTML = isDark ? moonSVG.replace('<svg ', '<svg id="theme-toggle-icon" ') : sunSVG.replace('<svg ', '<svg id="theme-toggle-icon" ');
+    if (toggleLabel) toggleLabel.textContent = isDark ? 'Dark' : 'Light';
+  }
+
+  // Apply saved theme on page load
+  applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+
   /* --- Accent color --- */
   function applyAccentColor(accent, accentDark, accentLight) {
     const root = document.documentElement;
@@ -610,6 +637,7 @@
     }
 
     syncAccentSwatches();
+    applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
 
     // iPhone shortcut link — show install button if URL is configured
     const shortcutRow  = $('settings-iphone-shortcut-row');
@@ -647,6 +675,14 @@
     const tab = settingsDefaultTab.value;
     localStorage.setItem('bsky_default_tab', tab);
     setFeedMode(tab);
+  });
+
+  // Dark mode toggle
+  document.getElementById('settings-theme-toggle')?.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = !isDark;
+    localStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
+    applyTheme(next);
   });
 
   settingsClearSeen.addEventListener('click', () => {
@@ -1246,6 +1282,33 @@
   }
 
   lightboxCloseBtn.addEventListener('click', closeLightbox);
+  lightboxDownloadBtn?.addEventListener('click', async () => {
+    const img = lightboxImages[lightboxIndex];
+    if (!img?.src) return;
+    const btn = lightboxDownloadBtn;
+    btn.classList.add('loading');
+    try {
+      const resp = await fetch(img.src);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Try to get extension from URL, default to jpg
+      const ext = img.src.split('?')[0].split('.').pop().toLowerCase();
+      a.download = `bsky-image-${Date.now()}.${['jpg','jpeg','png','gif','webp'].includes(ext) ? ext : 'jpg'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      // Brief success state
+      btn.classList.add('lightbox-download-success');
+      setTimeout(() => btn.classList.remove('lightbox-download-success'), 1500);
+    } catch {
+      // Silent fail — image is still visible and user can long-press to save
+    } finally {
+      btn.classList.remove('loading');
+    }
+  });
   lightboxPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex - 1); });
   lightboxNextBtn.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(lightboxIndex + 1); });
 

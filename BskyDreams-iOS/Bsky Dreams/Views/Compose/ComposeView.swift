@@ -77,7 +77,7 @@ struct ComposeView: View {
                         if text.isEmpty {
                             Text("What's happening?")
                                 .font(.inter(16))
-                                .foregroundStyle(Color.nbBlack.opacity(0.3))
+                                .foregroundStyle(Color.nbTextTertiary)
                                 .padding(.top, 4)
                         }
                         TextEditor(text: $text)
@@ -366,7 +366,7 @@ struct ComposeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Replying to @\(post.author.handle)")
                     .font(.inter(12))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                 Text(post.record.text)
                     .font(.inter(13))
                     .lineLimit(2)
@@ -402,7 +402,7 @@ struct ComposeView: View {
                 Text("VIDEO")
                     .font(.syne(11, weight: .bold))
                     .tracking(0.5)
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                 Text(ByteCountFormatter.string(fromByteCount: Int64(vid.videoData.count), countStyle: .file))
                     .font(.inter(12))
             }
@@ -695,7 +695,7 @@ struct GifPickerView: View {
                 // Search bar — "Search KLIPY" placeholder required by Klipy branding guidelines
                 HStack {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                     TextField("Search KLIPY", text: $query)
                         .font(.inter(14))
                         .submitLabel(.search)
@@ -703,7 +703,7 @@ struct GifPickerView: View {
                     if !query.isEmpty {
                         Button { query = "" } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(Color.nbBlack.opacity(0.3))
+                                .foregroundStyle(Color.nbTextTertiary)
                         }
                     }
                 }
@@ -719,7 +719,7 @@ struct GifPickerView: View {
                     VStack(spacing: 8) {
                         Text(query.isEmpty ? "Loading trending GIFs…" : "No results for \"\(query)\"")
                             .font(.inter(14))
-                            .foregroundStyle(Color.nbBlack.opacity(0.5))
+                            .foregroundStyle(Color.nbTextSecondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {

@@ -219,7 +219,7 @@ struct ArticleCardView: View {
                         if !card.description.isEmpty {
                             Text(card.description)
                                 .font(.inter(13))
-                                .foregroundStyle(Color.nbBlack.opacity(0.6))
+                                .foregroundStyle(Color.nbTextSecondary)
                                 .lineLimit(2)
                         }
 
@@ -227,7 +227,7 @@ struct ArticleCardView: View {
                             AvatarView(url: post.author.avatar, size: 20)
                             Text("@\(post.author.handle)")
                                 .font(.inter(12))
-                                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                                .foregroundStyle(Color.nbTextSecondary)
                             Spacer()
                         }
                     }
@@ -243,14 +243,14 @@ struct ArticleCardView: View {
                 } label: {
                     Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
 
                 Button { showRepostSheet = true } label: {
                     Label("\(repostCount)", systemImage: "arrow.2.squarepath")
                         .font(.inter(12))
-                        .foregroundStyle(isReposted ? Color.nbLime : Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
                 .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
@@ -258,7 +258,7 @@ struct ArticleCardView: View {
                 Button { toggleLike() } label: {
                     Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                         .font(.inter(12))
-                        .foregroundStyle(isLiked ? Color.nbAccent : Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
                 .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
@@ -370,7 +370,7 @@ struct ArticleReaderSheet: View {
                             .tint(Color.nbAccent)
                         Text(progress)
                             .font(.inter(12))
-                            .foregroundStyle(Color.nbBlack.opacity(0.6))
+                            .foregroundStyle(Color.nbTextSecondary)
                         Spacer()
                     }
                     .padding(.horizontal, 12)

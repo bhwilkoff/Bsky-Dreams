@@ -172,12 +172,12 @@ struct GalleryCardView: View {
                             .lineLimit(1)
                         Text("@\(post.author.handle)")
                             .font(.inter(11))
-                            .foregroundStyle(Color.nbBlack.opacity(0.5))
+                            .foregroundStyle(Color.nbTextSecondary)
                     }
                     Spacer()
                     Text(post.relativeTime)
                         .font(.inter(11))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                 }
 
                 // Action row
@@ -185,13 +185,13 @@ struct GalleryCardView: View {
                     // Reply count (no action — tap card to open conversation)
                     Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
 
                     // Repost
                     Button { showRepostSheet = true } label: {
                         Label("\(repostCount)", systemImage: "arrow.2.squarepath")
                             .font(.inter(12))
-                            .foregroundStyle(isReposted ? Color.nbLime : Color.nbBlack.opacity(0.5))
+                            .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
                     .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
@@ -200,7 +200,7 @@ struct GalleryCardView: View {
                     Button { toggleLike() } label: {
                         Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                             .font(.inter(12))
-                            .foregroundStyle(isLiked ? Color.nbAccent : Color.nbBlack.opacity(0.5))
+                            .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
                     .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)

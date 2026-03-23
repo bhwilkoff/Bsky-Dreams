@@ -23,7 +23,7 @@ struct LoginView: View {
                     Text("BSKY DREAMS")
                         .font(.syne(28, weight: .heavy))
                         .tracking(4)
-                        .foregroundStyle(Color.black)
+                        .foregroundStyle(Color.nbBlack)
                 }
                 .padding(.bottom, 48)
 
@@ -173,7 +173,7 @@ struct DotGridBackground: View {
                 }
             }
         }
-        .background(Color(hex: "#FFFDF8"))
+        .background(Color.nbBackground)
     }
 }
 

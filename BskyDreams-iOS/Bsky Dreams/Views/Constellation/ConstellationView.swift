@@ -325,6 +325,10 @@ struct ConstellationView: View {
         .nbNavBar(title: "CONSTELLATION", leading: {
             if initialActor != nil { NBBackButton() } else { NBHamburger() }
         })
+        // Constellation is always a dark-canvas view — white graph edges, node labels, and
+        // overlays require a dark background. Forcing dark ensures all design tokens resolve
+        // to their dark-mode values and white colors remain legible on the graph.
+        .preferredColorScheme(.dark)
         .sheet(item: $profileToOpen) { node in
             NavigationStack { ProfileView(actor: node.did) }
         }
@@ -345,7 +349,7 @@ struct ConstellationView: View {
         HStack(spacing: 8) {
             HStack {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
                 TextField("Search topic or @handle...", text: $searchQuery)
                     .font(.inter(15))
                     .submitLabel(.search)
@@ -367,13 +371,13 @@ struct ConstellationView: View {
         Text(statsText)
             .font(.syne(11, weight: .bold))
             .tracking(0.5)
-            .foregroundStyle(Color.nbBlack.opacity(0.5))
+            .foregroundStyle(Color.nbTextSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .background(Color.nbWhite)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(Color(hex: "#E0E0E0")).frame(height: 1)
+                Rectangle().fill(Color.nbBorder).frame(height: 1)
             }
     }
 
@@ -382,7 +386,7 @@ struct ConstellationView: View {
     private var graphCanvas: some View {
         GeometryReader { geo in
             ZStack {
-                Color(hex: "#0A0A14").ignoresSafeArea()
+                Color.nbBackground.ignoresSafeArea()
 
                 // (gesture capture is the frontmost ZStack layer below)
 
@@ -899,7 +903,7 @@ private struct SelectedNodePanel: View {
         VStack(spacing: 0) {
             // Drag handle
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: "#E0E0E0"))
+                .fill(Color.nbBorder)
                 .frame(width: 40, height: 4)
                 .padding(.vertical, 8)
 
@@ -913,14 +917,14 @@ private struct SelectedNodePanel: View {
                         .lineLimit(1)
                     Text("@\(node.handle)")
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                     HStack(spacing: 12) {
                         if let n = followersCount { statLabel(n, "followers") }
                         if let n = followsCount   { statLabel(n, "following") }
                         if followersCount == nil && followsCount == nil {
                             Text("···")
                                 .font(.inter(12))
-                                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                                .foregroundStyle(Color.nbTextTertiary)
                         }
                     }
                 }
@@ -930,9 +934,9 @@ private struct SelectedNodePanel: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .frame(width: 28, height: 28)
-                        .overlay(Rectangle().strokeBorder(Color(hex: "#E0E0E0"), lineWidth: 1.5))
+                        .overlay(Rectangle().strokeBorder(Color.nbBorder, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
             }
@@ -987,7 +991,7 @@ private struct SelectedNodePanel: View {
     private func statLabel(_ n: Int, _ label: String) -> some View {
         HStack(spacing: 3) {
             Text(fmt(n)).font(.inter(12, weight: .semibold)).foregroundStyle(Color.nbBlack)
-            Text(label).font(.inter(12)).foregroundStyle(Color.nbBlack.opacity(0.5))
+            Text(label).font(.inter(12)).foregroundStyle(Color.nbTextSecondary)
         }
     }
 

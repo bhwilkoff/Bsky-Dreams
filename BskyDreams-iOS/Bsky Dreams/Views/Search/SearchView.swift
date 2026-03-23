@@ -118,7 +118,7 @@ struct SearchView: View {
         HStack(spacing: 8) {
             HStack {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
                 TextField("Search Bluesky", text: $query)
                     .font(.inter(15))
                     .submitLabel(.search)
@@ -126,7 +126,7 @@ struct SearchView: View {
                 if !query.isEmpty {
                     Button { query = ""; posts = []; actors = [] } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color.nbBlack.opacity(0.3))
+                            .foregroundStyle(Color.nbTextTertiary)
                     }
                 }
             }
@@ -297,7 +297,7 @@ struct SearchView: View {
             Text("ADVANCED FILTERS")
                 .font(.syne(10, weight: .bold))
                 .tracking(2)
-                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                .foregroundStyle(Color.nbTextTertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             NBTextField(placeholder: "handle.bsky.social", text: $filterAuthor, label: "Author")
@@ -317,7 +317,7 @@ struct SearchView: View {
                         .foregroundStyle(Color.nbBlack)
                     Text("Filters posts labeled explicit or adult")
                         .font(.inter(11))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                 }
                 Spacer()
                 Toggle("", isOn: $hideAdult)
@@ -387,11 +387,11 @@ struct ActorRowView: View {
                     .font(.system(size: 15, weight: .semibold))
                 Text("@\(actor.handle)")
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.6))
+                    .foregroundStyle(Color.nbTextSecondary)
                 if let desc = actor.description, !desc.isEmpty {
                     Text(desc)
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(1)
                 }
             }
