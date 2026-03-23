@@ -1,38 +1,22 @@
-```
-╔══════════════════════════════════════════════════════════════╗
-║  ██████╗ ███████╗██╗  ██╗██╗   ██╗                           ║
-║  ██╔══██╗██╔════╝██║ ██╔╝╚██╗ ██╔╝                           ║
-║  ██████╔╝███████╗█████╔╝  ╚████╔╝                            ║
-║  ██╔══██╗╚════██║██╔═██╗   ╚██╔╝                             ║
-║  ██████╔╝███████║██║  ██╗   ██║                              ║
-║  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝                              ║
-║                                                              ║
-║  ██████╗ ██████╗ ███████╗ █████╗ ███╗   ███╗███████╗         ║
-║  ██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗ ████║██╔════╝         ║
-║  ██║  ██║██████╔╝█████╗  ███████║██╔████╔██║███████╗         ║
-║  ██║  ██║██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║╚════██║         ║
-║  ██████╔╝██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████║         ║
-║  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝         ║
-╚══════════════════════════════════════════════════════════════╝
-```
-
 # Bsky Dreams
 
-**A Bluesky Web App built for people who want more from their Bluesky experience.**
+**A Bluesky client built for people who want more from their Bluesky experience.**
 
 > *Every feature in this app is built in service of human learning and growth —
-> not to replace thinking or community, but to deepen it. The goal is never a slick product or an exhaustive feature list.
-> It is a tool that helps make social media more human and collaborative.*
+> not to replace thinking or community, but to deepen it. The goal is never a slick
+> product or an exhaustive feature list. It is a tool that helps make social media
+> more human and collaborative.*
 
 ---
 
 ## What Is This?
 
-Bsky Dreams is a zero-cost, zero-server, zero-dependency alternative interface for the [BlueSky](https://bsky.app) social network. It runs entirely in your browser as a static file — no backend, no Node.js, no build pipeline, no tracking. Just HTML, CSS, and JavaScript talking directly to the AT Protocol.
+Bsky Dreams is a custom client for the [BlueSky](https://bsky.app) social network, available as both a **web app** and a **native iOS app**. It was built to address the parts of BlueSky that feel unfinished: conversation depth, content discovery, media handling, search power, and cross-device persistence.
 
-It was built to address the parts of BlueSky that feel unfinished: conversation depth, content discovery, media handling, search power, and cross-device persistence. But more than fixing friction — it was built with a belief that social software should make you *more curious*, not less.
+Both platforms share the same design language, the same AT Protocol integration, and the same core feature set — with platform-appropriate implementation choices.
 
-**Live app:** [https://bskydreams.com](https://bskydreams.com)
+**Web app:** [https://bskydreams.com](https://bskydreams.com) — runs entirely in your browser, no install needed
+**iOS app:** Native SwiftUI app, currently in development / TestFlight
 
 ---
 
@@ -43,17 +27,20 @@ Most social apps optimize for time-on-platform. Bsky Dreams optimizes for someth
 At every design decision point, the question is: *does this invite deeper engagement, more critical thinking, or more meaningful connection?* Features that make users passive get reconsidered. Features that open doors to curiosity or collaboration get prioritized.
 
 This means:
-- Threads that let you trace a conversation from root to leaf, not just see a single reply in isolation
-- Search that's powerful enough to actually find things, with media filters, sort options, and channel saves
-- A TV mode that surfaces video from across BlueSky's network — not just an algorithmic feed loop
-- A gallery that deduplicates content across all interfaces so you see more, not the same things over and over
+- Conversations you can trace from root to leaf, with visual nesting depth
+- Search powerful enough to actually find things — with media filters, sort options, and saveable channels
+- A TV mode that surfaces video from across BlueSky's network rather than looping one algorithm
+- A gallery that deduplicates content so you see more, not the same things repeated
+- A Network Constellation that maps who talks to whom in any topic space
 - Cross-device preferences synced through your *own* AT Protocol repository — no third-party account needed
 
 ---
 
-## The Architecture: Serverless by Principle
+## Platforms
 
-Bsky Dreams has **no backend**. This is a deliberate choice, not a limitation.
+### Web App
+
+A zero-cost, zero-server, zero-dependency interface. Runs as a static file — no backend, no Node.js, no build pipeline, no tracking. Just HTML, CSS, and JavaScript talking directly to the AT Protocol.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -65,7 +52,7 @@ Bsky Dreams has **no backend**. This is a deliberate choice, not a limitation.
 │       │         js/auth.js   ───► │  bsky.social     │  │
 │       │         js/hls.min.js     │  AT Protocol API │  │
 │       │                           └──────────────────┘  │
-│       └── localStorage                                  │
+│       └── localStorage + AT Protocol repo               │
 │           (session, channels, seen posts, prefs)        │
 └─────────────────────────────────────────────────────────┘
          ▲
@@ -76,18 +63,104 @@ Bsky Dreams has **no backend**. This is a deliberate choice, not a limitation.
 └────────────────────┘
 ```
 
-**Why this works:**
+**Tech stack:**
 
-- **BlueSky's AT Protocol uses open CORS** — any browser can call `bsky.social/xrpc/*` directly, no proxy needed
-- **App Passwords provide scoped auth** — credentials only ever touch `bsky.social`, never a third-party server
-- **Your AT Protocol repo is your sync backend** — preferences and saved searches live in your own Bluesky repo at `app.bsky-dreams.prefs`, readable by any device you're logged into
-- **GitHub Pages is free and permanent** — the whole app deploys on every push to `main`, with zero CI configuration
-- **No npm, no bundler, no build step** — `open index.html` is a valid and complete way to run this app
+| Layer | Choice |
+|---|---|
+| Rendering | Vanilla HTML/CSS/JS — no framework, no build step |
+| Styling | Single `styles.css` with CSS custom properties |
+| API | AT Protocol XRPC via `fetch` — no SDK |
+| Auth | App Passwords stored in `localStorage` |
+| Video | HLS.js served locally (CSP `script-src 'self'`) |
+| Sync | AT Protocol user repo |
+| Hosting | GitHub Pages — free, automatic, no CI config |
 
-The only third-party services called at runtime are:
-- `bsky.social` / `api.bsky.chat` — AT Protocol (your own social graph)
-- `api.klipy.com` — GIF search (GIF picker only)
-- `api.allorigins.win` — CORS proxy for OG link preview metadata only
+**Running locally:**
+
+```bash
+open index.html
+# or
+python3 -m http.server 8080
+```
+
+No installation required. The only third-party services called at runtime are `bsky.social`, `api.bsky.chat`, `api.klipy.com` (GIF picker), and `api.allorigins.win` (OG link preview only).
+
+**Deploying your own copy:**
+
+1. Fork this repository
+2. Go to **Settings → Pages** — set source to branch `main`, folder `/`
+3. Your copy is live at `https://<your-username>.github.io/Bsky-Dreams`
+
+---
+
+### iOS App
+
+A native SwiftUI app targeting iOS 17+. No third-party Swift packages — pure Apple frameworks.
+
+```
+BskyDreams-iOS/
+├── Bsky Dreams/               ← All Swift source
+│   ├── App/                   ← Entry point, app configuration
+│   ├── Auth/                  ← AuthManager, KeychainManager (Keychain-backed session)
+│   ├── Models/                ← Codable AT Protocol types
+│   ├── Networking/            ← ATProtocolClient (all API calls)
+│   ├── Store/                 ← AppStore (@Observable global state, NavigationPath)
+│   ├── Views/                 ← Feed, Search, Thread, Profile, Notifications, DMs,
+│   │                             Gallery, TV, Reader, Analytics, Constellation,
+│   │                             Compose, Timeline
+│   └── Components/            ← PostCardView, AvatarView, RichTextView, ImageGridView…
+└── ConstellationTests/        ← SPM package — 43 unit tests for the physics simulation
+```
+
+**Tech stack:**
+
+| Layer | Choice |
+|---|---|
+| Language / UI | Swift 6, SwiftUI (`@Observable`, iOS 17+) |
+| Persistence | SwiftData (`SeenPost`, `SavedSearch`, `CachedPreferences`) |
+| Auth | Keychain via Security framework |
+| API | AT Protocol via `URLSession` async/await — no SDK |
+| Video | AVPlayer + HLS (single shared instance per TV session) |
+| Fonts | Syne + Inter (loaded from bundle, registered in Info.plist) |
+
+**Running locally:**
+
+Open `BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj` in Xcode, select an iOS 17+ simulator or device, and press Run. No dependencies to install.
+
+---
+
+## Feature Parity
+
+Both platforms implement the same core feature set. Platform-specific implementation differences are expected and acceptable; the user experience should be equivalent.
+
+| Feature | Web | iOS |
+|---|:---:|:---:|
+| Auth (app password, session persistence) | ✅ | ✅ |
+| Home feed — Following + Discover tabs | ✅ | ✅ |
+| Seen-post deduplication with session bypass | ✅ | ✅ |
+| Cross-device seen-post sync (AT Protocol repo) | ✅ | ✅ |
+| Compose — rich text, images, video, GIF, link preview | ✅ | ✅ |
+| Post settings — threadgate / postgate | ✅ | ✅ |
+| @mention autocomplete | ✅ | ✅ |
+| Conversation view — depth-colored nesting | ✅ | ✅ |
+| Inline reply compose | ✅ | ✅ |
+| Quote post | ✅ | ✅ |
+| Profile view — feed, follow/unfollow, report | ✅ | ✅ |
+| Search — full-text, advanced filters | ✅ | ✅ |
+| Saved channels — persist and sync | ✅ | ✅ |
+| Notifications — type-coded, unread badge, tap navigation | ✅ | ✅ |
+| Direct messages + new conversation | ✅ | ✅ |
+| Gallery — image card feed, lightbox | ✅ | ✅ |
+| Lightbox — download image | ✅ | ✅ |
+| Dark mode | ✅ | ✅ |
+| TV — TikTok-style video feed, topic selector, 2× speed | ✅ | ✅ |
+| Reader — Direct / Readable / Archive modes | ✅ | ✅ |
+| Network Constellation — force-graph visualization | ✅ | ✅ |
+| Timeline scrubber — horizontal time-offset view | ✅ | ✅ |
+| Settings — accent color, default feed, clear history | ✅ | ✅ |
+| Share Extension (system share → open app) | — | ✅ |
+| Profile interaction graph | ✅ | ⏳ |
+| Analytics dashboard | ✅ | ⏳ |
 
 ---
 
@@ -95,135 +168,69 @@ The only third-party services called at runtime are:
 
 ### Reading & Discovery
 
-**Home Feed**
-- Following and Discover tabs (BlueSky's `whats-hot` curated feed)
-- Infinite scroll with intelligent Discovery loop-back when the first page exhausts
-- Pull-to-refresh (48px drag threshold, mobile-friendly)
-- Seen-post deduplication across all interfaces — the same post won't appear in TV, Gallery, and your feed simultaneously
-- Content filters for Politics, Sports, Current Events, and Entertainment — with free-text custom keyword blocking
-- Filter settings sync to cloud via your AT Protocol repository
+**Home Feed** — Following and Discover tabs, infinite scroll, pull-to-refresh. Seen-post deduplication ensures the same post doesn't appear across TV, Gallery, and the feed simultaneously. Content filters (Politics, Sports, Entertainment) with free-text keyword blocking sync to your AT Protocol repo.
 
-**Conversation Threads**
-- Root-first navigation — replies always open from the top of the conversation
-- Reddit-style collapsible branches with a circle `−` button
-- Depth-colored left borders (8 cycling colors) for visual nesting clarity
-- "Continue this thread →" at depth 4, with browser Back support
-- Inline reply compose — write directly beneath the post you're replying to, keeping context visible
+**Conversations** — Root-first navigation; depth-colored left borders (8 cycling colors); "Continue this conversation →" at depth 4; inline reply compose that keeps context visible.
 
-**Search**
-- Full-text post and people search
-- Advanced filters: sort by Latest or Top; media type chips (Image / Video / Link)
-- Saved searches as **Channels** — sidebar links that persist across sessions and sync across devices
-- Unread counts on each channel, checked once per login session
-- "Load more" pagination on search results
-- Paste a `bsky.app` URL directly into search to open any post or profile
+**Search** — Full-text posts and people search. Advanced filters: sort by Latest or Top, media type chips. Saved searches as **Channels** — sidebar links that persist across sessions and sync across devices. Paste any `bsky.app` URL to open a post or profile directly.
 
-**Notifications**
-- Type-coded icons for likes, reposts, replies, mentions, and follows
-- Unread badge clears and `updateSeen` fires on first visit
+**Network Constellation** — Force-directed graph showing who connects to whom in any topic space. Tap to inspect, drag nodes, pinch to zoom, pan. Full physics simulation; search-seeded so the graph reflects your interest, not just your follow graph.
+
+**Timeline Scrubber** — Horizontal timeline view of any search topic across configurable zoom levels (7 days → 20 minutes). Shows engagement density in lanes with connector lines.
 
 ### Posting & Composing
 
-**Rich Compose**
-- Up to 4 images with per-image alt text; auto-resized to stay under 1 MB
-- Video upload (MP4/WebM/MOV up to 50 MB / 180s) with daily limit tracking
-- GIF picker powered by Klipy — GIFs posted as animated external embeds (animation preserved in Bsky Dreams, thumbnail card shown in native clients)
-- Link preview with OG metadata, editable title/description, and uploaded thumbnail for rich native cards
-- Post settings: reply gate and quote gate controls
-- Live character count; 300-character limit
+**Compose** — Up to 4 images with per-image alt text; video upload (MP4/WebM/MOV up to 50 MB); GIF picker (Klipy); link preview with OG metadata; reply gate and quote gate controls; live 300-character count; @mention autocomplete.
 
-**Inline Rich Reply**
-- Same image and GIF capabilities available when replying directly inside a thread
-- Per-instance state — multiple inline boxes handled independently
-
-**Quote Posts**
-- Repost button opens an action sheet: plain repost or quote post
-- Quote modal has full compose feature parity (images, GIF, link preview, post settings)
-
-**@Mention Autocomplete**
-- Debounced actor search while typing `@` — arrow-key navigation, click to select
+**Quote Posts** — Repost button opens an action sheet: plain repost or quote post with full compose feature parity.
 
 ### Media
 
-**Lightbox**
-- All images in a post browsable via carousel (arrows, dot indicators, keyboard ← →, touch swipe)
-- Swipe-to-dismiss (vertical swipe ≥ 80px)
-- Pinch-to-zoom recognized and separated from dismiss gesture
+**Gallery** — Image-first card feed pulling from Following + Discover simultaneously. Deduplicates by URI and blob CID. Like, Repost, and thread navigation per card.
 
-**Video Player**
-- HLS.js streaming player (served locally, no CDN)
-- Poster + click-to-activate prevents autoplay without gesture
-- Muted by default; unmute button with visual state indicator
-- Error fallback links to source
+**Lightbox** — Pinch-to-zoom anchored at your fingers (not screen center), single-finger pan when zoomed, swipe left/right to page through images in a set, swipe up/down to dismiss. Download button saves to camera roll (iOS) or browser download (web). Alt text overlay with scrollable content. Animated dot series indicator.
 
-**GIF Playback**
-- Tenor, Giphy, and Klipy GIFs rendered as animated `<img>` in-feed — no autoplay policy restrictions
+**TV** — Fullscreen TikTok-style video browsing. Two-slot slide system for seamless transitions. 2× speed on hold. Adult content filter.
 
-### Bsky Dreams TV
+**Reader** — Article cards from links in your feed. Three modes: Direct (in-app browser), Readable (extracted article text), Archive (Wayback Machine). Seen tracking persists across sessions.
 
-A TikTok-style fullscreen video browsing mode for BlueSky video content.
+### Direct Messages
 
-- Topic input or open browsing (pulls from Following + Discover simultaneously)
-- Two-slot slide system — outgoing and incoming video animate simultaneously
-- Swipe up for next, swipe down or scroll up for previous
-- Pause button; 2× speed while holding video
-- Adult content filter (enabled by default)
-- Watch history stored locally (max 1,000 entries, FIFO)
-- Like and Repost from the overlay; "Open post" jumps to thread view
+Conversation list, full chat view, new conversation with handle search. 30-second polling for new messages.
 
-### Gallery
-
-An image-first browsing view that pulls from Following and Discover in parallel.
-
-- Deduplicates by URI and by blob CID (same image from different reposts shown once)
-- Respects seen-post map — already-seen images are skipped
-- Infinite scroll with a 400px pre-load zone
-- Like, Repost, and thread navigation per card
-- End-of-feed notification when all available images are loaded
-
-### Profiles
-
-- Full author profile with follow/unfollow toggle
-- Author feed with "Load more" pagination
-- Pull-to-refresh
-- Three-dot report menu on every post card and profile header
-
-### Cross-Device Sync (via AT Protocol)
+### Cross-Device Sync
 
 Your preferences live in your own BlueSky repository — not on any Bsky Dreams server (there isn't one).
 
 - Saved channels sync across devices
-- Feed filters (categories + custom keywords) sync across devices
-- Seen-post history syncs a 7-day rolling window of URIs across devices
-- 2-second debounce on preference writes; seen-post sync fires immediately on tab close
+- Feed filters sync across devices
+- Seen-post history — 7-day rolling window of URIs
 
-### iOS PWA Support
+### Dark Mode
 
-- Add to Home Screen for standalone app experience
-- `visibilitychange` listener proactively refreshes session tokens before expiry
-- Silent re-login with saved credentials on foreground after suspension
-
-### Settings
-
-- Default feed tab (Following or Discover)
-- Clear seen posts / TV watch history
-- "Forget saved login" for shared devices
-- Account info (handle + DID, read-only)
+Full dark mode on both platforms. Web: `html[data-theme="dark"]` CSS token overrides with accent-colored shadows. iOS: `DesignSystem.swift` adaptive color tokens with `preferredColorScheme` where needed.
 
 ---
 
 ## Design
 
-Bsky Dreams uses a **Neubrutalism + Memphis Design** hybrid — chosen because it signals clearly that this is *not* the default BlueSky interface, while being warm and a little playful rather than cold and corporate.
+Bsky Dreams uses a **Neubrutalism + Memphis Design** hybrid — a deliberate signal that this is not the default BlueSky interface, while being warm and a little playful rather than cold and corporate.
 
 ```
 COLOR SYSTEM
 ────────────────────────────────────
-Coral accent    #FF5C35   Buttons, active states, logo
-Electric blue   #0047FF   Links, hashtags, mentions, chips
-Lime            #B8E04A   Channel active state, accents
-Near-black      #0A0A0A   ALL borders and shadows
+Coral accent    #FF5C35   Buttons, active states, logo (web default)
+Electric blue   #0047FF   Links, hashtags, mentions, chips (iOS default)
+Lime            #B8E04A   Channel active state, seen-post indicator
+Near-black      #0A0A0A   ALL borders and shadows (light mode)
 Background      #FFFFFF   Clean white base
+
+DARK MODE
+────────────────────────────────────
+Surface         #0D1421   Deep navy background
+Surface alt     #1A2840   Cards and panels
+Border          #405570   Subtle borders
+Shadows         accent-colored (not black) — matches the playful energy
 
 NEUBRUTALIST RULES
 ────────────────────────────────────
@@ -239,60 +246,20 @@ Syne 700/800    Headings, nav, logo, tabs, buttons (uppercase)
 Inter 400/600   Body text, UI labels
 ```
 
-Memphis touches — diagonal stripe sidebars, dot-grid auth screen, geometric accent shapes — are kept subtle so they enhance rather than overwhelm.
-
----
-
-## Running It
-
-### Locally
-
-No installation required.
-
-```bash
-# Option 1: open directly
-open index.html
-
-# Option 2: local server (useful if you hit any CORS issues with file:// protocol)
-python3 -m http.server 8080
-# then visit http://localhost:8080
-```
-
-### Deploying Your Own Copy
-
-1. Fork this repository
-2. Go to **Settings → Pages** in your fork
-3. Set source to: `Deploy from a branch`, branch `main`, folder `/`
-4. Your copy is live at `https://<your-username>.github.io/Bsky-Dreams`
-
-No build step. No environment variables. No secrets. Push to `main` and it's deployed.
+Memphis touches — diagonal stripe sidebars, dot-grid auth screen — are kept subtle so they enhance rather than overwhelm.
 
 ---
 
 ## Authentication
 
-Bsky Dreams uses BlueSky **App Passwords** — a scoped credential that can be revoked independently from your main password.
+Bsky Dreams uses BlueSky **App Passwords** — a scoped credential independently revocable from your main password.
 
 1. Log into [bsky.app](https://bsky.app)
 2. Go to **Settings → Privacy and Security → App Passwords**
-3. Create a new password and label it "Bsky Dreams"
+3. Create a new password labeled "Bsky Dreams"
 4. Enter your handle and that password in the Bsky Dreams login screen
 
-Your credentials are stored only in your browser's `localStorage`. They are transmitted only to `bsky.social` — never to any intermediate server, never to GitHub, never to this project's maintainers.
-
----
-
-## Tech Stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| Rendering | Vanilla HTML/CSS/JS | No build step; GitHub Pages compatible |
-| Styling | Single `styles.css` with CSS custom properties | Mobile-first, themeable, no tooling needed |
-| API | AT Protocol XRPC via `fetch` | No SDK required; BlueSky CORS is open |
-| Auth | App Passwords in `localStorage` | Scoped, revocable, zero server needed |
-| Video | HLS.js (served locally) | CSP `script-src 'self'`; no CDN dependency |
-| Sync | AT Protocol user repo | Zero-cost; user-owned; no backend |
-| Hosting | GitHub Pages | Free; automatic; no CI config |
+Your credentials are stored only in your browser's `localStorage` (web) or device Keychain (iOS). They are transmitted only to `bsky.social` — never to any intermediate server, never to GitHub, never to this project's maintainers.
 
 ---
 
@@ -300,21 +267,38 @@ Your credentials are stored only in your browser's `localStorage`. They are tran
 
 ```
 /
-├── index.html          — All HTML structure
-├── css/
-│   └── styles.css      — Single stylesheet; all design tokens in :root
+├── index.html              — Web app HTML
+├── css/styles.css          — Single stylesheet; all design tokens in :root
 ├── js/
-│   ├── app.js          — All application logic
-│   ├── api.js          — All AT Protocol API calls (only file that calls fetch to bsky.social)
-│   ├── auth.js         — Auth state management
-│   ├── hls.min.js      — HLS.js v1.5.13 (served locally)
-│   └── filter-words.json — Curated keyword lists for content filters
-├── assets/             — Icons and static images
-├── favicon.svg         — Coral square + white cloud favicon
-├── manifest.json       — PWA manifest
-├── CLAUDE.md           — Project context for Claude Code
-├── DECISIONS.md        — Architecture and technology decision log
-└── SCRATCHPAD.md       — Current milestone status and implementation notes
+│   ├── app.js              — All application logic
+│   ├── api.js              — All AT Protocol API calls
+│   ├── auth.js             — Auth state management
+│   ├── hls.min.js          — HLS.js v1.5.13 (served locally, no CDN)
+│   ├── d3.min.js           — D3.js v7 (Constellation view)
+│   ├── Readability.js      — Mozilla Readability (Reader view)
+│   └── filter-words.json   — Curated keyword lists for content filters
+├── assets/
+│   ├── klipy-powered-by.svg / klipy-watermark.svg  — Klipy attribution (in-app)
+│   └── klipy-brand/        — Klipy brand guidelines and logo files
+├── favicon.svg             — Coral square + white cloud
+├── manifest.json           — PWA manifest
+├── privacy/index.html      — Privacy policy page
+├── docs/
+│   └── shortcut-setup.md   — iOS Shortcuts guide for users
+│
+├── BskyDreams-iOS/         — Native iOS app
+│   ├── Bsky Dreams/        — Xcode project + all Swift source
+│   ├── Bsky Dreams.xctestplan
+│   ├── ConstellationTests/ — SPM package: 43 unit tests for the physics engine
+│   ├── screenshots-generator/  — Next.js tool for App Store screenshots
+│   └── docs/               — iOS-specific reference docs
+│       ├── APP_STORE_COPY.md
+│       ├── APP_STORE_GUIDE.md
+│       └── POST_BUTTON_ROUNDED_RECT_HISTORY.md
+│
+├── CLAUDE.md               — Project context and conventions for Claude Code
+├── DECISIONS.md            — Architecture and technology decision log
+└── SCRATCHPAD.md           — Feature parity status and implementation notes
 ```
 
 ---
@@ -325,7 +309,7 @@ The architecture decisions that govern this project are documented in [DECISIONS
 
 Before contributing a feature, ask the same question the project asks internally: *does this make the user more curious, more thoughtful, or more connected — or does it make them more passive?*
 
-Pull requests that add complexity without adding genuine value to the human using the app will be reconsidered. Pull requests that reduce friction for learning, discovery, or real conversation are very welcome.
+Pull requests that add complexity without adding genuine value will be reconsidered. Pull requests that reduce friction for learning, discovery, or real conversation are very welcome.
 
 ---
 

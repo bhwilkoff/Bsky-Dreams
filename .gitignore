@@ -1,0 +1,68 @@
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ─── Xcode ────────────────────────────────────────────────────────────────────
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.xcarchive
+
+# ─── Swift Package Manager ────────────────────────────────────────────────────
+.build/
+.swiftpm/
+
+# ─── Node / screenshots-generator ─────────────────────────────────────────────
+node_modules/
+.next/
+out/
+
+# ─── AI coding assistant config dirs ─────────────────────────────────────────
+# These are installed locally by AI tools and are not project artifacts.
+.adal/
+.agent/
+.agents/
+.augment/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+
+# AI skill libraries (managed outside the repo)
+skills/
+skills-lock.json
+Killer-UI/
+claude-epic-status-line/
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+*.log
+*.swp
+*.swo
