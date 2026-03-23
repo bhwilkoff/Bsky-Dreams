@@ -45,6 +45,9 @@ struct TVView: View {
 
     private var currentIndex: Int { scrollPositionID ?? 0 }
 
+    /// Safe area top + 8pt margin for the back-to-topics button in videoFeedView.
+    /// videoFeedView's ZStack uses .ignoresSafeArea() so we must account for the
+    /// Dynamic Island / notch manually.
     private var backButtonTopPadding: CGFloat {
         let safeTop = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -72,7 +75,7 @@ struct TVView: View {
                     )
             }
         }
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Topic Selector
@@ -94,7 +97,7 @@ struct TVView: View {
                         .font(.inter(13))
                         .foregroundStyle(.white.opacity(0.45))
                 }
-                .padding(.top, 52)
+                .padding(.top, 24)
                 .padding(.bottom, 28)
 
                 ScrollView {
@@ -231,26 +234,8 @@ struct TVView: View {
                 .padding(.bottom, 44)
             }
 
-            // Hamburger overlay — white on dark background
-            VStack {
-                HStack {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(.white, lineWidth: 2))
-                        .contentShape(Rectangle())
-                        .onTapGesture { toggleSidebar() }
-                        .accessibilityLabel("Open sidebar")
-                        .accessibilityAddTraits(.isButton)
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, backButtonTopPadding)
-                Spacer()
-            }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .nbNavBar(title: "BSKY TV", leading: { NBHamburger() })
     }
 
     // MARK: - Video Feed

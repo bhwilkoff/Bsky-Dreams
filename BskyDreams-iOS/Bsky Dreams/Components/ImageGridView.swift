@@ -288,20 +288,21 @@ struct LightboxView: View {
             }
 
             if images.count > 1 {
-                // .frame(maxWidth: .infinity) ensures the HStack fills its parent
-                // so the VStack's default .center alignment places dots at the midpoint
-                HStack(spacing: 7) {
-                    ForEach(0..<images.count, id: \.self) { i in
-                        Circle()
-                            .fill(i == currentIndex ? Color.white : Color.white.opacity(0.35))
-                            .frame(
-                                width: i == currentIndex ? 8 : 6,
-                                height: i == currentIndex ? 8 : 6
-                            )
-                            .animation(.spring(duration: 0.2), value: currentIndex)
+                HStack {
+                    Spacer()
+                    HStack(spacing: 7) {
+                        ForEach(0..<images.count, id: \.self) { i in
+                            Circle()
+                                .fill(i == currentIndex ? Color.white : Color.white.opacity(0.35))
+                                .frame(
+                                    width: i == currentIndex ? 8 : 6,
+                                    height: i == currentIndex ? 8 : 6
+                                )
+                                .animation(.spring(duration: 0.2), value: currentIndex)
+                        }
                     }
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
             } else {
                 Spacer().frame(height: 16)

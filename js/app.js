@@ -1287,24 +1287,28 @@
     if (!img?.src) return;
     const btn = lightboxDownloadBtn;
     btn.classList.add('loading');
+    // BlueSky CDN URLs end in @jpeg/@png/@webp rather than .jpeg/.png
+    // Split on both '.' and '@' to catch both formats
+    const rawExt = img.src.split('?')[0].split(/[.@]/).pop().toLowerCase();
+    const ext = ['jpg','jpeg','png','gif','webp'].includes(rawExt) ? rawExt : 'jpg';
+    const filename = `bsky-image-${Date.now()}.${ext}`;
     try {
-      const resp = await fetch(img.src);
+      const resp = await fetch(img.src, { mode: 'cors' });
+      if (!resp.ok) throw new Error('fetch failed');
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // Try to get extension from URL, default to jpg
-      const ext = img.src.split('?')[0].split('.').pop().toLowerCase();
-      a.download = `bsky-image-${Date.now()}.${['jpg','jpeg','png','gif','webp'].includes(ext) ? ext : 'jpg'}`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-      // Brief success state
       btn.classList.add('lightbox-download-success');
       setTimeout(() => btn.classList.remove('lightbox-download-success'), 1500);
     } catch {
-      // Silent fail — image is still visible and user can long-press to save
+      // CORS or network failure — open image in new tab so user can save manually
+      window.open(img.src, '_blank');
     } finally {
       btn.classList.remove('loading');
     }
