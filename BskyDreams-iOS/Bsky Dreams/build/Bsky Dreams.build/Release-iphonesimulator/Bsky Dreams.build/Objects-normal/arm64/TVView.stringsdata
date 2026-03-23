@@ -1,0 +1,168 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/TV/TVView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "BSKY TV",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "Select a topic or start browsing your feed",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 93
+        }
+      },
+      {
+        "comment": "",
+        "key": "BROWSE BY TOPIC",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "OR SEARCH FOR A TOPIC",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 137
+        }
+      },
+      {
+        "comment": "",
+        "key": "e.g. cats, skiing, jazz…",
+        "location": {
+          "startingColumn": 50,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 147
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 190
+        }
+      },
+      {
+        "comment": "",
+        "key": "HIDE ADULT CONTENT",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 181
+        }
+      },
+      {
+        "comment": "",
+        "key": "Filters posts labeled as explicit or adult",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "LOADING…",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 219
+        }
+      },
+      {
+        "comment": "",
+        "key": "▶  START TV",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 219
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open sidebar",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading videos…",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 265
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Videos Found",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 276
+        }
+      },
+      {
+        "comment": "",
+        "key": "Try a different topic or search term",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 279
+        }
+      },
+      {
+        "comment": "",
+        "key": "← Back to Topics",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 282
+        }
+      },
+      {
+        "comment": "",
+        "key": "TOPICS",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 333
+        }
+      },
+      {
+        "comment": "",
+        "key": "2×",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 534
+        }
+      },
+      {
+        "comment": "",
+        "key": "@%@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 633
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 682
+        }
+      }
+    ]
+  },
+  "version": 1
+}

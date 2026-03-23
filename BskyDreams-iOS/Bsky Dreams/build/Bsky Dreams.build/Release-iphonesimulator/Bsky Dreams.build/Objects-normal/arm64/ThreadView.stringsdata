@@ -1,0 +1,24 @@
+{
+  "source": "/Users/bhwilkoff/Documents/GitHub/Bsky-Dreams/BskyDreams-iOS/Bsky Dreams/Views/Thread/ThreadView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Loading conversation...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 16
+        }
+      },
+      {
+        "comment": "",
+        "key": "Continue this conversation →",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 139
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" fill="none">
+
+  <!-- Background -->
+  <rect width="1200" height="540" fill="#F8F7F5"/>
+
+  <!-- Section label -->
+  <text x="80" y="42" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" fill="rgba(26,25,22,0.25)">COMMANDS</text>
+
+  <!-- Section title -->
+  <text x="80" y="74" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="30" font-weight="800" letter-spacing="-1" fill="#1A1916">9 skills. One toolkit.</text>
+
+  <!-- Row 1: 3 cards -->
+  <!-- Card 1: /KUI:review -->
+  <g transform="translate(80, 104)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:review</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Full design critique. Heuristic</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">evaluation, hierarchy, typography,</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">color, and usability audit.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#8B2020" opacity="0.5"/>
+  </g>
+
+  <!-- Card 2: /KUI:system -->
+  <g transform="translate(430, 104)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:system</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Create a complete design system.</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Palette, typography, spacing,</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">components, and design tokens.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#D97706" opacity="0.5"/>
+  </g>
+
+  <!-- Card 3: /KUI:brand -->
+  <g transform="translate(780, 104)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:brand</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Build a brand identity. Strategy,</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">visual system, voice and tone,</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">brand guidelines.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#6B21A8" opacity="0.5"/>
+  </g>
+
+  <!-- Row 2: 3 cards -->
+  <!-- Card 4: /KUI:screen -->
+  <g transform="translate(80, 260)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:screen</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Design screens with proper</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">hierarchy, states, interactions,</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">and platform-native patterns.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#2D4A6B" opacity="0.5"/>
+  </g>
+
+  <!-- Card 5: /KUI:code -->
+  <g transform="translate(430, 260)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:code</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Design to production code.</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Themed, accessible, dark mode</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">ready, performance optimized.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#2C5F2E" opacity="0.5"/>
+  </g>
+
+  <!-- Card 6: /KUI:a11y -->
+  <g transform="translate(780, 260)">
+    <rect width="330" height="140" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:a11y</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">WCAG 2.2 AA accessibility audit.</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Contrast ratios, touch targets,</text>
+    <text x="24" y="98" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">screen readers, cognitive load.</text>
+    <rect x="24" y="116" width="42" height="4" rx="2" fill="#2C5F2E" opacity="0.5"/>
+  </g>
+
+  <!-- Row 3: 3 cards -->
+  <!-- Card 7: /KUI:darkmode -->
+  <g transform="translate(80, 416)">
+    <rect width="330" height="108" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:darkmode</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Audit and fix dark mode. Contrast,</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">inversions, hardcoded values.</text>
+    <rect x="24" y="92" width="42" height="4" rx="2" fill="#1A1916" opacity="0.3"/>
+  </g>
+
+  <!-- Card 8: /KUI:figma -->
+  <g transform="translate(430, 416)">
+    <rect width="330" height="108" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:figma</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Generate Figma-ready specs.</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Auto-layout, variants, tokens.</text>
+    <rect x="24" y="92" width="42" height="4" rx="2" fill="#A855F7" opacity="0.4"/>
+  </g>
+
+  <!-- Card 9: /KUI:trends -->
+  <g transform="translate(780, 416)">
+    <rect width="330" height="108" rx="16" fill="#FFFFFF" stroke="#E5E1DA" stroke-width="1"/>
+    <text x="24" y="36" font-family="'DM Mono', ui-monospace, monospace" font-size="13" font-weight="600" fill="#1A1916">/KUI:trends</text>
+    <text x="24" y="62" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">Research design trends for any</text>
+    <text x="24" y="80" font-family="'DM Sans', system-ui, sans-serif" font-size="14" font-weight="400" fill="rgba(26,25,22,0.55)">industry. Competitive analysis.</text>
+    <rect x="24" y="92" width="42" height="4" rx="2" fill="#2D4A6B" opacity="0.4"/>
+  </g>
+</svg>

@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "5A33AF9F-A0C5-4B42-8B67-0E7997B235C3",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Bsky Dreams.xcodeproj",
+        "identifier" : "B722083C2F6DC97A00FFAC1A",
+        "name" : "BskyDreamsScreenshots"
+      }
+    }
+  ],
+  "version" : 1
+}
