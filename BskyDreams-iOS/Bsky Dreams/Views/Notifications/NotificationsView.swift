@@ -220,7 +220,7 @@ struct NotificationGroupRowView: View {
                 if let subjectText = group.subjectText, !subjectText.isEmpty {
                     Text(subjectText)
                         .font(.inter(13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(2)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -228,7 +228,7 @@ struct NotificationGroupRowView: View {
                 } else if let text = notification.record?.text, !text.isEmpty {
                     Text(text)
                         .font(.inter(13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.6))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(2)
                 }
 
@@ -236,7 +236,7 @@ struct NotificationGroupRowView: View {
                 if let date = ISO8601DateFormatter().date(from: notification.indexedAt) {
                     Text(formatter.localizedString(for: date, relativeTo: Date()))
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                 }
             }
 

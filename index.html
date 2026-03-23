@@ -972,6 +972,13 @@
       <!-- Appearance section -->
       <section class="settings-section">
         <h3 class="settings-section-title">Appearance</h3>
+        <div class="settings-row settings-row-between theme-toggle-row">
+          <span class="settings-label">Color scheme</span>
+          <button class="theme-toggle-btn" id="settings-theme-toggle" aria-label="Toggle dark mode">
+            <svg id="theme-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            <span id="theme-toggle-label">Light</span>
+          </button>
+        </div>
         <div class="settings-row settings-row-between">
           <span class="settings-label">Accent color</span>
           <div class="accent-swatch-row" id="accent-swatch-row" role="radiogroup" aria-label="Accent color">
@@ -1163,6 +1170,9 @@
        IMAGE LIGHTBOX (carousel-capable)
   ============================================================ -->
   <div id="image-lightbox" class="image-lightbox" hidden role="dialog" aria-modal="true" aria-label="Image viewer">
+    <button class="lightbox-download" id="lightbox-download" aria-label="Download image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
     <button class="lightbox-close" id="lightbox-close" aria-label="Close image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>

@@ -138,7 +138,7 @@ struct TimelineScrubberView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.day.timeline.leading")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.35))
+                        .foregroundStyle(Color.nbTextTertiary)
 
                     TextField("@handle, #tag, or keywords…", text: $query)
                         .font(.inter(14))
@@ -156,7 +156,7 @@ struct TimelineScrubberView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 13))
-                                .foregroundStyle(Color.nbBlack.opacity(0.3))
+                                .foregroundStyle(Color.nbTextTertiary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -175,7 +175,7 @@ struct TimelineScrubberView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
                         .background(query.trimmingCharacters(in: .whitespaces).isEmpty
-                                    ? Color.nbBlack.opacity(0.3)
+                                    ? Color.nbTextTertiary
                                     : Color.nbAccent)
                         .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 }
@@ -265,7 +265,7 @@ struct TimelineScrubberView: View {
                         Text("FROM")
                             .font(.syne(9, weight: .bold))
                             .tracking(1.2)
-                            .foregroundStyle(Color.nbBlack.opacity(0.4))
+                            .foregroundStyle(Color.nbTextTertiary)
                         DatePicker("", selection: $startDate,
                                    displayedComponents: [.date, .hourAndMinute])
                             .labelsHidden()
@@ -273,12 +273,12 @@ struct TimelineScrubberView: View {
                     }
                     Text("→")
                         .font(.inter(14))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("TO")
                             .font(.syne(9, weight: .bold))
                             .tracking(1.2)
-                            .foregroundStyle(Color.nbBlack.opacity(0.4))
+                            .foregroundStyle(Color.nbTextTertiary)
                         DatePicker("", selection: $endDate,
                                    displayedComponents: [.date, .hourAndMinute])
                             .labelsHidden()
@@ -323,7 +323,7 @@ struct TimelineScrubberView: View {
                 .scaleEffect(1.2)
             Text("Loading timeline…")
                 .font(.inter(14))
-                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                .foregroundStyle(Color.nbTextSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -335,7 +335,7 @@ struct TimelineScrubberView: View {
                 .foregroundStyle(Color.nbAccent)
             Text(message)
                 .font(.inter(13))
-                .foregroundStyle(Color.nbBlack.opacity(0.6))
+                .foregroundStyle(Color.nbTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
@@ -352,7 +352,7 @@ struct TimelineScrubberView: View {
                 .foregroundStyle(Color.nbBlack)
             Text("Try zooming out or widening the date range.")
                 .font(.inter(13))
-                .foregroundStyle(Color.nbBlack.opacity(0.45))
+                .foregroundStyle(Color.nbTextSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -378,7 +378,7 @@ struct TimelineScrubberView: View {
                     .foregroundStyle(Color.nbBlack)
                 Text("Search for @handles, #tags, or keywords\nto see posts plotted across time.")
                     .font(.inter(14))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -687,13 +687,13 @@ struct TLAxisCanvas: View {
                 var tick = Path()
                 tick.move(to: CGPoint(x: x, y: axY - 6))
                 tick.addLine(to: CGPoint(x: x, y: axY + 6))
-                ctx.stroke(tick, with: .color(Color.nbBlack.opacity(0.35)), lineWidth: 1)
+                ctx.stroke(tick, with: .color(Color.nbTextTertiary), lineWidth: 1)
 
                 // Label below the axis
                 ctx.draw(
                     Text(fmt.string(from: Date(timeIntervalSince1970: t)))
                         .font(.system(size: 9))
-                        .foregroundStyle(Color.nbBlack.opacity(0.45)),
+                        .foregroundStyle(Color.nbTextSecondary),
                     at: CGPoint(x: x, y: axY + 12),
                     anchor: .top
                 )
@@ -782,10 +782,10 @@ struct TLPostCard: View {
         HStack(spacing: 2) {
             Image(systemName: icon)
                 .font(.system(size: 7))
-                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                .foregroundStyle(Color.nbTextTertiary)
             Text(count >= 1000 ? "\(count / 1000)k" : "\(count)")
                 .font(.system(size: 8))
-                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                .foregroundStyle(Color.nbTextSecondary)
         }
     }
 }

@@ -157,7 +157,7 @@ struct ProfileView: View {
 
                 Text("@\(profile.handle)")
                     .font(.system(size: 14))
-                    .foregroundStyle(Color.nbBlack.opacity(0.55))
+                    .foregroundStyle(Color.nbTextSecondary)
 
                 if let desc = profile.description, !desc.isEmpty {
                     Text(desc)
@@ -171,12 +171,12 @@ struct ProfileView: View {
                     statView(count: profile.followersCount, label: "followers")
                     Text("·")
                         .font(.inter(13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.3))
+                        .foregroundStyle(Color.nbTextTertiary)
                         .padding(.horizontal, 8)
                     statView(count: profile.followsCount, label: "following")
                     Text("·")
                         .font(.inter(13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.3))
+                        .foregroundStyle(Color.nbTextTertiary)
                         .padding(.horizontal, 8)
                     statView(count: profile.postsCount, label: "posts")
                 }
@@ -255,7 +255,7 @@ struct ProfileView: View {
                 .font(.syne(14, weight: .bold))
             Text(label)
                 .font(.inter(13))
-                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                .foregroundStyle(Color.nbTextSecondary)
         }
     }
 

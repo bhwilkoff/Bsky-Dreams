@@ -195,7 +195,7 @@ struct FeedView: View {
             ProgressView().scaleEffect(1.2)
             Text("Loading feed...")
                 .font(.inter(14))
-                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                .foregroundStyle(Color.nbTextSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

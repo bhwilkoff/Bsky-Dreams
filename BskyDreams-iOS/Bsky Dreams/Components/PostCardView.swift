@@ -144,7 +144,7 @@ struct PostCardView: View {
                     .lineLimit(1)
                 Text("@\(post.author.handle)")
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(1)
             }
 
@@ -159,7 +159,7 @@ struct PostCardView: View {
             } label: {
                 Text(post.relativeTime)
                     .font(.inter(11))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(.plain)
         }
@@ -173,7 +173,7 @@ struct PostCardView: View {
             } label: {
                 Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.6))
+                    .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
 
@@ -181,7 +181,7 @@ struct PostCardView: View {
             Button { showRepostSheet = true } label: {
                 Label("\(repostCount)", systemImage: "arrow.2.squarepath")
                     .font(.inter(13))
-                    .foregroundStyle(isReposted ? Color.nbLime : Color.nbBlack.opacity(0.6))
+                    .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
@@ -190,7 +190,7 @@ struct PostCardView: View {
             Button { toggleLike() } label: {
                 Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                     .font(.inter(13))
-                    .foregroundStyle(isLiked ? Color.nbAccent : Color.nbBlack.opacity(0.6))
+                    .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
@@ -224,7 +224,7 @@ struct PostCardView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
                     .padding(4)
             }
         }
@@ -335,7 +335,7 @@ struct ParentPreviewView: View {
                     .foregroundStyle(Color.nbBlue)
                 Text(post.record.text)
                     .font(.inter(12))
-                    .foregroundStyle(Color.nbBlack.opacity(0.6))
+                    .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(2)
             }
         }
@@ -484,12 +484,12 @@ struct InlineReplyView: View {
                 .padding(.leading, 19)
             Text("Replying to @\(replyTo.author.handle)")
                 .font(.inter(12))
-                .foregroundStyle(Color.nbBlack.opacity(0.5))
+                .foregroundStyle(Color.nbTextSecondary)
             Spacer()
             Button { onDismiss() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
                     .padding(4)
             }
         }
@@ -553,7 +553,7 @@ struct InlineReplyView: View {
             if remaining < 50 {
                 Text("\(remaining)")
                     .font(.inter(10))
-                    .foregroundStyle(remaining < 0 ? .red : Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(remaining < 0 ? .red : Color.nbTextSecondary)
             }
             Button(isPosting ? "…" : "POST") {
                 Task { await submitReply() }
@@ -596,7 +596,7 @@ struct InlineReplyView: View {
                 Button { isFocused = false } label: {
                     Image(systemName: "keyboard.chevron.compact.down")
                         .font(.system(size: 15))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                 }
             }
         }
@@ -724,12 +724,12 @@ struct ShareOptionsView: View {
                         .foregroundStyle(Color.nbBlack)
                     Text(subtitle)
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.nbBlack.opacity(0.3))
+                    .foregroundStyle(Color.nbTextTertiary)
             }
             .padding(14)
             .background(Color.nbWhite)
@@ -761,7 +761,7 @@ struct ReportSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Select a reason")
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 12)
@@ -778,7 +778,7 @@ struct ReportSheet: View {
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.nbBlack.opacity(0.3))
+                                .foregroundStyle(Color.nbTextTertiary)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)

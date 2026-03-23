@@ -88,40 +88,39 @@ struct ImageGridView: View {
 
 // MARK: - Lightbox
 //
-// Gesture architecture (Reddit-style, single direction-locked DragGesture):
-//   • GeometryReader + HStack manual pager — no TabView; we own the offset.
-//   • Single DragGesture on the outer ZStack. On first movement > 10pt,
-//     direction is locked to .horizontal (paging) or .vertical (dismiss).
-//     Once locked it never switches within a gesture, eliminating conflicts.
-//   • When zoomed (imageScale > 1.01): outer gesture is a no-op; per-image
-//     .simultaneousGesture(DragGesture) handles pan.
-//   • MagnificationGesture per image for pinch-to-zoom.
+// Gesture architecture:
+//   • Manual HStack carousel with direction-locked outer DragGesture.
+//     At first movement > 10pt, locked to .horizontal (paging) or .vertical (dismiss).
+//   • Per-page ZoomScrollImage (UIScrollView subclass) — pinch-to-zoom anchored at
+//     pinch centroid, pan when zoomed, both handled natively by UIScrollView.
+//   • At minimumZoomScale, ZoomScrollView.gestureRecognizerShouldBegin returns false
+//     for its panGestureRecognizer — passes all touches to SwiftUI DragGesture.
+//   • isZoomed flag blocks outer DragGesture while current page is zoomed.
+//   • zoomResets dictionary: changing a page's UUID triggers zoom reset in updateUIView.
 
 struct LightboxView: View {
     let images: [EmbedImage]
-    var startIndex: Int
+    let startIndex: Int
     @Environment(\.dismiss) private var dismiss
     @State private var currentIndex: Int
     @State private var dragOffset: CGSize = .zero
-    @State private var dragDir: LightboxDragDir = .undecided
+    @State private var dragDir: DragDir = .undecided
     @State private var isSaving = false
     @State private var saveResult: SaveResult? = nil
     @State private var showSettingsAlert = false
-    @State private var imageScale: CGFloat = 1.0
-    @State private var lastImageScale: CGFloat = 1.0
-    @State private var panOffset: CGSize = .zero
-    @State private var lastPanOffset: CGSize = .zero
+    @State private var isZoomed = false
+    @State private var zoomResets: [Int: UUID]
 
-    private enum LightboxDragDir { case undecided, horizontal, vertical }
-
-    enum SaveResult: Equatable {
-        case success, failure
-    }
+    private enum DragDir { case undecided, horizontal, vertical }
+    enum SaveResult: Equatable { case success, failure }
 
     init(images: [EmbedImage], startIndex: Int) {
         self.images = images
         self.startIndex = startIndex
         _currentIndex = State(initialValue: startIndex)
+        var resets = [Int: UUID]()
+        for i in images.indices { resets[i] = UUID() }
+        _zoomResets = State(initialValue: resets)
     }
 
     private var backgroundOpacity: Double {
@@ -138,14 +137,17 @@ struct LightboxView: View {
                 VStack(spacing: 0) {
                     headerBar.padding(.top, 8)
 
-                    // Manual carousel — full-width pages offset by index + drag delta.
-                    // Clipped container prevents adjacent images bleeding into view
-                    // except during the horizontal drag (where peeking is intentional).
                     ZStack {
                         HStack(spacing: 0) {
-                            ForEach(Array(images.enumerated()), id: \.element.id) { i, img in
-                                zoomableImage(url: URL(string: img.fullsize))
-                                    .frame(width: geo.size.width)
+                            ForEach(Array(images.enumerated()), id: \.offset) { i, img in
+                                ZoomScrollImage(
+                                    url: URL(string: img.fullsize),
+                                    resetID: zoomResets[i] ?? UUID(),
+                                    onZoomChange: { zoomed in
+                                        if i == currentIndex { isZoomed = zoomed }
+                                    }
+                                )
+                                .frame(width: geo.size.width)
                             }
                         }
                         .offset(
@@ -157,71 +159,10 @@ struct LightboxView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
-                    if let alt = images[safe: currentIndex]?.alt, !alt.isEmpty {
-                        ScrollView {
-                            Text(alt)
-                                .font(.inter(12))
-                                .foregroundStyle(.white.opacity(0.8))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                        }
-                        .frame(maxHeight: 72)
-                        .background(.ultraThinMaterial)
-                        .allowsHitTesting(false)
-                    }
+                    bottomBar
                 }
             }
-            .gesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        guard imageScale <= 1.01 else { return }
-                        // Lock direction on first movement > 10pt
-                        if dragDir == .undecided {
-                            let ax = abs(value.translation.width)
-                            let ay = abs(value.translation.height)
-                            guard max(ax, ay) > 10 else { return }
-                            dragDir = ax > ay ? .horizontal : .vertical
-                        }
-                        dragOffset = value.translation
-                    }
-                    .onEnded { value in
-                        guard imageScale <= 1.01 else {
-                            dragDir = .undecided; dragOffset = .zero; return
-                        }
-                        let dir = dragDir
-                        dragDir = .undecided
-
-                        switch dir {
-                        case .horizontal:
-                            let pw = geo.size.width
-                            let threshold = pw * 0.3
-                            let vel = value.predictedEndTranslation.width
-                            if (value.translation.width < -threshold || vel < -(pw * 0.6))
-                                && currentIndex < images.count - 1 {
-                                withAnimation(.spring(duration: 0.3)) {
-                                    currentIndex += 1; dragOffset = .zero; resetZoom()
-                                }
-                            } else if (value.translation.width > threshold || vel > (pw * 0.6))
-                                && currentIndex > 0 {
-                                withAnimation(.spring(duration: 0.3)) {
-                                    currentIndex -= 1; dragOffset = .zero; resetZoom()
-                                }
-                            } else {
-                                withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
-                            }
-                        case .vertical:
-                            if abs(value.translation.height) > 100
-                                || abs(value.predictedEndTranslation.height) > 200 {
-                                dismiss()
-                            } else {
-                                withAnimation(.spring()) { dragOffset = .zero }
-                            }
-                        default:
-                            withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
-                        }
-                    }
-            )
+            .gesture(pagingGesture(pageWidth: geo.size.width))
         }
         .alert("Photos Access Required", isPresented: $showSettingsAlert) {
             Button("Open Settings") {
@@ -233,14 +174,65 @@ struct LightboxView: View {
         } message: {
             Text("To save images, allow Bsky Dreams to add to your photo library in Settings.")
         }
+        .onChange(of: currentIndex) { _, _ in isZoomed = false }
     }
 
-    private func resetZoom() {
-        imageScale = 1.0; lastImageScale = 1.0
-        panOffset = .zero; lastPanOffset = .zero
+    // MARK: Paging / dismiss gesture
+
+    private func pagingGesture(pageWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                guard !isZoomed else { return }
+                if dragDir == .undecided {
+                    let ax = abs(value.translation.width)
+                    let ay = abs(value.translation.height)
+                    guard max(ax, ay) > 10 else { return }
+                    dragDir = ax > ay ? .horizontal : .vertical
+                }
+                dragOffset = value.translation
+            }
+            .onEnded { value in
+                guard !isZoomed else {
+                    dragDir = .undecided; dragOffset = .zero; return
+                }
+                let dir = dragDir
+                dragDir = .undecided
+
+                switch dir {
+                case .horizontal:
+                    let threshold = pageWidth * 0.3
+                    let vel = value.predictedEndTranslation.width
+                    if (value.translation.width < -threshold || vel < -(pageWidth * 0.6))
+                        && currentIndex < images.count - 1 {
+                        withAnimation(.spring(duration: 0.3)) {
+                            zoomResets[currentIndex] = UUID()
+                            currentIndex += 1
+                            dragOffset = .zero
+                        }
+                    } else if (value.translation.width > threshold || vel > (pageWidth * 0.6))
+                        && currentIndex > 0 {
+                        withAnimation(.spring(duration: 0.3)) {
+                            zoomResets[currentIndex] = UUID()
+                            currentIndex -= 1
+                            dragOffset = .zero
+                        }
+                    } else {
+                        withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
+                    }
+                case .vertical:
+                    if abs(value.translation.height) > 100
+                        || abs(value.predictedEndTranslation.height) > 200 {
+                        dismiss()
+                    } else {
+                        withAnimation(.spring()) { dragOffset = .zero }
+                    }
+                default:
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
+                }
+            }
     }
 
-    // MARK: - Header
+    // MARK: Header
 
     private var headerBar: some View {
         HStack {
@@ -259,77 +251,65 @@ struct LightboxView: View {
                     }
                 }
                 .font(.system(size: 18))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(width: 44, height: 44)
             }
             .disabled(isSaving)
+            .padding(.leading, 8)
 
             Spacer()
+
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.2), in: Circle())
+            }
+            .padding(.trailing, 12)
+        }
+    }
+
+    // MARK: Bottom bar — alt text + page dots
+
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
+            if let alt = images[safe: currentIndex]?.alt, !alt.isEmpty {
+                // allowsHitTesting must NOT be false — it blocks scroll events
+                ScrollView {
+                    Text(alt)
+                        .font(.inter(12))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+                .frame(maxHeight: 80)
+                .background(.ultraThinMaterial)
+            }
 
             if images.count > 1 {
-                Text("\(currentIndex + 1) / \(images.count)")
-                    .font(.inter(13))
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-
-            Spacer()
-
-            Button("Done") { dismiss() }
-                .font(.inter(15, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-        }
-    }
-
-    // MARK: - Zoomable image per page
-
-    @ViewBuilder
-    private func zoomableImage(url: URL?) -> some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(imageScale, anchor: .center)
-                    .offset(panOffset)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { value in
-                                imageScale = max(1.0, lastImageScale * value)
-                            }
-                            .onEnded { _ in
-                                lastImageScale = max(1.0, imageScale)
-                                if imageScale < 1.1 {
-                                    withAnimation(.spring()) {
-                                        imageScale = 1.0; lastImageScale = 1.0
-                                        panOffset = .zero; lastPanOffset = .zero
-                                    }
-                                }
-                            }
-                    )
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 5)
-                            .onChanged { value in
-                                guard imageScale > 1.01 else { return }
-                                panOffset = CGSize(
-                                    width: lastPanOffset.width + value.translation.width,
-                                    height: lastPanOffset.height + value.translation.height
-                                )
-                            }
-                            .onEnded { _ in
-                                guard imageScale > 1.01 else {
-                                    panOffset = .zero; lastPanOffset = .zero; return
-                                }
-                                lastPanOffset = panOffset
-                            }
-                    )
-            default:
-                ProgressView().tint(.white)
+                // .frame(maxWidth: .infinity) ensures the HStack fills its parent
+                // so the VStack's default .center alignment places dots at the midpoint
+                HStack(spacing: 7) {
+                    ForEach(0..<images.count, id: \.self) { i in
+                        Circle()
+                            .fill(i == currentIndex ? Color.white : Color.white.opacity(0.35))
+                            .frame(
+                                width: i == currentIndex ? 8 : 6,
+                                height: i == currentIndex ? 8 : 6
+                            )
+                            .animation(.spring(duration: 0.2), value: currentIndex)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            } else {
+                Spacer().frame(height: 16)
             }
         }
     }
+
+    // MARK: Save image
 
     @MainActor
     private func saveCurrentImage() async {
@@ -363,8 +343,7 @@ struct LightboxView: View {
                 return
             }
             // Bluesky CDN serves WebP — PHAssetChangeRequest.creationRequestForAsset(from:)
-            // fails on WebP (PHPhotosErrorDomain 3302) because Photos framework's CGImageDestination
-            // cannot encode WebP. Convert to JPEG first, then save raw data via PHAssetCreationRequest.
+            // fails on WebP (PHPhotosErrorDomain 3302). Convert to JPEG first.
             guard let jpegData = uiImage.jpegData(compressionQuality: 0.95) else {
                 saveResult = .failure
                 try? await Task.sleep(for: .seconds(2))
@@ -383,6 +362,185 @@ struct LightboxView: View {
             try? await Task.sleep(for: .seconds(2))
             saveResult = nil
         }
+    }
+}
+
+// MARK: - ZoomScrollImage
+
+/// UIViewRepresentable wrapping ZoomScrollView for one image page.
+/// UIScrollView handles pinch-to-zoom anchored at the pinch centroid and
+/// pan when zoomed. At minimumZoomScale its pan recognizer fails so the
+/// outer SwiftUI DragGesture handles paging and dismiss.
+struct ZoomScrollImage: UIViewRepresentable {
+    let url: URL?
+    let resetID: UUID
+    let onZoomChange: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> ZoomScrollView {
+        let sv = ZoomScrollView()
+        sv.onZoomChange = onZoomChange
+        context.coordinator.lastResetID = resetID
+        if let url {
+            context.coordinator.load(url: url, into: sv)
+        }
+        return sv
+    }
+
+    func updateUIView(_ uiView: ZoomScrollView, context: Context) {
+        uiView.onZoomChange = onZoomChange
+        if context.coordinator.lastResetID != resetID {
+            context.coordinator.lastResetID = resetID
+            uiView.resetZoom()
+        }
+    }
+
+    @MainActor
+    class Coordinator: NSObject {
+        var loadTask: Task<Void, Never>?
+        var lastResetID: UUID = UUID()
+
+        func load(url: URL, into sv: ZoomScrollView) {
+            loadTask?.cancel()
+            sv.showLoading(true)
+            loadTask = Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    guard !Task.isCancelled else { return }
+                    // Decode UIImage off the main thread — large/tall images can
+                    // take 20–80ms to decompress and would visibly stall the UI.
+                    let image = await Task.detached(priority: .userInitiated) {
+                        UIImage(data: data)
+                    }.value
+                    guard !Task.isCancelled else { return }
+                    sv.setImage(image)
+                } catch {
+                    sv.showLoading(false)
+                }
+            }
+        }
+
+        deinit { loadTask?.cancel() }
+    }
+}
+
+// MARK: - ZoomScrollView
+
+final class ZoomScrollView: UIScrollView {
+    var onZoomChange: ((Bool) -> Void)?
+
+    private let imageView: UIImageView = {
+        let iv = UIImageView()
+        iv.contentMode = .scaleAspectFit
+        iv.clipsToBounds = true
+        return iv
+    }()
+
+    private let spinner: UIActivityIndicatorView = {
+        let s = UIActivityIndicatorView(style: .large)
+        s.color = .white
+        s.hidesWhenStopped = true
+        return s
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configure()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func configure() {
+        delegate = self
+        minimumZoomScale = 1.0
+        maximumZoomScale = 5.0
+        showsHorizontalScrollIndicator = false
+        showsVerticalScrollIndicator = false
+        backgroundColor = .clear
+        contentInsetAdjustmentBehavior = .never
+        bouncesZoom = true
+        decelerationRate = .fast
+
+        addSubview(imageView)
+
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    func showLoading(_ loading: Bool) {
+        if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
+    }
+
+    func setImage(_ image: UIImage?) {
+        imageView.image = image
+        spinner.stopAnimating()
+        setZoomScale(1.0, animated: false)
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    func resetZoom() {
+        setZoomScale(1.0, animated: true)
+        contentOffset = .zero
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Only resize the imageView at minimum zoom — at other zoom levels UIScrollView
+        // owns the imageView via a CGAffineTransform; setting frame would fight the transform.
+        if zoomScale <= minimumZoomScale + 0.01 {
+            fitImageToView()
+        }
+        updateCentering()
+        bringSubviewToFront(spinner)
+    }
+
+    private func fitImageToView() {
+        guard let img = imageView.image,
+              bounds.width > 0, bounds.height > 0 else {
+            contentSize = bounds.size
+            return
+        }
+        let scale = min(bounds.width / img.size.width, bounds.height / img.size.height)
+        let fitted = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+        // Set frame only when not in active zoom — safe because we guard zoomScale above
+        imageView.frame = CGRect(origin: .zero, size: fitted)
+        contentSize = fitted
+    }
+
+    // Use contentInset to keep the image centered. This is correct during zoom because
+    // contentInset does not interfere with UIScrollView's zoom transform on imageView.
+    private func updateCentering() {
+        let hInset = max(0, (bounds.width  - contentSize.width)  / 2)
+        let vInset = max(0, (bounds.height - contentSize.height) / 2)
+        contentInset = UIEdgeInsets(top: vInset, left: hInset, bottom: vInset, right: hInset)
+    }
+
+    // At minimumZoomScale the image exactly fits — nothing to scroll.
+    // Fail the pan recognizer so SwiftUI's DragGesture handles paging / dismiss.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === panGestureRecognizer {
+            return zoomScale > minimumZoomScale + 0.01
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+}
+
+extension ZoomScrollView: UIScrollViewDelegate {
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        updateCentering()
+        onZoomChange?(zoomScale > minimumZoomScale + 0.01)
+    }
+
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        onZoomChange?(scale > minimumZoomScale + 0.01)
+        if scale < 1.05 { setZoomScale(minimumZoomScale, animated: true) }
     }
 }
 
@@ -457,7 +615,7 @@ struct LinkCardView: View {
                 if let host = URL(string: card.uri)?.host {
                     Text(host.lowercased())
                         .font(.inter(11))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                         .lineLimit(1)
                 }
 
@@ -469,7 +627,7 @@ struct LinkCardView: View {
                 if !card.description.isEmpty {
                     Text(card.description)
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbBlack.opacity(0.55))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(2)
                 }
             }
@@ -554,14 +712,14 @@ struct YouTubeLinkCardView: View {
                         .lineLimit(2)
                     Text("youtube.com · Tap to watch")
                         .font(.inter(11))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                 }
 
                 Spacer()
 
                 Image(systemName: "arrow.up.right.square")
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.nbBlack.opacity(0.3))
+                    .foregroundStyle(Color.nbTextTertiary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -598,7 +756,7 @@ struct QuotedPostView: View {
                     .font(.inter(13, weight: .semibold))
                 Text("@\(post.author.handle)")
                     .font(.inter(12))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
             }
             if !post.record.text.isEmpty {
                 Text(post.record.text)
@@ -795,7 +953,7 @@ struct RetryAsyncImage: View {
                                 retryCount += 1
                             } label: {
                                 Image(systemName: "arrow.clockwise")
-                                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                                    .foregroundStyle(Color.nbTextTertiary)
                             }
                         )
                 } else {

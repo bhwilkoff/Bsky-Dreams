@@ -8,15 +8,9 @@ struct RichTextView: View {
     var font: Font = .system(size: 15)
 
     @Environment(AppStore.self) private var store
-    @Environment(\.colorScheme) private var colorScheme
-
-    /// Link/mention/hashtag color — a lighter teal-blue in dark mode so it remains
-    /// readable against the deep-navy card surface (#142033) without clashing.
-    private var linkColor: Color {
-        colorScheme == .dark
-            ? Color(hex: "#5DB8D0")   // muted teal-sky — visible on #142033, not garish
-            : Color.nbBlue            // #0047FF — standard blue on white
-    }
+    /// Link/mention/hashtag color — uses nbLinkColor token from DesignSystem,
+    /// which adapts: #0047FF (blue) in light mode, #5DB8D0 (muted teal) in dark mode.
+    private var linkColor: Color { Color.nbLinkColor }
 
     var body: some View {
         // line-height 1.55 on 15pt ≈ 23.25pt total; SwiftUI lineSpacing adds gap *between* lines.

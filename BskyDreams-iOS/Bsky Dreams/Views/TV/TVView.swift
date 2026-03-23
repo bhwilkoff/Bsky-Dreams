@@ -79,7 +79,7 @@ struct TVView: View {
 
     private var topicSelectorView: some View {
         ZStack {
-            Color(hex: "#0A0A14").ignoresSafeArea()
+            Color.nbBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 VStack(spacing: 10) {

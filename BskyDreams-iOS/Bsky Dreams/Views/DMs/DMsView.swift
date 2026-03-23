@@ -109,7 +109,7 @@ struct DMsView: View {
                     .foregroundStyle(Color.nbBlack)
                 Text("Start a conversation with anyone on Bluesky")
                     .font(.inter(14))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
                 Button { showNewConvo = true } label: {
@@ -198,7 +198,7 @@ struct ConversationRowView: View {
                     if let sentAt = conversation.lastMessage?.sentAt {
                         Text(relativeTime(sentAt))
                             .font(.inter(12))
-                            .foregroundStyle(Color.nbBlack.opacity(0.4))
+                            .foregroundStyle(Color.nbTextTertiary)
                     }
                 }
 
@@ -208,14 +208,14 @@ struct ConversationRowView: View {
                             .font(.inter(13))
                             .italic(lastMsg.isDeleted)
                             .foregroundStyle(lastMsg.isDeleted
-                                ? Color.nbBlack.opacity(0.3)
-                                : Color.nbBlack.opacity(0.6))
+                                ? Color.nbTextTertiary
+                                : Color.nbTextSecondary)
                             .lineLimit(1)
                     } else {
                         Text("No messages yet")
                             .font(.inter(13))
                             .italic()
-                            .foregroundStyle(Color.nbBlack.opacity(0.35))
+                            .foregroundStyle(Color.nbTextTertiary)
                     }
                     Spacer()
                     if conversation.unreadCount > 0 {
@@ -426,7 +426,7 @@ struct ChatView: View {
         if let date = ISO8601DateFormatter().date(from: iso) {
             Text(dayLabel(for: date))
                 .font(.inter(11, weight: .semibold))
-                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                .foregroundStyle(Color.nbTextTertiary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
         }
@@ -626,7 +626,7 @@ struct MessageBubbleView: View {
                     Text("Message deleted")
                         .font(.inter(14))
                         .italic()
-                        .foregroundStyle(Color.nbBlack.opacity(0.35))
+                        .foregroundStyle(Color.nbTextTertiary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Color.nbBorder.opacity(0.3))
@@ -634,10 +634,10 @@ struct MessageBubbleView: View {
                 } else {
                     Text(message.text ?? "")
                         .font(.system(size: 15))    // system font for emoji fallback
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(isOwn ? Color.white : Color.nbBlack)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(isOwn ? Color.nbAccent : Color(hex: "#5A6473"))
+                        .background(isOwn ? Color.nbAccent : Color.nbMessageBubble)
                         .nbBorder()
                         .nbShadow(size: 2)
                 }
@@ -648,12 +648,12 @@ struct MessageBubbleView: View {
                             .scaleEffect(0.6)
                         Text("Sending...")
                             .font(.inter(10))
-                            .foregroundStyle(Color.nbBlack.opacity(0.35))
+                            .foregroundStyle(Color.nbTextTertiary)
                     }
                 } else if let sentAt = message.sentAt {
                     Text(timeLabel(sentAt))
                         .font(.inter(10))
-                        .foregroundStyle(Color.nbBlack.opacity(0.35))
+                        .foregroundStyle(Color.nbTextTertiary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: isOwn ? .trailing : .leading)

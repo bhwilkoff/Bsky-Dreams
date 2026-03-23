@@ -87,6 +87,9 @@ struct MainAppView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
+            // Page background — deep navy-black in dark mode so cards float above it.
+            Color.nbBackground.ignoresSafeArea()
+
             // Full-screen content
             NavigationStack(path: Bindable(store).navigationPath) {
                 DetailView(toggleSidebar: { toggleSidebarAnimated() })
@@ -287,7 +290,7 @@ struct SidebarView: View {
                             Text("CHANNELS")
                                 .font(.syne(10, weight: .bold))
                                 .tracking(2)
-                                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                                .foregroundStyle(Color.nbTextTertiary)
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -384,7 +387,7 @@ struct SidebarView: View {
                         AvatarView(url: store.currentUserAvatar, size: 32)
                         Text("@\(handle)")
                             .font(.inter(13))
-                            .foregroundStyle(Color.nbBlack.opacity(0.7))
+                            .foregroundStyle(Color.nbTextSecondary)
                             .lineLimit(1)
                     }
                 }
@@ -478,7 +481,7 @@ struct SidebarChannelButton: View {
                         .foregroundStyle(Color.nbBlack)
                     Text(channel.query)
                         .font(.inter(11))
-                        .foregroundStyle(Color.nbBlack.opacity(0.4))
+                        .foregroundStyle(Color.nbTextTertiary)
                 }
 
                 Spacer()
@@ -649,7 +652,7 @@ struct SettingsView: View {
                                     .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: isSelected ? 3 : 1.5))
                                 Text(item.name)
                                     .font(.inter(10))
-                                    .foregroundStyle(Color.nbBlack.opacity(0.6))
+                                    .foregroundStyle(Color.nbTextSecondary)
                             }
                         }
                         .buttonStyle(.plain)
@@ -725,7 +728,7 @@ struct SettingsView: View {
                     .foregroundStyle(Color.nbBlack)
                 Text("\(seenPosts.count) posts tracked")
                     .font(.inter(12))
-                    .foregroundStyle(Color.nbBlack.opacity(0.5))
+                    .foregroundStyle(Color.nbTextSecondary)
             }
             Spacer()
             Button { showClearSeenConfirm = true } label: {
@@ -750,7 +753,7 @@ struct SettingsView: View {
             Text(title)
                 .font(.syne(11, weight: .bold))
                 .tracking(2)
-                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                .foregroundStyle(Color.nbTextTertiary)
                 .padding(.leading, 4)
             content()
         }
@@ -784,7 +787,7 @@ struct SettingsView: View {
         HStack {
             Text(title).font(.inter(15)).foregroundStyle(Color.nbBlack)
             Spacer()
-            Text(value).font(.inter(14)).foregroundStyle(Color.nbBlack.opacity(0.5))
+            Text(value).font(.inter(14)).foregroundStyle(Color.nbTextSecondary)
         }
         .padding(14)
         .background(Color.nbWhite)

@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-03-19
+## Current Date: 2026-03-23
 
 ---
 
@@ -32,6 +32,8 @@
 | Direct messages (conversation list, chat) | ✅ | ✅ | |
 | DMs: new conversation (handle search) | ✅ | ✅ | |
 | Gallery (image posts, card layout, like/repost, lightbox) | ✅ | ✅ | iOS: tap image → lightbox; tap metadata → conversation |
+| Lightbox: image download button | ✅ | ✅ | Web: added 2026-03-23 (fetch→blob→anchor download) |
+| Dark mode (color scheme toggle) | ✅ | ✅ | Web: added 2026-03-23 (html[data-theme="dark"], localStorage persistence, Settings toggle) |
 | TV (TikTok-style video feed, topic selector) | ✅ | ✅ | |
 | TV: 2× speed on hold | ✅ | ✅ | |
 | TV: adult content filter | ✅ | ✅ | |
@@ -66,6 +68,7 @@
 - **M16**: Direct messages (chat.bsky.convo.* API, 30s polling)
 - **M22**: Analytics dashboard (Canvas API charts, post heatmap)
 - **M-Reader**: Article reader (Direct / Readable / Archive modes, three-proxy CORS chain, seen tracking, infinite scroll)
+- **Parity (2026-03-23)**: Lightbox download button (fetch→blob→anchor, with lime success state); Dark mode (html[data-theme="dark"] CSS token overrides, accent-colored shadows, Settings toggle, flash-free IIFE init)
 
 ### Next for Web
 
@@ -91,6 +94,7 @@ Four rounds of polish fixes applied (2026-03-16 through 2026-03-17).
 - Notifications: type-coded rows, unread badge, tap navigation (follow→profile, like/repost→subject post, reply/mention/quote→notification post); `NotificationRecord.subject` omitted from Codable to prevent typeMismatch decoding failures
 - DMs: NavigationStack + NavigationLink (not NavigationSplitView), empty state with "Start New Conversation" CTA, new conversation handle search, 30s chat polling, message bubbles
 - Gallery: card layout (GalleryCardView) — full-width image, alt text overlay, author strip, reply count / repost / like actions; tap image → LightboxView (fullScreenCover(item:) pattern); tap metadata section → conversation; multi-image grid cells constrained to (maxWidth: .infinity, height: 140) before clipping to prevent scaledToFill overflow; seen posts marked in SwiftData on appear
+- Lightbox (rewritten 2026-03-23): UIScrollView-based per-page zoom (ZoomScrollView + ZoomScrollImage UIViewRepresentable) with pinch-to-zoom anchored at centroid, single-finger pan when zoomed; direction-locked DragGesture for left/right paging and up/down dismiss; animated dot indicator; scrollable alt text; off-main image decode via Task.detached; download to camera roll
 - TV: topic selector splash, single shared AVPlayer, `containerRelativeFrame` paging (not GeometryReader), mute/unmute swap on item change to prevent audio pop, 2× speed on hold, adult filter, "back to topics" button
 - Reader: URL filtering, article cards, Direct / Readable / Archive mode toggle; Readable: URLSession + WKWebView extraction; seen posts marked in SwiftData on appear; `ArticleReaderSheet.post` made optional so it can be called from `LinkCardView` in feed
 - Settings: accent color picker (7 colors) + automatic app icon swap via `setAlternateIconName`; default feed tab; seen posts count + clear

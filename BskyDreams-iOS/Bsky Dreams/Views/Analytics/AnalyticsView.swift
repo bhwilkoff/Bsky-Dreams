@@ -109,7 +109,7 @@ struct AnalyticsView: View {
                             .foregroundStyle(Color.nbBorder)
                         Text("Enter a handle above and tap LOAD,\nor tap MY ANALYTICS for your own stats.")
                             .font(.inter(14))
-                            .foregroundStyle(Color.nbBlack.opacity(0.45))
+                            .foregroundStyle(Color.nbTextSecondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
@@ -174,7 +174,7 @@ struct AnalyticsView: View {
                 Text("LOAD")
                     .font(.syne(12, weight: .bold))
                     .tracking(0.5)
-                    .foregroundStyle(canLoad ? Color.white : Color.nbBlack.opacity(0.3))
+                    .foregroundStyle(canLoad ? Color.white : Color.nbTextTertiary)
                     .padding(.horizontal, 14)
                     .frame(maxHeight: .infinity)
                     .background(canLoad ? Color.nbAccent : Color.nbWhite)
@@ -217,7 +217,7 @@ struct AnalyticsView: View {
                         .lineLimit(2)
                     Text("@\(p.handle)")
                         .font(.inter(13))
-                        .foregroundStyle(Color.nbBlack.opacity(0.5))
+                        .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(1)
                 }
             }
@@ -244,7 +244,7 @@ struct AnalyticsView: View {
             Text(label)
                 .font(.inter(9, weight: .semibold))
                 .tracking(0.5)
-                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                .foregroundStyle(Color.nbTextTertiary)
         }
     }
 
@@ -275,7 +275,7 @@ struct AnalyticsView: View {
                         if let i = value.as(Int.self), let label = xAxisLabels[i] {
                             Text(label)
                                 .font(.inter(9))
-                                .foregroundStyle(Color.nbBlack.opacity(0.45))
+                                .foregroundStyle(Color.nbTextSecondary)
                         }
                     }
                 }
@@ -287,7 +287,7 @@ struct AnalyticsView: View {
                         if let v = value.as(Int.self) {
                             Text(formatCount(v))
                                 .font(.inter(9))
-                                .foregroundStyle(Color.nbBlack.opacity(0.45))
+                                .foregroundStyle(Color.nbTextSecondary)
                         }
                     }
                 }
@@ -302,7 +302,7 @@ struct AnalyticsView: View {
                 Spacer()
                 Text(String(format: "Avg %.1f ♥  %.1f ↻", avgLikes, avgReposts))
                     .font(.inter(11))
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
             }
         }
         .padding(12)
@@ -325,7 +325,7 @@ struct AnalyticsView: View {
                         ForEach(Array(["M", "", "W", "", "F", "", ""].enumerated()), id: \.offset) { _, label in
                             Text(label)
                                 .font(.inter(8))
-                                .foregroundStyle(Color.nbBlack.opacity(0.4))
+                                .foregroundStyle(Color.nbTextTertiary)
                                 .frame(width: 10, height: 14, alignment: .trailing)
                         }
                     }
@@ -351,7 +351,7 @@ struct AnalyticsView: View {
             HStack(spacing: 5) {
                 Text("Less")
                     .font(.inter(10))
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
                 ForEach(0..<5, id: \.self) { level in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(heatmapLevelColor(level))
@@ -359,7 +359,7 @@ struct AnalyticsView: View {
                 }
                 Text("More")
                     .font(.inter(10))
-                    .foregroundStyle(Color.nbBlack.opacity(0.4))
+                    .foregroundStyle(Color.nbTextTertiary)
             }
         }
         .padding(12)
@@ -372,7 +372,7 @@ struct AnalyticsView: View {
     // but mapped to the app's nbLime design token.
     private func heatmapCellColor(_ count: Int) -> Color {
         switch count {
-        case 0:        return Color(hex: "#EBEDF0")
+        case 0:        return Color.nbHeatmapZero
         case 1, 2:     return Color.nbLime.opacity(0.35)
         case 3, 4:     return Color.nbLime.opacity(0.60)
         case 5, 6, 7:  return Color.nbLime.opacity(0.85)
@@ -382,7 +382,7 @@ struct AnalyticsView: View {
 
     private func heatmapLevelColor(_ level: Int) -> Color {
         switch level {
-        case 0:  return Color(hex: "#EBEDF0")
+        case 0:  return Color.nbHeatmapZero
         case 1:  return Color.nbLime.opacity(0.35)
         case 2:  return Color.nbLime.opacity(0.60)
         case 3:  return Color.nbLime.opacity(0.85)
@@ -513,7 +513,7 @@ struct AnalyticsView: View {
         Text(text)
             .font(.syne(12, weight: .bold))
             .tracking(1)
-            .foregroundStyle(Color.nbBlack.opacity(0.6))
+            .foregroundStyle(Color.nbTextSecondary)
     }
 
     private func legendDot(color: Color, label: String) -> some View {
@@ -525,7 +525,7 @@ struct AnalyticsView: View {
                     .strokeBorder(Color.nbBlack.opacity(0.25), lineWidth: 1))
             Text(label)
                 .font(.inter(12))
-                .foregroundStyle(Color.nbBlack.opacity(0.65))
+                .foregroundStyle(Color.nbTextSecondary)
         }
     }
 
