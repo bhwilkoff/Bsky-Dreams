@@ -468,7 +468,7 @@ Gesture input in `ConstellationView` uses a custom `_ConstellationGestureRecogni
 
 Rejected: SwiftUI `DragGesture`/`TapGesture` — both pass through `_UIHostingView` recognizers with `delaysTouchesBegan = true`, causing gestures to require a "warm-up" before firing reliably. `UIView.touchesBegan` override on a descendant — delayed by the same mechanism. A recognizer subclass's own touch override methods are dispatched by the gesture recognizer system before responder-chain delivery, making them structurally immune to ancestor `delaysTouchesBegan` flags.
 
-The recognizer stays passive (never transitions to `.recognized`; resets to `.failed` at sequence end). `cancelsTouchesInView = false`. `canPrevent`/`canBePrevented` both return `false`. Callbacks pass `view.bounds.size` so callers never need a `GeometryProxy` (which can be stale on first render). `ConstellationTests/` SPM package contains 43 unit tests for the `ConstellationTouchRouter` logic, runnable via `swift test`.
+The recognizer stays passive (never transitions to `.recognized`; resets to `.failed` at sequence end). `cancelsTouchesInView = false`. `canPrevent`/`canBePrevented` both return `false`. Callbacks pass `view.bounds.size` so callers never need a `GeometryProxy` (which can be stale on first render). `BskyDreams-iOS/ConstellationTests/` SPM package contains 43 unit tests for the `ConstellationTouchRouter` logic, runnable via `swift test`.
 
 ---
 
