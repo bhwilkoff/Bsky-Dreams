@@ -8,6 +8,7 @@ struct ThreadView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
+    @State private var replyingToPost: PostView? = nil
     @State private var scrollToTopTrigger = 0
 
     var body: some View {
@@ -43,8 +44,10 @@ struct ThreadView: View {
                         showParentPreview: false,
                         suppressNavigation: true,  // already viewing this post
                         onReply: { post in
+                            let isOpening = replyingToURI != post.uri
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                replyingToURI = replyingToURI == post.uri ? nil : post.uri
+                                replyingToURI = isOpening ? post.uri : nil
+                                replyingToPost = isOpening ? post : nil
                             }
                         }
                     )
@@ -53,15 +56,6 @@ struct ThreadView: View {
                         Rectangle()
                             .fill(Color.nbAccent)
                             .frame(width: 4)
-                    }
-
-                    if replyingToURI == threadPost.post.uri {
-                        InlineReplyView(replyTo: threadPost.post) {
-                            withAnimation(.easeInOut(duration: 0.2)) { replyingToURI = nil }
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     // Replies
@@ -74,6 +68,19 @@ struct ThreadView: View {
                 .padding(.vertical, 8)
             }
             .scrollDismissesKeyboard(.interactively)
+            // Floating reply box above keyboard — mirrors FeedView's safeAreaInset pattern
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let post = replyingToPost {
+                    InlineReplyView(replyTo: post) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            replyingToURI = nil
+                            replyingToPost = nil
+                        }
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: replyingToURI)
             .refreshable { await loadThread() }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation { proxy.scrollTo("thread-top", anchor: .top) }
@@ -83,8 +90,10 @@ struct ThreadView: View {
     }
 
     private func onReply(_ post: PostView) {
+        let isOpening = replyingToURI != post.uri
         withAnimation(.easeInOut(duration: 0.2)) {
-            replyingToURI = replyingToURI == post.uri ? nil : post.uri
+            replyingToURI = isOpening ? post.uri : nil
+            replyingToPost = isOpening ? post : nil
         }
     }
 
@@ -116,15 +125,6 @@ struct ThreadView: View {
                 onReply: onReply
             )
             .padding(.horizontal, 8)
-
-            if replyingToURI == post.uri {
-                InlineReplyView(replyTo: post) {
-                    withAnimation(.easeInOut(duration: 0.2)) { replyingToURI = nil }
-                }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 4)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
 
             if depth < 4 {
                 if let nestedReplies = replyPost.replies {

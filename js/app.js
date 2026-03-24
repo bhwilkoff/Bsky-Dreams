@@ -209,6 +209,7 @@
   const SEEN_SYNC_COLLECTION = 'app.bsky-dreams.seen';
   const SEEN_SYNC_RKEY       = 'recent';
   const SEEN_SYNC_WINDOW_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+  const FEED_SEEN_MAX        = 5000; // FIFO cap applied during cloud merge
   let seenSyncTimer          = null;
 
   // M30 — Quote post state
@@ -485,6 +486,8 @@
     channelsSidebar.classList.add('open');
     sidebarOverlay.hidden = false;
     navChannelsBtn.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('sidebar-is-open'); // lock background scroll
+    scrollToTopBtn.hidden = true; // hide while sidebar covers the screen
   }
 
   function closeSidebar() {
@@ -492,6 +495,10 @@
     channelsSidebar.classList.remove('open');
     sidebarOverlay.hidden = true;
     navChannelsBtn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('sidebar-is-open'); // restore background scroll
+    // Restore scroll-to-top based on whether the current view is scrolled far enough
+    const activeView = document.querySelector('.view:not([hidden])');
+    scrollToTopBtn.hidden = !activeView || activeView.scrollTop < 300;
   }
 
   navChannelsBtn.addEventListener('click', () => {

@@ -79,10 +79,12 @@ struct BskyDreamsApp: App {
         }
     }
 
-    /// Schedule the next background notification check (~15 min minimum interval enforced by iOS).
+    /// Schedule the next background notification check.
+    /// iOS enforces a minimum interval (~15 min) regardless of earliestBeginDate,
+    /// but setting it to 5 min signals higher urgency to the system scheduler.
     static func scheduleBackgroundRefresh() {
         let request = BGAppRefreshTaskRequest(identifier: bgTaskID)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 

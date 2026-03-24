@@ -75,7 +75,8 @@ struct TVView: View {
                     )
             }
         }
-        .environment(\.colorScheme, .dark)
+        // No color scheme override — topicSelectorView uses adaptive tokens;
+        // videoFeedView is always on black so it works in both modes.
     }
 
     // MARK: - Topic Selector
@@ -91,11 +92,11 @@ struct TVView: View {
                         .foregroundStyle(Color.nbAccent)
                     Text("BSKY TV")
                         .font(.syne(28, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.nbBlack)
                         .tracking(4)
                     Text("Select a topic or start browsing your feed")
                         .font(.inter(13))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Color.nbTextSecondary)
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 28)
@@ -108,7 +109,7 @@ struct TVView: View {
                             Text("BROWSE BY TOPIC")
                                 .font(.syne(10))
                                 .tracking(2)
-                                .foregroundStyle(.white.opacity(0.4))
+                                .foregroundStyle(Color.nbTextTertiary)
 
                             LazyVGrid(
                                 columns: [.init(.flexible()), .init(.flexible()), .init(.flexible())],
@@ -122,12 +123,12 @@ struct TVView: View {
                                         Text(topic.uppercased())
                                             .font(.syne(11, weight: .bold))
                                             .tracking(0.5)
-                                            .foregroundStyle(selectedTopic == topic ? Color.nbBlack : .white)
+                                            .foregroundStyle(Color.nbBlack)
                                             .padding(.vertical, 9)
                                             .frame(maxWidth: .infinity)
-                                            .background(selectedTopic == topic ? Color.nbAccent : Color.white.opacity(0.08))
+                                            .background(selectedTopic == topic ? Color.nbAccent : Color.nbBlack.opacity(0.06))
                                             .overlay(Rectangle().strokeBorder(
-                                                selectedTopic == topic ? Color.clear : Color.white.opacity(0.15),
+                                                selectedTopic == topic ? Color.clear : Color.nbBorder,
                                                 lineWidth: 1
                                             ))
                                     }
@@ -140,19 +141,19 @@ struct TVView: View {
                             Text("OR SEARCH FOR A TOPIC")
                                 .font(.syne(10))
                                 .tracking(2)
-                                .foregroundStyle(.white.opacity(0.4))
+                                .foregroundStyle(Color.nbTextTertiary)
 
                             HStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass")
-                                    .foregroundStyle(.white.opacity(0.4))
+                                    .foregroundStyle(Color.nbTextTertiary)
                                     .font(.system(size: 14))
                                 TextField(
                                     "",
                                     text: $customSearch,
-                                    prompt: Text("e.g. cats, skiing, jazz…").foregroundStyle(.white.opacity(0.3))
+                                    prompt: Text("e.g. cats, skiing, jazz…").foregroundStyle(Color.nbTextTertiary)
                                 )
                                 .font(.inter(15))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.nbBlack)
                                 .tint(Color.nbAccent)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
@@ -165,15 +166,15 @@ struct TVView: View {
                                 if !customSearch.isEmpty {
                                     Button { customSearch = "" } label: {
                                         Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(.white.opacity(0.4))
+                                            .foregroundStyle(Color.nbTextTertiary)
                                     }
                                 }
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.06))
+                            .background(Color.nbBlack.opacity(0.05))
                             .overlay(Rectangle().strokeBorder(
-                                customSearch.isEmpty ? Color.white.opacity(0.15) : Color.nbAccent.opacity(0.7),
+                                customSearch.isEmpty ? Color.nbBorder : Color.nbAccent.opacity(0.7),
                                 lineWidth: 1
                             ))
                         }
@@ -184,18 +185,18 @@ struct TVView: View {
                                 Text("HIDE ADULT CONTENT")
                                     .font(.syne(12, weight: .bold))
                                     .tracking(0.5)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color.nbBlack)
                                 Text("Filters posts labeled as explicit or adult")
                                     .font(.inter(11))
-                                    .foregroundStyle(.white.opacity(0.4))
+                                    .foregroundStyle(Color.nbTextTertiary)
                             }
                             Spacer()
                             Toggle("", isOn: $hideAdult)
                                 .tint(Color.nbAccent)
                         }
                         .padding(12)
-                        .background(Color.white.opacity(0.06))
-                        .overlay(Rectangle().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+                        .background(Color.nbBlack.opacity(0.05))
+                        .overlay(Rectangle().strokeBorder(Color.nbBorder, lineWidth: 1))
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)

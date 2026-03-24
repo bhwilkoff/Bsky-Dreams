@@ -7,7 +7,7 @@ enum EdgeType: String {
 
     var edgeColor: Color {
         switch self {
-        case .reply:  return Color.white.opacity(0.3)
+        case .reply:  return Color.nbBlack.opacity(0.3)
         case .follow: return Color.nbBlue.opacity(0.5)
         case .mutual: return Color.nbBlue.opacity(0.7)
         }
@@ -325,10 +325,8 @@ struct ConstellationView: View {
         .nbNavBar(title: "CONSTELLATION", leading: {
             if initialActor != nil { NBBackButton() } else { NBHamburger() }
         })
-        // Constellation is always a dark-canvas view — white graph edges, node labels, and
-        // overlays require a dark background. Forcing dark ensures all design tokens resolve
-        // to their dark-mode values and white colors remain legible on the graph.
-        .preferredColorScheme(.dark)
+        // Color scheme adapts to system setting — all graph colors use adaptive nbBlack/nbBorder
+        // tokens so labels, edges, and borders remain legible in both light and dark mode.
         .sheet(item: $profileToOpen) { node in
             NavigationStack { ProfileView(actor: node.did) }
         }
@@ -411,7 +409,7 @@ struct ConstellationView: View {
                         path.move(to:    CGPoint(x: cx + from.x * s, y: cy + from.y * s))
                         path.addLine(to: CGPoint(x: cx + to.x   * s, y: cy + to.y   * s))
 
-                        let color = dimmed ? Color.white.opacity(0.04) : edge.type.edgeColor
+                        let color = dimmed ? Color.nbBlack.opacity(0.05) : edge.type.edgeColor
                         let dash: [CGFloat] = edge.type.isDashed ? [4, 3] : []
                         context.stroke(
                             path,
@@ -543,7 +541,7 @@ struct ConstellationView: View {
         VStack(spacing: 8) {
             Text("\(nodes.count) nodes · \(edges.count) edges")
                 .font(.inter(11))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(Color.nbTextSecondary)
             Button("Reset View") {
                 withAnimation(.spring(duration: 0.4)) {
                     panOffset = .zero
@@ -554,7 +552,7 @@ struct ConstellationView: View {
                 }
             }
             .font(.inter(12, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.nbBlack)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.nbAccent.opacity(0.8))
@@ -1035,7 +1033,7 @@ struct ConstellationNodeView: View {
                 Circle().strokeBorder(
                     isSelected  ? Color.nbLime   :
                     node.isSeed ? Color.nbAccent :
-                                  Color.white.opacity(0.4),
+                                  Color.nbBlack.opacity(0.3),
                     lineWidth: (isSelected || node.isSeed) ? 2.5 : 1
                 )
             )
@@ -1048,7 +1046,7 @@ struct ConstellationNodeView: View {
             // Always reserve label height so position is stable
             Text(showLabel ? "@\(node.handle.components(separatedBy: ".").first ?? node.handle)" : " ")
                 .font(.inter(9))
-                .foregroundStyle(.white.opacity(showLabel ? 0.8 : 0))
+                .foregroundStyle(Color.nbBlack.opacity(showLabel ? 0.8 : 0))
                 .lineLimit(1)
                 .frame(maxWidth: 64)
         }

@@ -168,15 +168,15 @@ struct AnalyticsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
-                // LOAD button — frame(maxHeight: .infinity) + bottom alignment fills the
-                // NBTextField input area height exactly regardless of font size differences.
+                // LOAD button — padding(.vertical, 11) matches NBTextField input field padding
+                // so the button height equals the input field height, not the full label+input height.
                 let canLoad = !searchActor.trimmingCharacters(in: .whitespaces).isEmpty
                 Text("LOAD")
                     .font(.syne(12, weight: .bold))
                     .tracking(0.5)
                     .foregroundStyle(canLoad ? Color.white : Color.nbTextTertiary)
                     .padding(.horizontal, 14)
-                    .frame(maxHeight: .infinity)
+                    .padding(.vertical, 11)
                     .background(canLoad ? Color.nbAccent : Color.nbWhite)
                     .overlay(Rectangle().strokeBorder(
                         Color.nbBlack.opacity(canLoad ? 1 : 0.25), lineWidth: 2))
@@ -317,35 +317,36 @@ struct AnalyticsView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("POST FREQUENCY — 12 WEEKS")
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 3) {
-                    // Day-of-week label column — M(Mon) W(Wed) F(Fri).
-                    // Use id: \.offset to avoid SwiftUI deduplicating the four "" entries.
-                    VStack(spacing: 3) {
-                        ForEach(Array(["M", "", "W", "", "F", "", ""].enumerated()), id: \.offset) { _, label in
-                            Text(label)
-                                .font(.inter(8))
-                                .foregroundStyle(Color.nbTextTertiary)
-                                .frame(width: 10, height: 14, alignment: .trailing)
-                        }
+            // Non-scrolling grid centered within the card. 12 columns × 7 rows.
+            // Cell size 16×16pt, spacing 4pt → total width ≈ 250pt, fits all iPhone widths.
+            HStack(alignment: .top, spacing: 4) {
+                // Day-of-week label column — M(Mon) W(Wed) F(Fri).
+                // Use id: \.offset to avoid SwiftUI deduplicating the four "" entries.
+                VStack(spacing: 4) {
+                    ForEach(Array(["M", "", "W", "", "F", "", ""].enumerated()), id: \.offset) { _, label in
+                        Text(label)
+                            .font(.inter(8))
+                            .foregroundStyle(Color.nbTextTertiary)
+                            .frame(width: 10, height: 16, alignment: .trailing)
                     }
+                }
 
-                    // heatmapWeeks: 12 columns × 7 rows, Mon-aligned, nil = future date
-                    ForEach(Array(heatmapWeeks.enumerated()), id: \.offset) { _, week in
-                        VStack(spacing: 3) {
-                            ForEach(Array(week.enumerated()), id: \.offset) { _, entry in
-                                if let entry {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(heatmapCellColor(entry.count))
-                                        .frame(width: 14, height: 14)
-                                } else {
-                                    Color.clear.frame(width: 14, height: 14)
-                                }
+                // heatmapWeeks: 12 columns × 7 rows, Mon-aligned, nil = future date
+                ForEach(Array(heatmapWeeks.enumerated()), id: \.offset) { _, week in
+                    VStack(spacing: 4) {
+                        ForEach(Array(week.enumerated()), id: \.offset) { _, entry in
+                            if let entry {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(heatmapCellColor(entry.count))
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Color.clear.frame(width: 16, height: 16)
                             }
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .center)
 
             // Discrete color scale legend  Less ■ ■ ■ ■ ■ More
             HStack(spacing: 5) {
@@ -429,7 +430,6 @@ struct AnalyticsView: View {
                             Text(post.record.text)
                                 .font(.inter(13))
                                 .foregroundStyle(Color.nbBlack)
-                                .lineLimit(2)
                                 .multilineTextAlignment(.leading)
 
                             HStack(spacing: 14) {
