@@ -21,26 +21,23 @@ struct ImageGridView: View {
                 .frame(maxWidth: .infinity)
                 .clipped() // belt-and-suspenders: clip the container too
             case 3:
-                // Left: tall image; right column: two stacked images
+                // Three equal-width columns at uniform height
                 HStack(spacing: 2) {
-                    gridImage(images[0], index: 0, height: 180)
-                    VStack(spacing: 2) {
-                        gridImage(images[1], index: 1, height: 89)
-                        gridImage(images[2], index: 2, height: 89)
-                    }
-                    .frame(maxWidth: .infinity)
+                    gridImage(images[0], index: 0, height: 140)
+                    gridImage(images[1], index: 1, height: 140)
+                    gridImage(images[2], index: 2, height: 140)
                 }
                 .frame(maxWidth: .infinity)
                 .clipped()
             default: // 4+
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        gridImage(images[0], index: 0, height: 130)
-                        gridImage(images[1], index: 1, height: 130)
+                        gridImage(images[0], index: 0, height: 140)
+                        gridImage(images[1], index: 1, height: 140)
                     }
                     HStack(spacing: 2) {
-                        gridImage(images[2], index: 2, height: 130)
-                        gridImage(images[3], index: 3, height: 130)
+                        gridImage(images[2], index: 2, height: 140)
+                        gridImage(images[3], index: 3, height: 140)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -88,81 +85,87 @@ struct ImageGridView: View {
 
 // MARK: - Lightbox
 //
-// Gesture architecture:
-//   • Manual HStack carousel with direction-locked outer DragGesture.
-//     At first movement > 10pt, locked to .horizontal (paging) or .vertical (dismiss).
-//   • Per-page ZoomScrollImage (UIScrollView subclass) — pinch-to-zoom anchored at
-//     pinch centroid, pan when zoomed, both handled natively by UIScrollView.
-//   • At minimumZoomScale, ZoomScrollView.gestureRecognizerShouldBegin returns false
-//     for its panGestureRecognizer — passes all touches to SwiftUI DragGesture.
-//   • isZoomed flag blocks outer DragGesture while current page is zoomed.
-//   • zoomResets dictionary: changing a page's UUID triggers zoom reset in updateUIView.
+// Gesture architecture (v4 — TabView + UIScrollView zoom + UIKit dismiss):
+//   • TabView with .page style handles horizontal paging natively.
+//   • ZoomScrollImage (UIViewRepresentable) wraps ZoomScrollView (UIScrollView)
+//     for UIKit-native pinch-to-zoom anchored at the pinch centroid.
+//   • ZoomScrollView.gestureRecognizerShouldBegin returns false for the built-in
+//     panGestureRecognizer at minimum zoom — passes touches to TabView for paging.
+//   • Vertical dismiss: UIPanGestureRecognizer with DismissGestureDelegate, only
+//     activates when |vy| > |vx| * 1.5 and always fires simultaneously.
+//   • Chrome: .overlay(alignment: .top/.bottom) — sized to content only,
+//     never blocks the image interaction area.
+//   • Smooth animated dismiss: dismissOffset animates to ±900pt, then dismiss().
 
 struct LightboxView: View {
     let images: [EmbedImage]
     let startIndex: Int
     @Environment(\.dismiss) private var dismiss
-    @State private var currentIndex: Int
-    @State private var dragOffset: CGSize = .zero
-    @State private var dragDir: DragDir = .undecided
-    @State private var isSaving = false
+    @State private var selectedPage: Int
+    @State private var isZoomed: Bool = false
+    @State private var dismissOffset: CGFloat = 0
+    @State private var isDismissGesture: Bool = false
+    @State private var isSaving: Bool = false
     @State private var saveResult: SaveResult? = nil
-    @State private var showSettingsAlert = false
-    @State private var isZoomed = false
-    @State private var zoomResets: [Int: UUID]
+    @State private var showSettingsAlert: Bool = false
+    @State private var zoomResets: [Int: UUID] = [:]
 
-    private enum DragDir { case undecided, horizontal, vertical }
     enum SaveResult: Equatable { case success, failure }
 
     init(images: [EmbedImage], startIndex: Int) {
         self.images = images
         self.startIndex = startIndex
-        _currentIndex = State(initialValue: startIndex)
-        var resets = [Int: UUID]()
-        for i in images.indices { resets[i] = UUID() }
-        _zoomResets = State(initialValue: resets)
+        _selectedPage = State(initialValue: startIndex)
     }
 
     private var backgroundOpacity: Double {
-        dragDir == .vertical
-            ? max(0.2, 1.0 - abs(Double(dragOffset.height)) / 300.0)
-            : 1.0
+        isDismissGesture ? max(0, 1.0 - abs(Double(dismissOffset)) / 300.0) : 1.0
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .top) {
-                Color.black.opacity(backgroundOpacity).ignoresSafeArea()
+        ZStack {
+            Color.black.opacity(backgroundOpacity).ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    headerBar.padding(.top, 8)
-
-                    ZStack {
-                        HStack(spacing: 0) {
-                            ForEach(Array(images.enumerated()), id: \.offset) { i, img in
-                                ZoomScrollImage(
-                                    url: URL(string: img.fullsize),
-                                    resetID: zoomResets[i] ?? UUID(),
-                                    onZoomChange: { zoomed in
-                                        if i == currentIndex { isZoomed = zoomed }
-                                    }
-                                )
-                                .frame(width: geo.size.width)
+            TabView(selection: $selectedPage) {
+                ForEach(Array(images.enumerated()), id: \.offset) { i, img in
+                    ZoomScrollImage(
+                        url: URL(string: img.fullsize),
+                        resetID: zoomResets[i] ?? UUID(),
+                        onZoomChange: { zoomed in
+                            if i == selectedPage { isZoomed = zoomed }
+                        },
+                        onDismissChanged: { offset in
+                            isDismissGesture = true
+                            dismissOffset = offset
+                        },
+                        onDismissEnded: { translation, velocityY in
+                            if abs(translation) > 80 || abs(velocityY) > 600 {
+                                performDismiss(goingUp: translation < 0)
+                            } else {
+                                isDismissGesture = false
+                                withAnimation(.spring(duration: 0.3)) { dismissOffset = 0 }
                             }
+                        },
+                        onDismissCancelled: {
+                            isDismissGesture = false
+                            withAnimation(.spring(duration: 0.3)) { dismissOffset = 0 }
                         }
-                        .offset(
-                            x: -CGFloat(currentIndex) * geo.size.width
-                                + (dragDir == .horizontal ? dragOffset.width : 0),
-                            y: dragDir == .vertical ? dragOffset.height : 0
-                        )
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-
-                    bottomBar
+                    )
+                    .offset(y: dismissOffset)
+                    .tag(i)
                 }
             }
-            .gesture(pagingGesture(pageWidth: geo.size.width))
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+        }
+        // Overlays sized to their content — never block the image interaction area
+        .overlay(alignment: .top) { headerBar }
+        .overlay(alignment: .bottom) { bottomChrome }
+        .onChange(of: selectedPage) { old, _ in
+            isZoomed = false
+            dismissOffset = 0
+            isDismissGesture = false
+            zoomResets[old] = UUID()
         }
         .alert("Photos Access Required", isPresented: $showSettingsAlert) {
             Button("Open Settings") {
@@ -174,68 +177,21 @@ struct LightboxView: View {
         } message: {
             Text("To save images, allow Bsky Dreams to add to your photo library in Settings.")
         }
-        .onChange(of: currentIndex) { _, _ in isZoomed = false }
     }
 
-    // MARK: Paging / dismiss gesture
-
-    private func pagingGesture(pageWidth: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                guard !isZoomed else { return }
-                if dragDir == .undecided {
-                    let ax = abs(value.translation.width)
-                    let ay = abs(value.translation.height)
-                    guard max(ax, ay) > 10 else { return }
-                    dragDir = ax > ay ? .horizontal : .vertical
-                }
-                dragOffset = value.translation
-            }
-            .onEnded { value in
-                guard !isZoomed else {
-                    dragDir = .undecided; dragOffset = .zero; return
-                }
-                let dir = dragDir
-                dragDir = .undecided
-
-                switch dir {
-                case .horizontal:
-                    let threshold = pageWidth * 0.3
-                    let vel = value.predictedEndTranslation.width
-                    if (value.translation.width < -threshold || vel < -(pageWidth * 0.6))
-                        && currentIndex < images.count - 1 {
-                        withAnimation(.spring(duration: 0.3)) {
-                            zoomResets[currentIndex] = UUID()
-                            currentIndex += 1
-                            dragOffset = .zero
-                        }
-                    } else if (value.translation.width > threshold || vel > (pageWidth * 0.6))
-                        && currentIndex > 0 {
-                        withAnimation(.spring(duration: 0.3)) {
-                            zoomResets[currentIndex] = UUID()
-                            currentIndex -= 1
-                            dragOffset = .zero
-                        }
-                    } else {
-                        withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
-                    }
-                case .vertical:
-                    if abs(value.translation.height) > 100
-                        || abs(value.predictedEndTranslation.height) > 200 {
-                        dismiss()
-                    } else {
-                        withAnimation(.spring()) { dragOffset = .zero }
-                    }
-                default:
-                    withAnimation(.spring(duration: 0.25)) { dragOffset = .zero }
-                }
-            }
+    private func performDismiss(goingUp: Bool) {
+        isDismissGesture = true
+        withAnimation(.easeOut(duration: 0.25)) {
+            dismissOffset = goingUp ? -900 : 900
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.26))
+            dismiss()
+        }
     }
-
-    // MARK: Header
 
     private var headerBar: some View {
-        HStack {
+        HStack(spacing: 0) {
             Button {
                 Task { await saveCurrentImage() }
             } label: {
@@ -243,11 +199,14 @@ struct LightboxView: View {
                     if isSaving {
                         ProgressView().tint(.white).scaleEffect(0.8)
                     } else if saveResult == .success {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
                     } else if saveResult == .failure {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
                     } else {
-                        Image(systemName: "arrow.down.to.line").foregroundStyle(.white)
+                        Image(systemName: "arrow.down.to.line")
+                            .foregroundStyle(.white)
                     }
                 }
                 .font(.system(size: 18))
@@ -267,14 +226,13 @@ struct LightboxView: View {
             }
             .padding(.trailing, 12)
         }
+        .padding(.top, 8)
     }
 
-    // MARK: Bottom bar — alt text + page dots
-
-    private var bottomBar: some View {
+    private var bottomChrome: some View {
         VStack(spacing: 0) {
-            if let alt = images[safe: currentIndex]?.alt, !alt.isEmpty {
-                // allowsHitTesting must NOT be false — it blocks scroll events
+            // Alt text scrollable area — only covers the text, not the image
+            if let alt = images[safe: selectedPage]?.alt, !alt.isEmpty {
                 ScrollView {
                     Text(alt)
                         .font(.inter(12))
@@ -287,25 +245,24 @@ struct LightboxView: View {
                 .background(.ultraThinMaterial)
             }
 
+            // Dot indicator — centered, each dot tappable
             if images.count > 1 {
-                HStack {
-                    Spacer()
-                    HStack(spacing: 7) {
-                        ForEach(0..<images.count, id: \.self) { i in
-                            Circle()
-                                .fill(i == currentIndex ? Color.white : Color.white.opacity(0.35))
-                                .frame(
-                                    width: i == currentIndex ? 8 : 6,
-                                    height: i == currentIndex ? 8 : 6
-                                )
-                                .animation(.spring(duration: 0.2), value: currentIndex)
-                        }
+                HStack(spacing: 7) {
+                    ForEach(0..<images.count, id: \.self) { i in
+                        Circle()
+                            .fill(i == selectedPage
+                                  ? Color.white
+                                  : Color.white.opacity(0.35))
+                            .frame(
+                                width: i == selectedPage ? 8 : 6,
+                                height: i == selectedPage ? 8 : 6
+                            )
+                            .animation(.spring(duration: 0.2), value: selectedPage)
+                            .onTapGesture { selectedPage = i }
                     }
-                    Spacer()
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-            } else {
-                Spacer().frame(height: 16)
             }
         }
     }
@@ -314,7 +271,7 @@ struct LightboxView: View {
 
     @MainActor
     private func saveCurrentImage() async {
-        guard let urlStr = images[safe: currentIndex]?.fullsize,
+        guard let urlStr = images[safe: selectedPage]?.fullsize,
               let url = URL(string: urlStr) else { return }
         isSaving = true
         defer { isSaving = false }
@@ -343,8 +300,8 @@ struct LightboxView: View {
                 saveResult = nil
                 return
             }
-            // Bluesky CDN serves WebP — PHAssetChangeRequest.creationRequestForAsset(from:)
-            // fails on WebP (PHPhotosErrorDomain 3302). Convert to JPEG first.
+            // Bluesky CDN serves WebP — PHAssetCreationRequest fails on WebP
+            // (PHPhotosErrorDomain 3302). Convert to JPEG first.
             guard let jpegData = uiImage.jpegData(compressionQuality: 0.95) else {
                 saveResult = .failure
                 try? await Task.sleep(for: .seconds(2))
@@ -366,63 +323,52 @@ struct LightboxView: View {
     }
 }
 
-// MARK: - ZoomScrollImage
+// MARK: - ZoomScrollImage (UIViewRepresentable)
 
-/// UIViewRepresentable wrapping ZoomScrollView for one image page.
-/// UIScrollView handles pinch-to-zoom anchored at the pinch centroid and
-/// pan when zoomed. At minimumZoomScale its pan recognizer fails so the
-/// outer SwiftUI DragGesture handles paging and dismiss.
+/// UIKit-backed zoomable image page.
+/// UIScrollView handles pinch-to-zoom anchored at the pinch centroid via viewForZooming.
+/// A single-touch UIPanGestureRecognizer handles vertical swipe-to-dismiss without
+/// conflicting with two-finger pinch, zoom pan, or TabView horizontal paging.
 struct ZoomScrollImage: UIViewRepresentable {
     let url: URL?
     let resetID: UUID
     let onZoomChange: (Bool) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    var onDismissChanged: ((CGFloat) -> Void)? = nil
+    var onDismissEnded: ((CGFloat, CGFloat) -> Void)? = nil
+    var onDismissCancelled: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> ZoomScrollView {
         let sv = ZoomScrollView()
         sv.onZoomChange = onZoomChange
-        context.coordinator.lastResetID = resetID
-        if let url {
-            context.coordinator.load(url: url, into: sv)
-        }
+        sv.onDismissChanged = onDismissChanged
+        sv.onDismissEnded = onDismissEnded
+        sv.onDismissCancelled = onDismissCancelled
         return sv
     }
 
-    func updateUIView(_ uiView: ZoomScrollView, context: Context) {
-        uiView.onZoomChange = onZoomChange
-        if context.coordinator.lastResetID != resetID {
-            context.coordinator.lastResetID = resetID
-            uiView.resetZoom()
-        }
-    }
+    func updateUIView(_ sv: ZoomScrollView, context: Context) {
+        sv.onZoomChange = onZoomChange
+        sv.onDismissChanged = onDismissChanged
+        sv.onDismissEnded = onDismissEnded
+        sv.onDismissCancelled = onDismissCancelled
 
-    @MainActor
-    class Coordinator: NSObject {
-        var loadTask: Task<Void, Never>?
-        var lastResetID: UUID = UUID()
-
-        func load(url: URL, into sv: ZoomScrollView) {
-            loadTask?.cancel()
-            sv.showLoading(true)
-            loadTask = Task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
-                    guard !Task.isCancelled else { return }
-                    // Decode UIImage off the main thread — large/tall images can
-                    // take 20–80ms to decompress and would visibly stall the UI.
-                    let image = await Task.detached(priority: .userInitiated) {
-                        UIImage(data: data)
-                    }.value
-                    guard !Task.isCancelled else { return }
-                    sv.setImage(image)
-                } catch {
-                    sv.showLoading(false)
-                }
+        if sv.lastURL != url {
+            // URL changed — full reload: clear image then fetch.
+            sv.lastURL = url
+            sv.lastResetID = resetID
+            sv.clearAndResetZoom()
+            guard let url = url else { return }
+            Task.detached(priority: .userInitiated) {
+                guard let data = try? Data(contentsOf: url),
+                      let img = UIImage(data: data) else { return }
+                await MainActor.run { sv.setImage(img) }
             }
+        } else if sv.lastResetID != resetID {
+            // resetID changed (navigated away and back) — reset zoom only, keep image.
+            // Keeping the image prevents a flash while the old page swipes out.
+            sv.lastResetID = resetID
+            sv.resetZoomOnly()
         }
-
-        deinit { loadTask?.cancel() }
     }
 }
 
@@ -430,26 +376,28 @@ struct ZoomScrollImage: UIViewRepresentable {
 
 final class ZoomScrollView: UIScrollView {
     var onZoomChange: ((Bool) -> Void)?
+    var onDismissChanged: ((CGFloat) -> Void)?
+    var onDismissEnded: ((CGFloat, CGFloat) -> Void)?
+    var onDismissCancelled: (() -> Void)?
 
-    private let imageView: UIImageView = {
-        let iv = UIImageView()
-        iv.contentMode = .scaleAspectFit
-        iv.clipsToBounds = true
-        return iv
-    }()
+    var lastURL: URL? = nil
+    var lastResetID: UUID = UUID()
 
-    private let spinner: UIActivityIndicatorView = {
-        let s = UIActivityIndicatorView(style: .large)
-        s.color = .white
-        s.hidesWhenStopped = true
-        return s
-    }()
+    private let imageView = UIImageView()
+    private var dismissDelegate: DismissGestureDelegate?
+    /// True during an active pinch gesture. Prevents layoutSubviews from
+    /// resetting zoomScale to 1 while UIKit is mid-zoom.
+    private var isActivelyZooming = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
     }
-    required init?(coder: NSCoder) { fatalError() }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
 
     private func configure() {
         delegate = self
@@ -457,75 +405,122 @@ final class ZoomScrollView: UIScrollView {
         maximumZoomScale = 5.0
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
-        backgroundColor = .clear
         contentInsetAdjustmentBehavior = .never
+        backgroundColor = .clear
         bouncesZoom = true
-        decelerationRate = .fast
 
+        imageView.contentMode = .scaleAspectFit
+        imageView.clipsToBounds = true
         addSubview(imageView)
 
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(spinner)
-        NSLayoutConstraint.activate([
-            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        addGestureRecognizer(doubleTap)
+
+        let delegate = DismissGestureDelegate()
+        delegate.scrollView = self          // lets delegate check zoom state
+        dismissDelegate = delegate
+        let dismissPan = UIPanGestureRecognizer(target: self, action: #selector(handleDismissPan(_:)))
+        dismissPan.delegate = delegate
+        dismissPan.maximumNumberOfTouches = 1   // never fires during two-finger pinch
+        addGestureRecognizer(dismissPan)
     }
 
-    func showLoading(_ loading: Bool) {
-        if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
-    }
-
-    func setImage(_ image: UIImage?) {
+    func setImage(_ image: UIImage) {
         imageView.image = image
-        spinner.stopAnimating()
-        setZoomScale(1.0, animated: false)
-        setNeedsLayout()
-        layoutIfNeeded()
+        fitImageToView()
     }
 
-    func resetZoom() {
-        setZoomScale(1.0, animated: true)
-        contentOffset = .zero
+    /// Full reset: clears the image and snaps zoom to 1. Use for URL changes.
+    func clearAndResetZoom() {
+        isActivelyZooming = false
+        imageView.image = nil
+        if zoomScale != 1.0 { setZoomScale(1.0, animated: false) }
+        fitImageToView()
+        onZoomChange?(false)
+    }
+
+    /// Zoom-only reset: keeps the loaded image, just snaps zoom back to 1.
+    /// Avoids a blank-frame flash when the old page is still visible during swipe.
+    func resetZoomOnly() {
+        guard zoomScale > minimumZoomScale + 0.01 else { return }
+        isActivelyZooming = false
+        setZoomScale(minimumZoomScale, animated: false)
+        onZoomChange?(false)
+    }
+
+    private func fitImageToView() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let size = imageView.image?.size ?? CGSize(width: bounds.width, height: bounds.height)
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        let fittedSize = CGSize(width: size.width * scale, height: size.height * scale)
+        // (0,0) origin required: UIScrollView zoom anchors at viewForZooming's origin.
+        imageView.frame = CGRect(origin: .zero, size: fittedSize)
+        contentSize = fittedSize
+        updateCentering()
+    }
+
+    /// Centers the image via contentInset — does not touch imageView.frame or transform,
+    /// so it is safe to call at any zoom level.
+    private func updateCentering() {
+        let offsetX = max((bounds.width - contentSize.width) / 2, 0)
+        let offsetY = max((bounds.height - contentSize.height) / 2, 0)
+        contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: offsetY, right: offsetX)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Only resize the imageView at minimum zoom — at other zoom levels UIScrollView
-        // owns the imageView via a CGAffineTransform; setting frame would fight the transform.
-        if zoomScale <= minimumZoomScale + 0.01 {
+        // UIScrollView calls layoutSubviews on every zoom frame. Calling fitImageToView
+        // (which resets zoomScale = 1) mid-pinch would instantly snap zoom back to 1.
+        // Guard: only refit when not actively zooming AND already at minimum scale.
+        if !isActivelyZooming && zoomScale <= minimumZoomScale + 0.01 {
             fitImageToView()
+        } else {
+            updateCentering()
         }
-        updateCentering()
-        bringSubviewToFront(spinner)
     }
 
-    private func fitImageToView() {
-        guard let img = imageView.image,
-              bounds.width > 0, bounds.height > 0 else {
-            contentSize = bounds.size
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        if zoomScale > minimumZoomScale + 0.01 {
+            setZoomScale(minimumZoomScale, animated: true)
+        } else {
+            let point = recognizer.location(in: imageView)
+            let newScale: CGFloat = 2.5
+            let zoomWidth = imageView.bounds.width / newScale
+            let zoomHeight = imageView.bounds.height / newScale
+            let zoomRect = CGRect(
+                x: point.x - zoomWidth / 2,
+                y: point.y - zoomHeight / 2,
+                width: zoomWidth,
+                height: zoomHeight
+            )
+            zoom(to: zoomRect, animated: true)
+        }
+    }
+
+    @objc private func handleDismissPan(_ recognizer: UIPanGestureRecognizer) {
+        // Secondary guard: should not fire while zoomed (DismissGestureDelegate
+        // handles the primary check at gesture-begin time).
+        guard zoomScale <= minimumZoomScale + 0.01 else {
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
             return
         }
-        let scale = min(bounds.width / img.size.width, bounds.height / img.size.height)
-        let fitted = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-        // Set frame only when not in active zoom — safe because we guard zoomScale above
-        imageView.frame = CGRect(origin: .zero, size: fitted)
-        contentSize = fitted
+        let t = recognizer.translation(in: self)
+        let v = recognizer.velocity(in: self)
+        switch recognizer.state {
+        case .changed: onDismissChanged?(t.y)
+        case .ended:   onDismissEnded?(t.y, v.y)
+        case .cancelled, .failed: onDismissCancelled?()
+        default: break
+        }
     }
 
-    // Use contentInset to keep the image centered. This is correct during zoom because
-    // contentInset does not interfere with UIScrollView's zoom transform on imageView.
-    private func updateCentering() {
-        let hInset = max(0, (bounds.width  - contentSize.width)  / 2)
-        let vInset = max(0, (bounds.height - contentSize.height) / 2)
-        contentInset = UIEdgeInsets(top: vInset, left: hInset, bottom: vInset, right: hInset)
-    }
-
-    // At minimumZoomScale the image exactly fits — nothing to scroll.
-    // Fail the pan recognizer so SwiftUI's DragGesture handles paging / dismiss.
+    /// At minimum zoom, suppress the built-in panGestureRecognizer so horizontal
+    /// swipes pass to TabView's UIScrollView for page navigation.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer === panGestureRecognizer {
-            return zoomScale > minimumZoomScale + 0.01
+        if gestureRecognizer === panGestureRecognizer && zoomScale <= minimumZoomScale + 0.01 {
+            return false
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
@@ -534,15 +529,44 @@ final class ZoomScrollView: UIScrollView {
 extension ZoomScrollView: UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        isActivelyZooming = true
+    }
+
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         updateCentering()
-        onZoomChange?(zoomScale > minimumZoomScale + 0.01)
+        onZoomChange?(scrollView.zoomScale > scrollView.minimumZoomScale + 0.01)
     }
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        isActivelyZooming = false
+        // bouncesZoom = true already snaps to minimumZoomScale automatically;
+        // no need to call setZoomScale here — that would cause a redundant layout cycle.
         onZoomChange?(scale > minimumZoomScale + 0.01)
-        if scale < 1.05 { setZoomScale(minimumZoomScale, animated: true) }
+        updateCentering()
     }
+}
+
+// MARK: - DismissGestureDelegate
+
+/// Begins only for clearly vertical single-finger pans (|vy| > |vx| * 1.5)
+/// and only when the image is not zoomed. Always fires simultaneously with other recognizers.
+private final class DismissGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    weak var scrollView: ZoomScrollView?
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Never dismiss while zoomed in — user is panning around the image.
+        if let sv = scrollView, sv.zoomScale > sv.minimumZoomScale + 0.01 { return false }
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+              let view = pan.view else { return false }
+        let vel = pan.velocity(in: view)
+        return abs(vel.y) > abs(vel.x) * 1.5
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool { true }
 }
 
 // MARK: - GIF Embed View (animated)

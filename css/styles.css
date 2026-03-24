@@ -3965,6 +3965,18 @@ a.post-timestamp:hover {
   }
 }
 
+/* ---- Mobile sidebar open: lock background content ---- */
+/* When the sidebar drawer is open on mobile, prevent the .view behind
+   the overlay from scrolling. The sidebar itself still scrolls via its
+   own overflow-y: auto. touch-action: none stops iOS from passing
+   scroll gestures through the overlay to content underneath. */
+@media (max-width: 767px) {
+  body.sidebar-is-open .view {
+    overflow: hidden;
+    touch-action: none;
+  }
+}
+
 /* ---- Sidebar header (logo + close button) ---- */
 .sidebar-header {
   display: flex;
@@ -4153,16 +4165,20 @@ a.post-timestamp:hover {
 }
 
 .sidebar-channels-list {
-  flex: 1;
-  overflow-y: auto;
   padding: var(--space-xs) 0;
-  min-height: 0;
+  /* No flex: 1 / overflow-y: auto here — the sidebar itself scrolls as a whole.
+     Previously only this section scrolled; now the entire sidebar content scrolls. */
 }
 
 .sidebar-footer {
   padding: var(--space-xs);
-  flex-shrink: 0;
   border-top: 3px solid var(--nb-black);
+  /* Stick to bottom of the sidebar viewport so sign-out/settings stay reachable
+     even when the channel list pushes content below the fold. */
+  position: sticky;
+  bottom: 0;
+  background: var(--color-surface);
+  z-index: 1;
 }
 
 .sidebar-sign-out-btn {

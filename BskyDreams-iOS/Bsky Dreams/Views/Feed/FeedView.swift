@@ -222,7 +222,13 @@ struct FeedView: View {
         guard seenURISet.insert(post.uri).inserted else { return }
         modelContext.insert(SeenPost(uri: post.uri, likeCount: post.likeCount ?? 0, repostCount: post.repostCount ?? 0))
         if let did = auth.session?.did {
-            store.scheduleSeenSync(uris: Array(seenURISet), did: did)
+            // Apply the same 7-day window used by TVView and the background flush.
+            // seenURISet is pre-populated from ALL SwiftData entries (no age filter),
+            // so using it directly would upload stale URIs and inflate the cloud record.
+            let cutoff = Date().addingTimeInterval(-seenMaxAge)
+            let descriptor = FetchDescriptor<SeenPost>(predicate: #Predicate { $0.seenAt >= cutoff })
+            let recentURIs = (try? modelContext.fetch(descriptor))?.map { $0.uri } ?? Array(seenURISet)
+            store.scheduleSeenSync(uris: recentURIs, did: did)
         }
     }
 

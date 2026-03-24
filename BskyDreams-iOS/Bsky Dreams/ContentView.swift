@@ -209,11 +209,18 @@ struct MainAppView: View {
                 // Clear app icon badge and refresh count when app becomes active
                 UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
                 Task { await refreshBadges() }
-            } else if phase == .background, let did = auth.session?.did {
+            } else if phase == .background {
                 // Flush seen-posts to cloud immediately when app goes to background
-                let cutoff = Date().addingTimeInterval(-seenMaxAge)
-                let recentURIs = seenPosts.filter { $0.seenAt >= cutoff }.map { $0.uri }
-                Task { await store.saveSeenToCloud(uris: recentURIs, did: did) }
+                if let did = auth.session?.did {
+                    let cutoff = Date().addingTimeInterval(-seenMaxAge)
+                    let recentURIs = seenPosts.filter { $0.seenAt >= cutoff }.map { $0.uri }
+                    Task { await store.saveSeenToCloud(uris: recentURIs, did: did) }
+                }
+                // Immediately check and deliver any pending notifications before the app
+                // suspends — this reduces latency compared to waiting for the next
+                // BGAppRefreshTask (which iOS can delay significantly past the 15-min minimum).
+                Task { await BskyDreamsApp.performNotificationCheck() }
+                BskyDreamsApp.scheduleBackgroundRefresh()
             }
         }
         .onChange(of: store.selectedTab) { _, _ in
@@ -640,26 +647,25 @@ struct SettingsView: View {
                 .foregroundStyle(Color.nbBlack)
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(accentColors, id: \.hex) { item in
-                        let isSelected = store.accentColorHex == item.hex
-                        Button { updateAccentColor(item.hex) } label: {
-                            VStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color(hex: item.hex))
-                                    .frame(width: 32, height: 32)
-                                    .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: isSelected ? 3 : 1.5))
-                                Text(item.name)
-                                    .font(.inter(10))
-                                    .foregroundStyle(Color.nbTextSecondary)
-                            }
+            HStack(spacing: 0) {
+                ForEach(accentColors, id: \.hex) { item in
+                    let isSelected = store.accentColorHex == item.hex
+                    Button { updateAccentColor(item.hex) } label: {
+                        VStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(hex: item.hex))
+                                .frame(width: 32, height: 32)
+                                .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: isSelected ? 3 : 1.5))
+                            Text(item.name)
+                                .font(.inter(10))
+                                .foregroundStyle(Color.nbTextSecondary)
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 14)
             }
+            .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
         .background(Color.nbWhite)
@@ -726,7 +732,7 @@ struct SettingsView: View {
                 Text("Seen Posts")
                     .font(.inter(15, weight: .semibold))
                     .foregroundStyle(Color.nbBlack)
-                Text("\(seenPosts.count) posts tracked")
+                Text("\(seenPosts.filter { $0.seenAt >= Date().addingTimeInterval(-7 * 24 * 3600) }.count) posts tracked (last 7 days)")
                     .font(.inter(12))
                     .foregroundStyle(Color.nbTextSecondary)
             }
