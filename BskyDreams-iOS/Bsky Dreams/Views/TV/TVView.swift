@@ -216,19 +216,19 @@ struct TVView: View {
                 } label: {
                     HStack(spacing: 10) {
                         if isLoading {
-                            ProgressView().tint(Color.nbBlack).scaleEffect(0.8)
+                            ProgressView().tint(.white).scaleEffect(0.8)
                         } else {
                             Image(systemName: "play.fill").font(.system(size: 13))
                         }
-                        Text(isLoading ? "LOADING…" : "▶  START TV")
+                        Text(isLoading ? "LOADING…" : "START TV")
                             .font(.syne(15, weight: .bold))
                             .tracking(2)
                     }
-                    .foregroundStyle(Color.nbBlack)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Color.nbAccent)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack.opacity(0.2), lineWidth: 2))
+                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 }
                 .disabled(isLoading)
                 .padding(.horizontal, 20)

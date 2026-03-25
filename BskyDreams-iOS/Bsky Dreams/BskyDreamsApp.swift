@@ -39,6 +39,9 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 class AppDelegate: NSObject, UIApplicationDelegate {
     let notificationDelegate = NotificationDelegate()
 
+    /// Set to true while StreamView is active so the system allows landscape orientations.
+    static var streamingActive = false
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -51,6 +54,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Clear badge when user opens the app
         UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        AppDelegate.streamingActive ? .landscape : .portrait
     }
 }
 

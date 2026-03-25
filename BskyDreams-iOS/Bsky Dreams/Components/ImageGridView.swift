@@ -157,10 +157,14 @@ struct LightboxView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
+            // safeAreaInset reserves space for bottomChrome so the image content
+            // is always constrained ABOVE it — the alt text never overlaps the photo.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomChrome
+                    .background(Color.black.opacity(backgroundOpacity))
+            }
         }
-        // Overlays sized to their content — never block the image interaction area
         .overlay(alignment: .top) { headerBar }
-        .overlay(alignment: .bottom) { bottomChrome }
         .onChange(of: selectedPage) { old, _ in
             isZoomed = false
             dismissOffset = 0
@@ -231,8 +235,9 @@ struct LightboxView: View {
 
     private var bottomChrome: some View {
         VStack(spacing: 0) {
-            // Alt text scrollable area — only covers the text, not the image
+            // Alt text — always at bottom, never overlapping the image
             if let alt = images[safe: selectedPage]?.alt, !alt.isEmpty {
+                Divider().background(Color.white.opacity(0.15))
                 ScrollView {
                     Text(alt)
                         .font(.inter(12))
@@ -242,7 +247,6 @@ struct LightboxView: View {
                         .padding(.vertical, 10)
                 }
                 .frame(maxHeight: 80)
-                .background(.ultraThinMaterial)
             }
 
             // Dot indicator — centered, each dot tappable
