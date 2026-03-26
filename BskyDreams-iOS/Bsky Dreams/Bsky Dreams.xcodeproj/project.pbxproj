@@ -36,6 +36,7 @@
 		B755E4232F66444F001882AD /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3E02F66444E001882AD /* Post.swift */; };
 		B755E4242F66444F001882AD /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3D32F66444E001882AD /* KeychainManager.swift */; };
 		B755E4252F66444F001882AD /* TVView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E4072F66444E001882AD /* TVView.swift */; };
+		B755E5122F66B000001882AD /* StreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E5102F66B000001882AD /* StreamView.swift */; };
 		B755E4262F66444F001882AD /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3FF2F66444E001882AD /* ProfileView.swift */; };
 		B755E4272F66444F001882AD /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3FB2F66444E001882AD /* GalleryView.swift */; };
 		B755E4282F66444F001882AD /* Notification.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3DF2F66444E001882AD /* Notification.swift */; };
@@ -125,6 +126,7 @@
 		B755E4032F66444E001882AD /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		B755E4052F66444E001882AD /* ThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadView.swift; sourceTree = "<group>"; };
 		B755E4072F66444E001882AD /* TVView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVView.swift; sourceTree = "<group>"; };
+		B755E5102F66B000001882AD /* StreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamView.swift; sourceTree = "<group>"; };
 		B755E4312F66444F001882AD /* NBNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NBNavBar.swift; sourceTree = "<group>"; };
 		B755E4332F66444F001882AD /* SwipeBackEnabler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeBackEnabler.swift; sourceTree = "<group>"; };
 		B755E4B12F664BAE001882AD /* Inter-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Variable.ttf"; sourceTree = "<group>"; };
@@ -388,6 +390,14 @@
 			path = TV;
 			sourceTree = "<group>";
 		};
+		B755E5112F66B000001882AD /* Stream */ = {
+			isa = PBXGroup;
+			children = (
+				B755E5102F66B000001882AD /* StreamView.swift */,
+			);
+			path = Stream;
+			sourceTree = "<group>";
+		};
 		B755E4092F66444E001882AD /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -405,6 +415,7 @@
 				B755E4062F66444E001882AD /* Thread */,
 				B755E5002F66448A001882AD /* Timeline */,
 				B755E4082F66444E001882AD /* TV */,
+				B755E5112F66B000001882AD /* Stream */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -617,6 +628,7 @@
 				B755E4232F66444F001882AD /* Post.swift in Sources */,
 				B755E4242F66444F001882AD /* KeychainManager.swift in Sources */,
 				B755E4252F66444F001882AD /* TVView.swift in Sources */,
+				B755E5122F66B000001882AD /* StreamView.swift in Sources */,
 				B755E4262F66444F001882AD /* ProfileView.swift in Sources */,
 				B755E4272F66444F001882AD /* GalleryView.swift in Sources */,
 				B755E4282F66444F001882AD /* Notification.swift in Sources */,

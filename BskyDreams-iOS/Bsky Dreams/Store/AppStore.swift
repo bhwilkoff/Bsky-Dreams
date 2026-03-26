@@ -195,7 +195,7 @@ final class AppStore {
     }
 
     enum AppTab: String, CaseIterable {
-        case home, search, notifications, dms, gallery, tv, reader, analytics, constellation, timeline, settings
+        case home, search, notifications, dms, gallery, tv, stream, reader, analytics, constellation, timeline, settings
         var label: String {
             switch self {
             case .home: "Home"
@@ -204,6 +204,7 @@ final class AppStore {
             case .dms: "Messages"
             case .gallery: "Gallery"
             case .tv: "TV"
+            case .stream: "Stream"
             case .reader: "Reader"
             case .analytics: "Analytics"
             case .constellation: "Constellation"
@@ -218,7 +219,8 @@ final class AppStore {
             case .notifications: "bell"
             case .dms: "bubble.left.and.bubble.right"
             case .gallery: "photo.stack"
-            case .tv: "play.tv"
+            case .tv: "iphone"
+            case .stream: "play.rectangle"
             case .reader: "doc.text"
             case .analytics: "chart.bar"
             case .constellation: "network"

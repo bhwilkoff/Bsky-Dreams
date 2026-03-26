@@ -530,6 +530,7 @@ struct DetailView: View {
             case .dms:            DMsView()
             case .gallery:        GalleryView()
             case .tv:             TVView()
+            case .stream:         StreamView()
             case .reader:         ReaderView()
             case .analytics:      AnalyticsView()
             case .constellation:  ConstellationView()
