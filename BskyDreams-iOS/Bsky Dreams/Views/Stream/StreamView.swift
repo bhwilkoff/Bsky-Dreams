@@ -505,6 +505,28 @@ struct StreamView: View {
 
                     Spacer()
 
+                    // Reply — navigate to conversation view for the current slide's post
+                    if let post = currentSlide?.slide.post {
+                        Button {
+                            resetControlTimer()
+                            stopTimer()
+                            isLandscape = false
+                            // Dispatch navigation after the fullscreen cover dismisses
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(400))
+                                store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                            }
+                        } label: {
+                            Image(systemName: "bubble.left")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(controlFg)
+                                .frame(width: 32, height: 32)
+                                .background(controlBg)
+                                .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button {
                         isPaused.toggle()
                         isPaused ? stopTimer() : startTimer()

@@ -13,11 +13,12 @@ struct BskyNotification: Codable, Identifiable {
 
     enum NotificationReason: String, Codable {
         case like, repost, follow, mention, reply, quote
-        case starterpackJoined
+        // AT Protocol sends kebab-case reason strings
+        case starterpackJoined = "starterpack-joined"
         // Engagement-via-repost reasons: fired when someone likes/reposts a post
         // that you originally reposted (your repost amplified the engagement).
-        case likeViaRepost = "likeViaRepost"
-        case repostViaRepost = "repostViaRepost"
+        case likeViaRepost = "like-via-repost"
+        case repostViaRepost = "repost-via-repost"
         case unknown
 
         init(from decoder: Decoder) throws {

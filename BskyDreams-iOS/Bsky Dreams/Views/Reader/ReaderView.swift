@@ -6,8 +6,6 @@ struct ReaderView: View {
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
 
     @Environment(\.modelContext) private var modelContext
-    @Query private var seenPosts: [SeenPost]
-
     @State private var articles: [PostView] = []
     @State private var timelineCursor: String?
     @State private var discoverCursor: String?
@@ -16,8 +14,9 @@ struct ReaderView: View {
     @State private var errorMessage: String?
     @State private var selectedArticle: PostView? = nil
     @State private var readURLs: Set<String> = []
-
-    private var seenURIs: Set<String> { Set(seenPosts.map { $0.uri }) }
+    // In-memory seen-URI cache — avoids @Query cascade re-renders on every
+    // mark-seen insert (same pattern as FeedView).
+    @State private var seenURISet: Set<String> = []
 
     var body: some View {
         Group {
@@ -44,7 +43,14 @@ struct ReaderView: View {
             }
         }
         .nbNavBar(title: "READER", leading: { NBHamburger() })
-        .task { await load() }
+        .task {
+            // Load seen URIs from SwiftData once, then manage in memory
+            if seenURISet.isEmpty {
+                let descriptor = FetchDescriptor<SeenPost>()
+                seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+            }
+            await load()
+        }
     }
 
     private var articleList: some View {
@@ -65,7 +71,8 @@ struct ReaderView: View {
                         .opacity(readURLs.contains(card.uri) ? 0.5 : 1.0)
                         .onAppear {
                             markSeenPost(post)
-                            if post.uri == articles.last?.uri {
+                            // Trigger next page within last 5 articles
+                            if articles.suffix(5).contains(where: { $0.uri == post.uri }) {
                                 Task { await load(loadMore: true) }
                             }
                         }
@@ -80,6 +87,9 @@ struct ReaderView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable {
+            // Re-sync seen set from SwiftData so cloud-merged posts are respected
+            let descriptor = FetchDescriptor<SeenPost>()
+            seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
             articles = []
             timelineCursor = nil
             discoverCursor = nil
@@ -116,15 +126,23 @@ struct ReaderView: View {
             let filtered = allItems.compactMap { item -> PostView? in
                 guard let ext = item.post.embed?.external else { return nil }
                 guard isReadableArticle(ext) else { return nil }
+                // Skip articles whose post was already seen in the home feed
+                guard !seenURISet.contains(item.post.uri) else { return nil }
                 return item.post
             }
 
             if loadMore {
                 let existingUris = Set(articles.map { $0.uri })
-                articles.append(contentsOf: filtered.filter { !existingUris.contains($0.uri) })
+                let newArticles = filtered.filter { !existingUris.contains($0.uri) }
+                articles.append(contentsOf: newArticles)
+                // Pre-warm article thumbnail images
+                let urlsToWarm = newArticles.flatMap { feedItemImageURLs(for: $0) }
+                Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
             } else {
                 var seen = Set<String>()
                 articles = filtered.filter { seen.insert($0.uri).inserted }
+                let urlsToWarm = articles.flatMap { feedItemImageURLs(for: $0) }
+                Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -132,7 +150,7 @@ struct ReaderView: View {
     }
 
     private func markSeenPost(_ post: PostView) {
-        guard !seenURIs.contains(post.uri) else { return }
+        guard seenURISet.insert(post.uri).inserted else { return }
         modelContext.insert(SeenPost(uri: post.uri, likeCount: post.likeCount ?? 0, repostCount: post.repostCount ?? 0))
     }
 
@@ -401,12 +419,27 @@ struct ArticleReaderSheet: View {
                 title: URL(string: card.uri)?.host?.uppercased() ?? "ARTICLE",
                 leading: { NBBackButton() },
                 trailing: {
-                    ShareLink(item: URL(string: card.uri) ?? URL(string: "https://bskydreams.com")!) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 36, height: 36)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    HStack(spacing: 8) {
+                        // Open in Safari (external browser, not in-app)
+                        if let url = URL(string: card.uri) {
+                            Button {
+                                UIApplication.shared.open(url)
+                            } label: {
+                                Image(systemName: "safari")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.nbBlack)
+                                    .frame(width: 36, height: 36)
+                                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        ShareLink(item: URL(string: card.uri) ?? URL(string: "https://bskydreams.com")!) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.nbBlack)
+                                .frame(width: 36, height: 36)
+                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        }
                     }
                 }
             )

@@ -150,26 +150,23 @@
 
       <!-- Main navigation items (same IDs as before) -->
       <nav class="sidebar-nav" aria-label="Main navigation">
-        <button class="sidebar-nav-item active" id="nav-feed-btn" data-view="feed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          <span>Home</span>
-        </button>
+        <!-- Post first (web-only), then iOS sidebar order -->
+        <!-- Post (web-only, prominent at top) -->
         <button class="sidebar-nav-item" id="nav-compose-btn" data-view="compose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           <span>Post</span>
         </button>
-        <button class="sidebar-nav-item" id="nav-tv-btn" data-view="tv">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>TV</span>
+        <!-- 1. Home — SF: house -->
+        <button class="sidebar-nav-item active" id="nav-feed-btn" data-view="feed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Home</span>
         </button>
-        <button class="sidebar-nav-item" id="nav-gallery-btn" data-view="gallery">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          <span>Gallery</span>
+        <!-- 2. Search — SF: magnifyingglass -->
+        <button class="sidebar-nav-item" id="nav-search-btn" data-view="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <span>Search</span>
         </button>
-        <button class="sidebar-nav-item" id="nav-analytics-btn" data-view="analytics">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-          <span>Analytics</span>
-        </button>
+        <!-- 3. Notifications — SF: bell -->
         <button class="sidebar-nav-item" id="nav-notif-btn" data-view="notifications" aria-label="Notifications">
           <span class="sidebar-notif-wrap" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -177,25 +174,45 @@
           </span>
           <span>Notifications</span>
         </button>
-        <button class="sidebar-nav-item" id="nav-search-btn" data-view="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <span>Search</span>
-        </button>
-        <button class="sidebar-nav-item" id="nav-timeline-btn" data-view="timeline">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>
-          <span>Timeline</span>
-        </button>
-        <button class="sidebar-nav-item" id="nav-reader-btn" data-view="reader">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span>Reader</span>
-        </button>
+        <!-- 4. Messages — SF: bubble.left.and.bubble.right -->
         <button class="sidebar-nav-item" id="nav-dms-btn" data-view="dms">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M16 2H6a2 2 0 0 0-2 2v10l3-3h9a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="M18 9h2a2 2 0 0 1 2 2v10l-3-3h-7a2 2 0 0 1-2-2v-1"/></svg>
           <span>Messages</span>
         </button>
+        <!-- 5. Gallery — SF: photo.stack -->
+        <button class="sidebar-nav-item" id="nav-gallery-btn" data-view="gallery">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="5" y="5" width="16" height="14" rx="1"/><path d="M5 14l4-4 3 3 4-4 5 5"/><circle cx="15" cy="9" r="1.5"/><path d="M2 8v10a2 2 0 0 0 2 2h14" opacity="0.5"/></svg>
+          <span>Gallery</span>
+        </button>
+        <!-- 6. TV — SF: iphone -->
+        <button class="sidebar-nav-item" id="nav-tv-btn" data-view="tv">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          <span>TV</span>
+        </button>
+        <!-- 7. Stream — SF: play.rectangle -->
+        <button class="sidebar-nav-item" id="nav-stream-btn" data-view="stream">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          <span>Stream</span>
+        </button>
+        <!-- 8. Reader — SF: doc.text -->
+        <button class="sidebar-nav-item" id="nav-reader-btn" data-view="reader">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>
+          <span>Reader</span>
+        </button>
+        <!-- 9. Analytics — SF: chart.bar -->
+        <button class="sidebar-nav-item" id="nav-analytics-btn" data-view="analytics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="5" width="4" height="16"/><rect x="17" y="9" width="4" height="12"/></svg>
+          <span>Analytics</span>
+        </button>
+        <!-- 10. Constellation — SF: network -->
         <button class="sidebar-nav-item" id="nav-constellation-btn" data-view="constellation">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="2"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/><line x1="6" y1="7" x2="10" y2="11"/><line x1="14" y1="11" x2="18" y2="7"/><line x1="6" y1="17" x2="10" y2="13"/><line x1="14" y1="13" x2="18" y2="17"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="5" y2="16.5"/><line x1="12" y1="7.5" x2="19" y2="16.5"/><line x1="7.5" y1="19" x2="16.5" y2="19"/></svg>
           <span>Constellation</span>
+        </button>
+        <!-- 11. Timeline — SF: calendar.day.timeline.leading -->
+        <button class="sidebar-nav-item" id="nav-timeline-btn" data-view="timeline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="7" y1="13" x2="7" y2="13.01"/><line x1="7" y1="17" x2="7" y2="17.01"/><line x1="10" y1="13" x2="17" y2="13"/><line x1="10" y1="17" x2="15" y2="17"/></svg>
+          <span>Timeline</span>
         </button>
       </nav>
 
@@ -601,6 +618,153 @@
               </button>
             </div>
 
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- STREAM VIEW ---- -->
+    <section id="view-stream" class="view view-stream" hidden aria-labelledby="stream-heading">
+      <!-- Setup screen -->
+      <div id="stream-setup" class="stream-setup">
+        <div class="stream-hero">
+          <div class="stream-hero-inner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <div>
+              <h2 id="stream-heading" class="stream-heading">Stream</h2>
+              <p class="stream-desc">One post at a time, full-screen, auto-advancing.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feed source -->
+        <div class="stream-section">
+          <label class="stream-section-label">FEED SOURCE</label>
+          <div class="stream-toggle-row" id="stream-source-row">
+            <button class="stream-pill active" data-stream-source="discover">DISCOVER</button>
+            <button class="stream-pill" data-stream-source="following">FOLLOWING</button>
+          </div>
+          <div class="stream-search-row">
+            <input type="text" id="stream-search-input" class="field-input"
+                   placeholder="Search a keyword or topic..." autocapitalize="none" spellcheck="false">
+            <button type="button" id="stream-search-set" class="btn btn-ghost">SET</button>
+          </div>
+          <div id="stream-search-chip" class="stream-search-chip" hidden></div>
+        </div>
+
+        <!-- Settings -->
+        <div class="stream-section">
+          <label class="stream-section-label">STREAM SETTINGS</label>
+          <div class="stream-settings-card">
+            <div class="stream-setting-row">
+              <span class="stream-setting-label">Seconds Per Post</span>
+              <div class="stream-toggle-row" id="stream-duration-row">
+                <button class="stream-pill" data-stream-dur="3">3</button>
+                <button class="stream-pill" data-stream-dur="5">5</button>
+                <button class="stream-pill active" data-stream-dur="8">8</button>
+                <button class="stream-pill" data-stream-dur="15">15</button>
+                <button class="stream-pill" data-stream-dur="30">30</button>
+              </div>
+            </div>
+            <div class="stream-setting-row">
+              <span class="stream-setting-label">Content Type</span>
+              <div class="stream-toggle-row" id="stream-filter-row">
+                <button class="stream-pill active" data-stream-filter="all">ALL</button>
+                <button class="stream-pill" data-stream-filter="text">TEXT</button>
+                <button class="stream-pill" data-stream-filter="images">IMAGES</button>
+              </div>
+            </div>
+            <div class="stream-setting-row">
+              <span class="stream-setting-label">Background Color</span>
+              <div class="stream-toggle-row" id="stream-bg-row">
+                <button class="stream-pill active" data-stream-bg="random">RANDOM</button>
+              </div>
+              <div class="stream-color-row" id="stream-color-row">
+                <button class="stream-color-swatch" data-stream-bg="#FF5C35" style="background:#FF5C35" aria-label="Coral"></button>
+                <button class="stream-color-swatch" data-stream-bg="#0047FF" style="background:#0047FF" aria-label="Blue"></button>
+                <button class="stream-color-swatch" data-stream-bg="#B8E04A" style="background:#B8E04A" aria-label="Lime"></button>
+                <button class="stream-color-swatch" data-stream-bg="#AF52DE" style="background:#AF52DE" aria-label="Purple"></button>
+                <button class="stream-color-swatch" data-stream-bg="#FF2D55" style="background:#FF2D55" aria-label="Pink"></button>
+                <button class="stream-color-swatch" data-stream-bg="#FF9500" style="background:#FF9500" aria-label="Orange"></button>
+                <button class="stream-color-swatch" data-stream-bg="#34C759" style="background:#34C759" aria-label="Green"></button>
+              </div>
+            </div>
+            <div class="stream-setting-row stream-toggle-setting">
+              <span class="stream-setting-label">Show Post Metrics</span>
+              <label class="stream-switch"><input type="checkbox" id="stream-opt-metrics" checked><span class="stream-switch-slider"></span></label>
+            </div>
+            <div class="stream-setting-row stream-toggle-setting">
+              <span class="stream-setting-label">Show Alt Text</span>
+              <label class="stream-switch"><input type="checkbox" id="stream-opt-alt" checked><span class="stream-switch-slider"></span></label>
+            </div>
+            <div class="stream-setting-row stream-toggle-setting">
+              <div>
+                <span class="stream-setting-label">Combine Text + Image</span>
+                <span class="stream-setting-hint">Show text and image together on one slide</span>
+              </div>
+              <label class="stream-switch"><input type="checkbox" id="stream-opt-combine"><span class="stream-switch-slider"></span></label>
+            </div>
+            <div class="stream-setting-row stream-toggle-setting">
+              <div>
+                <span class="stream-setting-label">Keep Screen Awake</span>
+                <span class="stream-setting-hint">Prevent auto-lock while streaming</span>
+              </div>
+              <label class="stream-switch"><input type="checkbox" id="stream-opt-wake"><span class="stream-switch-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-primary stream-start-btn" id="stream-start-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          START STREAMING
+        </button>
+      </div>
+
+      <!-- Player -->
+      <div id="stream-player" class="stream-player" hidden>
+        <div id="stream-controls-top" class="stream-controls-top">
+          <button id="stream-source-btn" class="stream-ctrl-btn">
+            <span id="stream-source-label">DISCOVER</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="10" height="10" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="stream-ctrl-right">
+            <button id="stream-reply-btn" class="stream-ctrl-btn" aria-label="Open conversation" title="Open conversation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <button id="stream-pause-btn" class="stream-ctrl-btn" aria-label="Pause">
+              <svg id="stream-pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button id="stream-stop-btn" class="stream-ctrl-btn" aria-label="Stop streaming">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="stream-progress-wrap">
+          <div id="stream-progress" class="stream-progress-bar"></div>
+        </div>
+        <div id="stream-slide-area" class="stream-slide-area">
+          <div id="stream-slide" class="stream-slide"></div>
+          <div id="stream-loading-indicator" class="stream-loading-indicator" hidden>
+            <div class="spinner"></div>
+          </div>
+        </div>
+        <div id="stream-dots" class="stream-dots"></div>
+
+        <!-- Source picker overlay -->
+        <div id="stream-source-picker" class="stream-source-picker" hidden>
+          <div class="stream-source-picker-card">
+            <div class="stream-source-picker-header">
+              <span class="stream-section-label">STREAM SOURCE</span>
+              <button id="stream-picker-done" class="btn btn-ghost">DONE</button>
+            </div>
+            <div class="stream-toggle-row" id="stream-picker-source-row">
+              <button class="stream-pill active" data-picker-src="discover">DISCOVER</button>
+              <button class="stream-pill" data-picker-src="following">FOLLOWING</button>
+            </div>
+            <div class="stream-search-row">
+              <input type="text" id="stream-picker-search" class="field-input" placeholder="Search a topic...">
+              <button type="button" id="stream-picker-go" class="btn btn-ghost">GO</button>
+            </div>
           </div>
         </div>
       </div>
