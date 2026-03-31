@@ -160,9 +160,7 @@
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
   const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
-  // iOS Shortcut share-to-compose — update this URL after publishing the shortcut to iCloud
-  const IPHONE_SHORTCUT_URL = 'https://www.icloud.com/shortcuts/334a8826fb2b447da09fd342006d9d83';
-  let feedMode           = 'discover';  // 'following' | 'discover'
+let feedMode           = 'discover';  // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
@@ -646,17 +644,6 @@
     syncAccentSwatches();
     applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
 
-    // iPhone shortcut link — show install button if URL is configured
-    const shortcutRow  = $('settings-iphone-shortcut-row');
-    const shortcutLink = $('settings-iphone-shortcut-link');
-    if (shortcutRow && shortcutLink) {
-      if (IPHONE_SHORTCUT_URL) {
-        shortcutLink.href   = IPHONE_SHORTCUT_URL;
-        shortcutRow.hidden  = false;
-      } else {
-        shortcutRow.hidden  = true;
-      }
-    }
     settingsModal.hidden = false;
     closeSidebar();
   }

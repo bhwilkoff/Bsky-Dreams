@@ -233,7 +233,7 @@ button {
   padding: var(--space-lg);
 }
 
-/* Footer with repo link */
+/* Footer with iOS App Store link */
 .auth-footer {
   border-top: 2px solid var(--nb-black);
   padding: var(--space-sm) var(--space-lg);
