@@ -30,6 +30,7 @@
   const navComposeBtn   = $('nav-compose-btn');
   const navNotifBtn     = $('nav-notif-btn');
   const navTvBtn        = $('nav-tv-btn');
+  const navStreamBtn    = $('nav-stream-btn');
   const navProfileBtn   = $('nav-profile-btn');
   const navAnalyticsBtn = $('nav-analytics-btn');
   const navTimelineBtn       = $('nav-timeline-btn');
@@ -46,6 +47,7 @@
   const viewProfile       = $('view-profile');
   const viewNotifications = $('view-notifications');
   const viewTv            = $('view-tv');
+  const viewStream        = $('view-stream');
   const viewAnalytics     = $('view-analytics');
   const viewTimeline      = $('view-timeline');
   const viewReader        = $('view-reader');
@@ -2779,6 +2781,8 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       }
     } else if (urlView === 'dms') {
       showView('dms', true);
+    } else if (urlView === 'stream') {
+      showView('stream', true);
     } else if (urlView === 'constellation') {
       showView('constellation', true);
       const cActor = p.get('actor');
@@ -2837,6 +2841,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       profile:       viewProfile,
       notifications: viewNotifications,
       tv:            viewTv,
+      stream:        viewStream,
       gallery:       viewGallery,
       analytics:     viewAnalytics,
       timeline:      viewTimeline,
@@ -2850,6 +2855,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       compose:       navComposeBtn,
       notifications: navNotifBtn,
       tv:            navTvBtn,
+      stream:        navStreamBtn,
       gallery:       navGalleryBtn,
       analytics:     navAnalyticsBtn,
       timeline:      navTimelineBtn,
@@ -2916,6 +2922,8 @@ let feedMode           = 'discover';  // 'following' | 'discover'
         url = '?view=compose';
       } else if (name === 'tv') {
         url = '?view=tv';
+      } else if (name === 'stream') {
+        url = '?view=stream';
       } else if (name === 'gallery') {
         url = '?view=gallery';
       } else if (name === 'analytics') {
@@ -2935,6 +2943,10 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     // Pause TV playback when leaving the TV view
     if (name !== 'tv') {
       window.tvStop?.();
+    }
+    // Stop stream when leaving stream view
+    if (name !== 'stream') {
+      window.streamStop?.();
     }
 
     // M44: disconnect feed seen observer when leaving the feed view
@@ -3024,6 +3036,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     if (!notifLoaded) loadNotifications();
   });
   navTvBtn.addEventListener('click', () => showView('tv'));
+  navStreamBtn.addEventListener('click', () => showView('stream'));
   navAnalyticsBtn.addEventListener('click', () => {
     showView('analytics');
     loadAnalytics();
@@ -3751,7 +3764,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
   /* ---- M34: Scroll-to-top button ---- */
   (() => {
     const SCROLL_SHOW_THRESHOLD = 300;
-    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewGallery, viewAnalytics, viewTimeline, viewReader, viewDms, viewConstellation];
+    const ALL_VIEWS = [viewFeed, viewSearch, viewCompose, viewThread, viewProfile, viewNotifications, viewTv, viewStream, viewGallery, viewAnalytics, viewTimeline, viewReader, viewDms, viewConstellation];
 
     ALL_VIEWS.forEach((view) => {
       view.addEventListener('scroll', () => {
@@ -5035,6 +5048,541 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       if (!tvCurrent) return;
       openThread(tvCurrent.uri, tvCurrent.cid, tvCurrent.author?.handle || '');
     });
+  })();
+
+  /* ================================================================
+     STREAM — full-screen post slideshow
+  ================================================================ */
+  (() => {
+    const stSetup      = $('stream-setup');
+    const stPlayer     = $('stream-player');
+    const stSlide      = $('stream-slide');
+    const stLoading    = $('stream-loading-indicator');
+    const stProgress   = $('stream-progress');
+    const stDots       = $('stream-dots');
+    const stCtrlTop    = $('stream-controls-top');
+    const stPauseBtn   = $('stream-pause-btn');
+    const stPauseIcon  = $('stream-pause-icon');
+    const stStopBtn    = $('stream-stop-btn');
+    const stReplyBtn   = $('stream-reply-btn');
+    const stSourceBtn  = $('stream-source-btn');
+    const stSourceLbl  = $('stream-source-label');
+    const stSourcePicker = $('stream-source-picker');
+    const stStartBtn   = $('stream-start-btn');
+
+    function escapeHTML(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    const PALETTE = [
+      { hex: '#FF5C35', light: true  },
+      { hex: '#0047FF', light: true  },
+      { hex: '#B8E04A', light: false },
+      { hex: '#AF52DE', light: true  },
+      { hex: '#FF2D55', light: true  },
+      { hex: '#FF9500', light: false },
+      { hex: '#34C759', light: false },
+    ];
+    const LIGHT_HEX = new Set(['#FF5C35','#0047FF','#AF52DE','#FF2D55']);
+    const ST_KEY = 'bsky_stream_';
+
+    let stSource    = 'discover';
+    let stDuration  = 8;
+    let stFilter    = 'all';
+    let stBgMode    = 'random';
+    let stMetrics   = true;
+    let stAltText   = true;
+    let stCombine   = false;
+    let stWake      = false;
+    let slides      = [];
+    let curIdx      = 0;
+    let paused      = false;
+    let timerAF     = null;
+    let timerStart  = 0;
+    let feedCursor  = null;
+    let loadingMore = false;
+    let ctrlTimer   = null;
+    let wakeLock    = null;
+    let touchSX = 0, touchSY = 0;
+
+    /* ---- Settings persistence ---- */
+    function saveOpts() {
+      try {
+        localStorage.setItem(ST_KEY + 'dur', stDuration);
+        localStorage.setItem(ST_KEY + 'filter', stFilter);
+        localStorage.setItem(ST_KEY + 'bg', stBgMode);
+        localStorage.setItem(ST_KEY + 'metrics', stMetrics ? '1' : '0');
+        localStorage.setItem(ST_KEY + 'alt', stAltText ? '1' : '0');
+        localStorage.setItem(ST_KEY + 'combine', stCombine ? '1' : '0');
+        localStorage.setItem(ST_KEY + 'wake', stWake ? '1' : '0');
+      } catch {}
+    }
+    function loadOpts() {
+      stDuration = +(localStorage.getItem(ST_KEY + 'dur') || 8);
+      stFilter   = localStorage.getItem(ST_KEY + 'filter') || 'all';
+      stBgMode   = localStorage.getItem(ST_KEY + 'bg') || 'random';
+      stMetrics  = localStorage.getItem(ST_KEY + 'metrics') !== '0';
+      stAltText  = localStorage.getItem(ST_KEY + 'alt') !== '0';
+      stCombine  = localStorage.getItem(ST_KEY + 'combine') === '1';
+      stWake     = localStorage.getItem(ST_KEY + 'wake') === '1';
+      syncSetupUI();
+    }
+    function syncSetupUI() {
+      document.querySelectorAll('[data-stream-source]').forEach(b => b.classList.toggle('active', b.dataset.streamSource === stSource));
+      document.querySelectorAll('[data-stream-dur]').forEach(b => b.classList.toggle('active', +b.dataset.streamDur === stDuration));
+      document.querySelectorAll('[data-stream-filter]').forEach(b => b.classList.toggle('active', b.dataset.streamFilter === stFilter));
+      document.querySelectorAll('[data-stream-bg]').forEach(b => b.classList.toggle('active', b.dataset.streamBg === stBgMode));
+      document.querySelectorAll('.stream-color-swatch').forEach(b => b.classList.toggle('active', b.dataset.streamBg === stBgMode));
+      const m = $('stream-opt-metrics'); if (m) m.checked = stMetrics;
+      const a = $('stream-opt-alt');     if (a) a.checked = stAltText;
+      const c = $('stream-opt-combine'); if (c) c.checked = stCombine;
+      const w = $('stream-opt-wake');    if (w) w.checked = stWake;
+    }
+
+    /* ---- Slide building ---- */
+    function stripURLs(t) {
+      return t.replace(/https?:\/\/\S+/g, '').replace(/\n\s*\n/g, '\n').trim();
+    }
+    function extractImages(post) {
+      const e = post.embed;
+      if (!e) return [];
+      const t = e.$type || '';
+      if (t === 'app.bsky.embed.images#view') return e.images || [];
+      if (t === 'app.bsky.embed.recordWithMedia#view') {
+        const m = e.media || {};
+        if ((m.$type || '') === 'app.bsky.embed.images#view') return m.images || [];
+      }
+      return [];
+    }
+    function extractExternal(post) {
+      const e = post.embed;
+      if (!e) return null;
+      const t = e.$type || '';
+      let ext = null;
+      if (t === 'app.bsky.embed.external#view') ext = e.external;
+      else if (t === 'app.bsky.embed.recordWithMedia#view') {
+        const m = e.media || {};
+        if ((m.$type || '') === 'app.bsky.embed.external#view') ext = m.external;
+      }
+      if (!ext || !ext.uri) return null;
+      if (isGifExternalEmbed(ext)) return null;
+      try {
+        const h = new URL(ext.uri).hostname.toLowerCase();
+        const vhosts = ['youtube.com','youtu.be','vimeo.com','twitch.tv','tiktok.com','video.bsky.app'];
+        if (vhosts.some(v => h === v || h.endsWith('.' + v))) return null;
+      } catch { return null; }
+      return ext;
+    }
+    function buildSlides(post, postIdx) {
+      const text = stripURLs(post.record?.text || '');
+      const images = extractImages(post);
+      const card = extractExternal(post);
+      const hasText = text.length > 0;
+      const hasImages = images.length > 0;
+      const out = [];
+
+      if (stFilter === 'text' && !hasText) return out;
+      if (stFilter === 'images' && !hasImages) return out;
+
+      if (stCombine && hasText && hasImages) {
+        out.push({ type: 'combined', post, text, image: images[0], postIdx });
+        for (let i = 1; i < images.length; i++) out.push({ type: 'image', post, text: '', image: images[i], postIdx });
+      } else {
+        if (hasText) out.push({ type: 'text', post, text, postIdx });
+        for (const img of images) out.push({ type: 'image', post, text: hasText ? text : '', image: img, postIdx });
+      }
+      if (card && stFilter !== 'images') out.push({ type: 'link', post, text, card, postIdx });
+      if (!out.length && hasText && stFilter === 'all') out.push({ type: 'text', post, text, postIdx });
+      return out;
+    }
+
+    /* ---- Colors ---- */
+    function resolveColors(postIdx) {
+      if (stBgMode === 'random') {
+        const e = PALETTE[Math.abs(postIdx) % PALETTE.length];
+        return { bg: e.hex, light: e.light };
+      }
+      return { bg: stBgMode, light: LIGHT_HEX.has(stBgMode.toUpperCase()) };
+    }
+    function applyColors(c) {
+      stPlayer.style.backgroundColor = c.bg;
+      stPlayer.classList.toggle('stream-light-text', c.light);
+    }
+
+    /* ---- Rendering ---- */
+    function relTime(iso) {
+      const d = new Date(iso);
+      const s = Math.floor((Date.now() - d) / 1000);
+      if (s < 60) return 'now';
+      if (s < 3600) return Math.floor(s / 60) + 'm';
+      if (s < 86400) return Math.floor(s / 3600) + 'h';
+      return Math.floor(s / 86400) + 'd';
+    }
+    function authorBarHTML(post, colors) {
+      const c = colors.light ? '#fff' : '#0A0A0A';
+      return `<div class="stream-author-bar">
+        <img class="stream-author-avatar" src="${post.author?.avatar || ''}" alt="">
+        <span class="stream-author-name" style="color:${c}">${escapeHTML(post.author?.displayName || post.author?.handle || '')}</span>
+        <span class="stream-author-handle" style="color:${c}">@${escapeHTML(post.author?.handle || '')}</span>
+        <span class="stream-author-time" style="color:${c}">${relTime(post.indexedAt)}</span>
+      </div>`;
+    }
+    function metricsHTML(post, colors) {
+      if (!stMetrics) return '';
+      const c = colors.light ? 'color:#fff' : 'color:#0A0A0A';
+      return `<div class="stream-metrics" style="${c}">
+        <span class="stream-metric">&#x1F4AC; ${post.replyCount || 0}</span>
+        <span class="stream-metric">&#x1F501; ${post.repostCount || 0}</span>
+        <span class="stream-metric">&#x2764;&#xFE0F; ${post.likeCount || 0}</span>
+      </div>`;
+    }
+    function textSizeClass(len) {
+      if (len < 60) return 'stream-text-xl';
+      if (len < 120) return 'stream-text-lg';
+      if (len < 200) return 'stream-text-md';
+      return 'stream-text-sm';
+    }
+
+    function renderSlide(s, dir) {
+      const colors = resolveColors(s.postIdx);
+      applyColors(colors);
+      let html = '';
+      switch (s.type) {
+        case 'text': html = renderText(s, colors); break;
+        case 'image': html = renderImage(s, colors); break;
+        case 'combined': html = renderImage(s, colors); break;
+        case 'link': html = renderLink(s, colors); break;
+      }
+      // Slide transition
+      stSlide.className = 'stream-slide';
+      stSlide.innerHTML = html;
+      if (dir) {
+        stSlide.classList.add(dir > 0 ? 'entering-right' : 'entering-left');
+        stSlide.addEventListener('animationend', () => stSlide.classList.remove('entering-right', 'entering-left'), { once: true });
+      }
+      updateDots();
+    }
+    function renderText(s, colors) {
+      const cls = textSizeClass(s.text.length);
+      const c = colors.light ? 'color:#fff' : 'color:#0A0A0A';
+      return authorBarHTML(s.post, colors)
+        + `<div class="stream-main-text"><div class="stream-main-text-inner ${cls}" style="${c}">${escapeHTML(s.text)}</div></div>`
+        + metricsHTML(s.post, colors);
+    }
+    function renderImage(s, colors) {
+      const hasText = s.text && s.text.length > 0;
+      const c = colors.light ? 'color:#fff' : 'color:#0A0A0A';
+      const altBadge = (stAltText && s.image?.alt) ? `<div class="stream-alt-badge">${escapeHTML(s.image.alt)}</div>` : '';
+      if (!hasText) {
+        // Full-bleed image
+        return `<div class="stream-slide-image-full">
+          <div class="stream-author-bar"><img class="stream-author-avatar" src="${s.post.author?.avatar || ''}" alt=""><span class="stream-author-name" style="color:#fff">${escapeHTML(s.post.author?.displayName || s.post.author?.handle || '')}</span><span class="stream-author-handle" style="color:#fff">@${escapeHTML(s.post.author?.handle || '')}</span><span class="stream-author-time" style="color:#fff">${relTime(s.post.indexedAt)}</span></div>
+          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          ${stMetrics ? `<div class="stream-metrics" style="color:#fff"><span class="stream-metric">&#x1F4AC; ${s.post.replyCount || 0}</span><span class="stream-metric">&#x1F501; ${s.post.repostCount || 0}</span><span class="stream-metric">&#x2764;&#xFE0F; ${s.post.likeCount || 0}</span></div>` : ''}
+        </div>`;
+      }
+      // Split layout
+      const cls = textSizeClass(s.text.length + 40); // slightly smaller for split
+      return `${authorBarHTML(s.post, colors)}
+        <div class="stream-slide-split">
+          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          <div class="stream-text-pane">
+            <div class="stream-main-text"><div class="stream-main-text-inner ${cls}" style="${c}">${escapeHTML(s.text)}</div></div>
+          </div>
+        </div>
+        ${metricsHTML(s.post, colors)}`;
+    }
+    function renderLink(s, colors) {
+      const c = colors.light ? 'color:#fff' : 'color:#0A0A0A';
+      const card = s.card;
+      let domain = '';
+      try { domain = new URL(card.uri).hostname; } catch {}
+      const thumb = card.thumb ? `<img class="stream-link-card-thumb" src="${card.thumb}" alt="">` : '';
+      return authorBarHTML(s.post, colors)
+        + `<div class="stream-main-text">
+            <a class="stream-link-card" href="${card.uri}" target="_blank" rel="noopener" style="${c}; text-decoration:none">
+              ${thumb}
+              <div class="stream-link-card-body">
+                <div class="stream-link-card-domain">${escapeHTML(domain)}</div>
+                <div class="stream-link-card-title">${escapeHTML(card.title || '')}</div>
+                ${card.description ? `<div class="stream-link-card-desc">${escapeHTML(card.description)}</div>` : ''}
+              </div>
+            </a>
+          </div>`
+        + metricsHTML(s.post, colors);
+    }
+
+    /* ---- Dots ---- */
+    function updateDots() {
+      if (!slides.length) { stDots.innerHTML = ''; return; }
+      const cur = slides[curIdx];
+      const postSlides = slides.filter(s => s.post.uri === cur.post.uri);
+      const ai = postSlides.indexOf(cur);
+      stDots.innerHTML = postSlides.map((_, i) =>
+        `<span class="stream-dot${i === ai ? ' active' : ''}"></span>`
+      ).join('');
+    }
+
+    /* ---- Navigation ---- */
+    function advance() {
+      if (!slides.length) return;
+      if (curIdx < slides.length - 1) { curIdx++; renderSlide(slides[curIdx], 1); }
+      resetTimer();
+      if (curIdx >= slides.length - 6) loadMore();
+    }
+    function retreat() {
+      if (curIdx <= 0) return;
+      curIdx--;
+      renderSlide(slides[curIdx], -1);
+      resetTimer();
+    }
+
+    /* ---- Timer ---- */
+    function startTimer() {
+      timerStart = performance.now();
+      const dur = stDuration * 1000;
+      function tick(now) {
+        if (paused) return;
+        const p = Math.min((now - timerStart) / dur, 1);
+        stProgress.style.width = (p * 100) + '%';
+        if (p >= 1) { advance(); return; }
+        timerAF = requestAnimationFrame(tick);
+      }
+      timerAF = requestAnimationFrame(tick);
+    }
+    function stopTimer() { cancelAnimationFrame(timerAF); timerAF = null; }
+    function resetTimer() {
+      stopTimer();
+      stProgress.style.width = '0%';
+      if (!paused) startTimer();
+    }
+    function updatePauseIcon() {
+      stPauseIcon.innerHTML = paused
+        ? '<polygon points="5 3 19 12 5 21 5 3"/>'
+        : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+      stPauseBtn.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+    }
+
+    /* ---- Controls auto-hide ---- */
+    function showControls() {
+      stCtrlTop.classList.remove('hidden');
+      stDots.classList.remove('hidden');
+    }
+    function resetCtrlTimer() {
+      clearTimeout(ctrlTimer);
+      showControls();
+      ctrlTimer = setTimeout(() => {
+        stCtrlTop.classList.add('hidden');
+        stDots.classList.add('hidden');
+      }, 3000);
+    }
+
+    /* ---- Wake lock ---- */
+    async function acquireWake() {
+      if (!stWake || !('wakeLock' in navigator)) return;
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+    }
+    function releaseWake() { if (wakeLock) { wakeLock.release(); wakeLock = null; } }
+
+    /* ---- Feed loading ---- */
+    async function loadMore() {
+      if (loadingMore) return;
+      loadingMore = true;
+      if (!slides.length) stLoading.hidden = false;
+      const nextIdx = slides.length ? slides[slides.length - 1].postIdx + 1 : 0;
+      try {
+        let posts = [], nc = null;
+        if (stSource === 'discover') {
+          const r = await API.getFeed(DISCOVER_FEED_URI, 20, feedCursor || undefined);
+          posts = (r.feed || []).map(i => i.post); nc = r.cursor;
+        } else if (stSource === 'following') {
+          const r = await API.getTimeline(20, feedCursor || undefined);
+          posts = (r.feed || []).map(i => i.post); nc = r.cursor;
+        } else if (stSource.startsWith('search:')) {
+          const r = await API.searchPosts(stSource.slice(7), 'latest', 20, feedCursor || undefined);
+          posts = r.posts || []; nc = r.cursor;
+        }
+        const newSlides = posts.flatMap((p, i) => buildSlides(p, nextIdx + i));
+        slides.push(...newSlides);
+        feedCursor = nc;
+      } catch {}
+      loadingMore = false;
+      stLoading.hidden = true;
+      if (slides.length && curIdx === 0 && stSlide.innerHTML === '') renderSlide(slides[0], 0);
+    }
+
+    /* ---- Start / Stop ---- */
+    function startStream() {
+      loadOpts();
+      slides = [];
+      curIdx = 0;
+      feedCursor = null;
+      paused = false;
+      stSetup.hidden = true;
+      stPlayer.hidden = false;
+      stSlide.innerHTML = '';
+      stProgress.style.width = '0%';
+      updatePauseIcon();
+      resetCtrlTimer();
+      acquireWake();
+      loadMore();
+    }
+    function stopStream() {
+      stopTimer();
+      clearTimeout(ctrlTimer);
+      releaseWake();
+      stPlayer.hidden = true;
+      stSetup.hidden = false;
+      slides = [];
+      stSlide.innerHTML = '';
+      stProgress.style.width = '0%';
+      stSourcePicker.hidden = true;
+    }
+    window.streamStop = stopStream;
+
+    /* ---- Event listeners ---- */
+    stStartBtn.addEventListener('click', startStream);
+    stStopBtn.addEventListener('click', stopStream);
+    stPauseBtn.addEventListener('click', () => {
+      paused = !paused;
+      paused ? stopTimer() : startTimer();
+      updatePauseIcon();
+      resetCtrlTimer();
+    });
+    stReplyBtn.addEventListener('click', () => {
+      if (!slides.length) return;
+      const post = slides[curIdx].post;
+      stopStream();
+      openThread(post.uri, post.cid || '', post.author?.handle || '');
+    });
+    stSlide.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return; // don't intercept link clicks
+      resetCtrlTimer();
+    });
+
+    // Source picker
+    stSourceBtn.addEventListener('click', () => { stSourcePicker.hidden = !stSourcePicker.hidden; resetCtrlTimer(); });
+    $('stream-picker-done').addEventListener('click', () => {
+      stSourcePicker.hidden = true;
+      if (!slides.length) loadMore();
+    });
+    $('stream-picker-go').addEventListener('click', () => {
+      const q = $('stream-picker-search').value.trim();
+      if (!q) return;
+      stSource = 'search:' + q;
+      stSourceLbl.textContent = q.substring(0, 14).toUpperCase();
+      slides = []; curIdx = 0; feedCursor = null; stSlide.innerHTML = '';
+      stSourcePicker.hidden = true;
+      loadMore();
+    });
+    document.querySelectorAll('[data-picker-src]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stSource = btn.dataset.pickerSrc;
+        stSourceLbl.textContent = stSource.toUpperCase();
+        document.querySelectorAll('[data-picker-src]').forEach(b => b.classList.toggle('active', b === btn));
+        slides = []; curIdx = 0; feedCursor = null; stSlide.innerHTML = '';
+        stSourcePicker.hidden = true;
+        loadMore();
+      });
+    });
+
+    // Setup pill handlers
+    document.querySelectorAll('[data-stream-source]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stSource = btn.dataset.streamSource;
+        document.querySelectorAll('[data-stream-source]').forEach(b => b.classList.toggle('active', b === btn));
+        stSourceLbl.textContent = stSource.toUpperCase();
+        $('stream-search-chip').hidden = true;
+      });
+    });
+    $('stream-search-set').addEventListener('click', () => {
+      const q = $('stream-search-input').value.trim();
+      if (!q) return;
+      stSource = 'search:' + q;
+      stSourceLbl.textContent = q.substring(0, 14).toUpperCase();
+      document.querySelectorAll('[data-stream-source]').forEach(b => b.classList.remove('active'));
+      const chip = $('stream-search-chip');
+      chip.innerHTML = `<span>Streaming: "${escapeHTML(q)}"</span><button aria-label="Clear search">&times;</button>`;
+      chip.hidden = false;
+      chip.querySelector('button').addEventListener('click', () => {
+        stSource = 'discover';
+        $('stream-search-input').value = '';
+        chip.hidden = true;
+        document.querySelectorAll('[data-stream-source]').forEach(b => b.classList.toggle('active', b.dataset.streamSource === 'discover'));
+        stSourceLbl.textContent = 'DISCOVER';
+      });
+    });
+    document.querySelectorAll('[data-stream-dur]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stDuration = +btn.dataset.streamDur;
+        document.querySelectorAll('[data-stream-dur]').forEach(b => b.classList.toggle('active', b === btn));
+        saveOpts();
+      });
+    });
+    document.querySelectorAll('[data-stream-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stFilter = btn.dataset.streamFilter;
+        document.querySelectorAll('[data-stream-filter]').forEach(b => b.classList.toggle('active', b === btn));
+        saveOpts();
+      });
+    });
+    $('stream-bg-row').querySelector('[data-stream-bg="random"]').addEventListener('click', () => {
+      stBgMode = 'random';
+      document.querySelectorAll('[data-stream-bg]').forEach(b => b.classList.toggle('active', b.dataset.streamBg === 'random'));
+      document.querySelectorAll('.stream-color-swatch').forEach(b => b.classList.remove('active'));
+      saveOpts();
+    });
+    document.querySelectorAll('.stream-color-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stBgMode = btn.dataset.streamBg;
+        document.querySelectorAll('.stream-color-swatch').forEach(b => b.classList.toggle('active', b === btn));
+        $('stream-bg-row').querySelector('[data-stream-bg="random"]').classList.remove('active');
+        saveOpts();
+      });
+    });
+    ['stream-opt-metrics', 'stream-opt-alt', 'stream-opt-combine', 'stream-opt-wake'].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('change', () => {
+        stMetrics = $('stream-opt-metrics').checked;
+        stAltText = $('stream-opt-alt').checked;
+        stCombine = $('stream-opt-combine').checked;
+        stWake    = $('stream-opt-wake').checked;
+        saveOpts();
+      });
+    });
+
+    // Touch swipe
+    stPlayer.addEventListener('touchstart', e => { touchSX = e.touches[0].clientX; touchSY = e.touches[0].clientY; }, { passive: true });
+    stPlayer.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - touchSX;
+      const dy = e.changedTouches[0].clientY - touchSY;
+      if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
+        dx < 0 ? advance() : retreat();
+      }
+      resetCtrlTimer();
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      if (stPlayer.hidden) return;
+      switch (e.key) {
+        case 'ArrowRight': advance(); resetCtrlTimer(); break;
+        case 'ArrowLeft':  retreat(); resetCtrlTimer(); break;
+        case ' ':
+          e.preventDefault();
+          paused = !paused;
+          paused ? stopTimer() : startTimer();
+          updatePauseIcon();
+          resetCtrlTimer();
+          break;
+        case 'Escape': stopStream(); break;
+      }
+    });
+
+    // Load saved settings when view is shown
+    loadOpts();
   })();
 
   /* ================================================================

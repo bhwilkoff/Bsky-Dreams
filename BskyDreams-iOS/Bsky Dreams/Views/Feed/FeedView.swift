@@ -117,7 +117,9 @@ struct FeedView: View {
                             markPostSeen(item.post)
                             // Trigger next page when within last 10 items — loads ahead
                             // of the scroll position so images are cached before they're visible.
-                            if items.suffix(10).contains(where: { $0.id == item.id }) {
+                            let count = items.count
+                            if let idx = items.lastIndex(where: { $0.id == item.id }),
+                               idx >= count - 10 {
                                 Task { await loadFeed(loadMore: true) }
                             }
                         }

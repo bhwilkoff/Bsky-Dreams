@@ -92,8 +92,9 @@ struct NotificationsView: View {
         var i = 0
         while i < notifs.count {
             let n = notifs[i]
-            // Only group likes/reposts that share the same reasonSubject
-            if (n.reason == .like || n.reason == .repost), let subject = n.reasonSubject {
+            // Group likes/reposts (including via-repost variants) that share the same reasonSubject
+            let isGroupable = [.like, .repost, .likeViaRepost, .repostViaRepost].contains(n.reason)
+            if isGroupable, let subject = n.reasonSubject {
                 var grouped = [n]
                 var j = i + 1
                 while j < notifs.count {
@@ -118,9 +119,10 @@ struct NotificationsView: View {
     // MARK: - Subject text fetching
 
     private func enrichGroupsWithSubjectText(_ groups: inout [NotificationGroup]) async {
+        let subjectReasons: Set<BskyNotification.NotificationReason> = [.like, .repost, .likeViaRepost, .repostViaRepost]
         let subjectURIs = groups
             .compactMap { g -> String? in
-                guard g.primary.reason == .like || g.primary.reason == .repost else { return nil }
+                guard subjectReasons.contains(g.primary.reason) else { return nil }
                 return g.primary.reasonSubject
             }
         guard !subjectURIs.isEmpty else { return }
@@ -200,9 +202,9 @@ struct NotificationGroupRowView: View {
 
     var accentColor: Color {
         switch notification.reason {
-        case .like: return .nbAccent
-        case .repost: return .nbLime
-        case .follow: return .nbBlue
+        case .like, .likeViaRepost: return .nbAccent
+        case .repost, .repostViaRepost: return .nbLime
+        case .follow, .starterpackJoined: return .nbBlue
         default: return .nbBlack
         }
     }
@@ -316,16 +318,21 @@ struct NotificationGroupRowView: View {
 
     private func navigate() {
         switch notification.reason {
-        case .follow:
+        case .follow, .starterpackJoined:
             store.navigationPath.append(ProfileDestination(actor: notification.author.did))
-        case .like, .repost:
+        case .like, .repost, .likeViaRepost, .repostViaRepost:
             if let subject = notification.reasonSubject {
                 store.navigationPath.append(PostDestination(uri: subject, post: nil))
             }
         case .reply, .mention, .quote:
             store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
-        default:
-            store.navigationPath.append(ProfileDestination(actor: notification.author.did))
+        case .unknown:
+            // Best-effort: try reasonSubject first, fall back to notification URI, then profile
+            if let subject = notification.reasonSubject {
+                store.navigationPath.append(PostDestination(uri: subject, post: nil))
+            } else {
+                store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
+            }
         }
     }
 }

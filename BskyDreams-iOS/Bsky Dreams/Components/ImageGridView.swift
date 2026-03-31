@@ -893,15 +893,31 @@ struct VideoThumbnailView: View {
     let video: VideoEmbed
     @State private var player: AVPlayer? = nil
     @State private var isPlaying = false
+    @State private var showFullscreen = false
 
     private var hasPlayableURL: Bool { video.playlist != nil }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             if isPlaying, let player {
                 VideoPlayer(player: player)
                     .frame(maxWidth: .infinity)
                     .frame(height: 300)
+
+                // Fullscreen button overlay
+                Button {
+                    player.pause()
+                    showFullscreen = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(10)
             } else {
                 // Thumbnail with play button overlay
                 ZStack {
@@ -939,6 +955,12 @@ struct VideoThumbnailView: View {
             player = nil
             isPlaying = false
         }
+        .fullScreenCover(isPresented: $showFullscreen) {
+            // Resume inline playback when fullscreen dismisses
+            if let player { player.play() }
+        } content: {
+            FullscreenVideoPlayer(playlist: video.playlist ?? "")
+        }
     }
 
     private func startPlaying() {
@@ -950,6 +972,37 @@ struct VideoThumbnailView: View {
         p.play()
         player = p
         isPlaying = true
+    }
+}
+
+// MARK: - Fullscreen Video Player (wraps AVPlayerViewController)
+
+private struct FullscreenVideoPlayer: UIViewControllerRepresentable {
+    let playlist: String
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let vc = AVPlayerViewController()
+        guard let url = URL(string: playlist) else { return vc }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let player = AVPlayer(url: url)
+        vc.player = player
+        vc.allowsPictureInPicturePlayback = true
+        player.play()
+        context.coordinator.onDismiss = { [weak player] in
+            player?.pause()
+        }
+        return vc
+    }
+
+    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var onDismiss: (() -> Void)?
+        deinit { onDismiss?() }
     }
 }
 
