@@ -28,6 +28,12 @@ private struct StreamLinkPresentation: Identifiable {
     let post: PostView?
 }
 
+private struct StreamConversationPresentation: Identifiable {
+    let id = UUID()
+    let uri: String
+    let post: PostView?
+}
+
 private struct IndexedSlide: Identifiable {
     let slide: StreamSlide
     let postIndex: Int
@@ -127,6 +133,7 @@ struct StreamView: View {
     @State private var showSourcePicker = false
     @State private var searchInput = ""
     @State private var linkPresentation: StreamLinkPresentation? = nil
+    @State private var conversationPresentation: StreamConversationPresentation? = nil
     @State private var timerTask: Task<Void, Never>? = nil
     @State private var seenURISet: Set<String> = []
     @State private var controlsVisible = true
@@ -505,17 +512,12 @@ struct StreamView: View {
 
                     Spacer()
 
-                    // Reply — navigate to conversation view for the current slide's post
+                    // Reply — open conversation as overlay (same pattern as article reader)
                     if let post = currentSlide?.slide.post {
                         Button {
                             resetControlTimer()
                             stopTimer()
-                            isLandscape = false
-                            // Dispatch navigation after the fullscreen cover dismisses
-                            Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(400))
-                                store.navigationPath.append(PostDestination(uri: post.uri, post: post))
-                            }
+                            conversationPresentation = StreamConversationPresentation(uri: post.uri, post: post)
                         } label: {
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 12, weight: .bold))
@@ -624,6 +626,12 @@ struct StreamView: View {
         .fullScreenCover(item: $linkPresentation) { pres in
             ArticleReaderSheet(card: pres.card, post: pres.post)
                 .onDisappear { if !isPaused { startTimer() } }
+        }
+        .fullScreenCover(item: $conversationPresentation) { pres in
+            NavigationStack {
+                ThreadView(uri: pres.uri, initialPost: pres.post)
+            }
+            .onDisappear { if !isPaused { startTimer() } }
         }
     }
 

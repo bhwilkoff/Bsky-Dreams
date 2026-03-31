@@ -7531,11 +7531,11 @@ html[data-theme="dark"] .theme-toggle-btn {
 /* ================================================================
    STREAM VIEW
 ================================================================ */
-.view-stream { padding: 0 !important; overflow: hidden; }
+.view-stream { padding: 0 !important; overflow: auto; }
 @media (min-width: 768px) { .view-stream { padding-left: var(--sidebar-width, 260px) !important; } }
 
 /* Setup */
-.stream-setup { max-width: 520px; margin: 0 auto; padding: 16px; }
+.stream-setup { max-width: 520px; margin: 0 auto; padding: 16px; padding-bottom: 60px; }
 .stream-hero {
   border: 2px solid var(--nb-black); background: var(--color-surface-alt);
   margin-bottom: 16px; position: relative; overflow: hidden;
