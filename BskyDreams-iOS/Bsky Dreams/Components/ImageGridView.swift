@@ -893,7 +893,6 @@ struct VideoThumbnailView: View {
     let video: VideoEmbed
     @State private var player: AVPlayer? = nil
     @State private var isPlaying = false
-    @State private var showFullscreen = false
 
     private var hasPlayableURL: Bool { video.playlist != nil }
 
@@ -904,10 +903,9 @@ struct VideoThumbnailView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 300)
 
-                // Fullscreen button overlay
+                // Fullscreen button — presents AVPlayerViewController natively via UIKit
                 Button {
-                    player.pause()
-                    showFullscreen = true
+                    presentFullscreen(player: player)
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 13, weight: .bold))
@@ -949,23 +947,20 @@ struct VideoThumbnailView: View {
                 }
             }
         }
+        // Prevent SwiftUI animation propagation into AVPlayerViewController.
+        // Without this, animated layout changes (e.g. inline reply opening in ThreadView)
+        // crash because AVKit doesn't support CoreAnimation implicit frame animations.
+        .transaction { $0.animation = nil }
         .nbBorder()
         .onDisappear {
             player?.pause()
             player = nil
             isPlaying = false
         }
-        .fullScreenCover(isPresented: $showFullscreen) {
-            // Resume inline playback when fullscreen dismisses
-            if let player { player.play() }
-        } content: {
-            FullscreenVideoPlayer(playlist: video.playlist ?? "")
-        }
     }
 
     private func startPlaying() {
         guard let playlist = video.playlist, let url = URL(string: playlist) else { return }
-        // Override silent switch — explicit user action should always play audio
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
         let p = AVPlayer(url: url)
@@ -973,36 +968,36 @@ struct VideoThumbnailView: View {
         player = p
         isPlaying = true
     }
-}
 
-// MARK: - Fullscreen Video Player (wraps AVPlayerViewController)
+    /// Present the native AVPlayerViewController directly via UIKit.
+    /// Reuses the existing AVPlayer so playback continues from the current position.
+    /// Dismissal is handled entirely by AVKit — no intermediate SwiftUI layer.
+    private func presentFullscreen(player: AVPlayer) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.keyWindow?.rootViewController else { return }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
 
-private struct FullscreenVideoPlayer: UIViewControllerRepresentable {
-    let playlist: String
-    @Environment(\.dismiss) private var dismiss
+        // Capture current position before the handoff
+        let currentTime = player.currentTime()
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        // Hide the inline SwiftUI VideoPlayer so it releases the AVPlayer.
+        // Two controllers attached to the same AVPlayer causes the pause.
+        isPlaying = false
+        self.player = nil
+
+        // Create a fresh player from the same URL at the same position
+        guard let playlist = video.playlist, let url = URL(string: playlist) else { return }
+        let fsPlayer = AVPlayer(url: url)
         let vc = AVPlayerViewController()
-        guard let url = URL(string: playlist) else { return vc }
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        let player = AVPlayer(url: url)
-        vc.player = player
+        vc.player = fsPlayer
         vc.allowsPictureInPicturePlayback = true
-        player.play()
-        context.coordinator.onDismiss = { [weak player] in
-            player?.pause()
+
+        top.present(vc, animated: true) {
+            fsPlayer.seek(to: currentTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                fsPlayer.play()
+            }
         }
-        return vc
-    }
-
-    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator {
-        var onDismiss: (() -> Void)?
-        deinit { onDismiss?() }
     }
 }
 

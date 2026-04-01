@@ -8,6 +8,7 @@ import UIKit
 
 struct TVView: View {
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    private let videoFeedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/thevids"
 
     private let topics = [
         "News", "Sports", "Music", "Art", "Gaming",
@@ -399,11 +400,17 @@ struct TVView: View {
         do {
             var allPosts: [PostView] = []
             if query.isEmpty {
-                let home = try await ATProtocolClient.shared.getTimeline(limit: 50)
+                // Fetch home timeline, discover, AND the official trending video feed in parallel
+                async let homeResult = ATProtocolClient.shared.getTimeline(limit: 50)
+                async let discoverResult = try? ATProtocolClient.shared.getFeed(uri: discoverURI, limit: 50)
+                async let videoResult = try? ATProtocolClient.shared.getFeed(uri: videoFeedURI, limit: 50)
+
+                let home = try await homeResult
+                let discover = await discoverResult
+                let videoFeed = await videoResult
                 timelineCursor = home.cursor
-                let discover = try? await ATProtocolClient.shared.getFeed(uri: discoverURI, limit: 50)
                 if let discover { discoverCursor = discover.cursor }
-                allPosts = (home.feed + (discover?.feed ?? [])).map { $0.post }
+                allPosts = (home.feed + (discover?.feed ?? []) + (videoFeed?.feed ?? [])).map { $0.post }
             } else {
                 let tagResp = try? await ATProtocolClient.shared.searchPosts(q: "#\(query)", sort: "top", limit: 50)
                 let plainResp = try? await ATProtocolClient.shared.searchPosts(q: query, sort: "top", limit: 50)
@@ -436,9 +443,10 @@ struct TVView: View {
         defer { isLoading = false }
         let home = try? await ATProtocolClient.shared.getTimeline(limit: 50, cursor: timelineCursor)
         let discover = try? await ATProtocolClient.shared.getFeed(uri: discoverURI, limit: 50, cursor: discoverCursor)
+        let videoFeed = try? await ATProtocolClient.shared.getFeed(uri: videoFeedURI, limit: 50)
         if let home { timelineCursor = home.cursor }
         if let discover { discoverCursor = discover.cursor }
-        let newPosts = ((home?.feed ?? []) + (discover?.feed ?? [])).map { $0.post }
+        let newPosts = ((home?.feed ?? []) + (discover?.feed ?? []) + (videoFeed?.feed ?? [])).map { $0.post }
         let existing = Set(videos.map { $0.uri })
         videos.append(contentsOf: applyFilters(newPosts).filter { !existing.contains($0.uri) })
     }

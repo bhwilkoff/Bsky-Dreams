@@ -4,11 +4,13 @@ import WebKit
 
 struct ReaderView: View {
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    private let newsFeedURI = "at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news"
 
     @Environment(\.modelContext) private var modelContext
     @State private var articles: [PostView] = []
     @State private var timelineCursor: String?
     @State private var discoverCursor: String?
+    @State private var newsCursor: String?
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
@@ -17,6 +19,16 @@ struct ReaderView: View {
     // In-memory seen-URI cache — avoids @Query cascade re-renders on every
     // mark-seen insert (same pattern as FeedView).
     @State private var seenURISet: Set<String> = []
+    @State private var autoFetchCount = 0
+
+    /// Pre-filtered: only articles that actually have an external card.
+    /// Prevents empty/invisible rows in the LazyVStack.
+    private var articlesWithCards: [(post: PostView, card: ExternalCard)] {
+        articles.compactMap { post in
+            guard let card = post.embed?.external else { return nil }
+            return (post: post, card: card)
+        }
+    }
 
     var body: some View {
         Group {
@@ -56,25 +68,25 @@ struct ReaderView: View {
     private var articleList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(articles) { post in
-                    if let card = post.embed?.external {
-                        ArticleCardView(
-                            post: post,
-                            card: card,
-                            isRead: readURLs.contains(card.uri)
-                        ) {
-                            readURLs.insert(card.uri)
-                            selectedArticle = post
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .opacity(readURLs.contains(card.uri) ? 0.5 : 1.0)
-                        .onAppear {
-                            markSeenPost(post)
-                            // Trigger next page within last 5 articles
-                            if articles.suffix(5).contains(where: { $0.uri == post.uri }) {
-                                Task { await load(loadMore: true) }
-                            }
+                ForEach(articlesWithCards, id: \.post.uri) { item in
+                    ArticleCardView(
+                        post: item.post,
+                        card: item.card,
+                        isRead: readURLs.contains(item.card.uri)
+                    ) {
+                        readURLs.insert(item.card.uri)
+                        selectedArticle = item.post
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .opacity(readURLs.contains(item.card.uri) ? 0.5 : 1.0)
+                    .onAppear {
+                        markSeenPost(item.post)
+                        // Trigger next page within last 5 articles
+                        let count = articlesWithCards.count
+                        if let idx = articlesWithCards.firstIndex(where: { $0.post.uri == item.post.uri }),
+                           idx >= count - 5 {
+                            Task { await load(loadMore: true) }
                         }
                     }
                 }
@@ -93,6 +105,7 @@ struct ReaderView: View {
             articles = []
             timelineCursor = nil
             discoverCursor = nil
+            newsCursor = nil
             await load()
         }
         .sheet(item: $selectedArticle) { post in
@@ -112,21 +125,29 @@ struct ReaderView: View {
         }
 
         do {
-            let home = try await ATProtocolClient.shared.getTimeline(
+            // Fetch home timeline, discover, AND verified news feed in parallel
+            async let homeResult = ATProtocolClient.shared.getTimeline(
                 limit: 50, cursor: loadMore ? timelineCursor : nil
             )
-            timelineCursor = home.cursor
-
-            let discover = try? await ATProtocolClient.shared.getFeed(
-                uri: discoverURI, limit: 50, cursor: loadMore ? discoverCursor : nil
+            async let discoverResult = try? ATProtocolClient.shared.getFeed(
+                uri: discoverURI, limit: 30, cursor: loadMore ? discoverCursor : nil
             )
-            if let discover { discoverCursor = discover.cursor }
+            async let newsResult = try? ATProtocolClient.shared.getFeed(
+                uri: newsFeedURI, limit: 30, cursor: loadMore ? newsCursor : nil
+            )
 
-            let allItems = home.feed + (discover?.feed ?? [])
+            let home = try await homeResult
+            let discover = await discoverResult
+            let news = await newsResult
+
+            timelineCursor = home.cursor
+            if let discover { discoverCursor = discover.cursor }
+            if let news { newsCursor = news.cursor }
+
+            let allItems = home.feed + (discover?.feed ?? []) + (news?.feed ?? [])
             let filtered = allItems.compactMap { item -> PostView? in
                 guard let ext = item.post.embed?.external else { return nil }
                 guard isReadableArticle(ext) else { return nil }
-                // Skip articles whose post was already seen in the home feed
                 guard !seenURISet.contains(item.post.uri) else { return nil }
                 return item.post
             }
@@ -135,14 +156,31 @@ struct ReaderView: View {
                 let existingUris = Set(articles.map { $0.uri })
                 let newArticles = filtered.filter { !existingUris.contains($0.uri) }
                 articles.append(contentsOf: newArticles)
-                // Pre-warm article thumbnail images
                 let urlsToWarm = newArticles.flatMap { feedItemImageURLs(for: $0) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
+
+                let hasMore = timelineCursor != nil || discoverCursor != nil || newsCursor != nil
+                if newArticles.isEmpty && hasMore && autoFetchCount < 5 {
+                    autoFetchCount += 1
+                    isLoading = false
+                    await load(loadMore: true)
+                    return
+                }
+                autoFetchCount = 0
             } else {
-                var seen = Set<String>()
-                articles = filtered.filter { seen.insert($0.uri).inserted }
+                var dedup = Set<String>()
+                articles = filtered.filter { dedup.insert($0.uri).inserted }
                 let urlsToWarm = articles.flatMap { feedItemImageURLs(for: $0) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
+
+                let hasMore = timelineCursor != nil || discoverCursor != nil || newsCursor != nil
+                if articles.count < 5 && hasMore && autoFetchCount < 5 {
+                    autoFetchCount += 1
+                    isLoading = false
+                    await load(loadMore: true)
+                    return
+                }
+                autoFetchCount = 0
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -419,31 +457,57 @@ struct ArticleReaderSheet: View {
                 title: URL(string: card.uri)?.host?.uppercased() ?? "ARTICLE",
                 leading: { NBBackButton() },
                 trailing: {
-                    HStack(spacing: 8) {
-                        // Open in Safari (external browser, not in-app)
-                        if let url = URL(string: card.uri) {
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Image(systemName: "safari")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color.nbBlack)
-                                    .frame(width: 36, height: 36)
-                                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        ShareLink(item: URL(string: card.uri) ?? URL(string: "https://bskydreams.com")!) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.nbBlack)
-                                .frame(width: 36, height: 36)
-                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        }
+                    Button {
+                        guard let url = URL(string: card.uri) else { return }
+                        // Present UIActivityViewController via UIKit so it gets the full
+                        // system share sheet (including "Open in Safari" action).
+                        // SwiftUI's ShareLink and .sheet-wrapped UIActivityViewController
+                        // both omit Safari when presented inside an existing sheet.
+                        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                              let root = scene.keyWindow?.rootViewController else { return }
+                        var top = root
+                        while let presented = top.presentedViewController { top = presented }
+                        let avc = UIActivityViewController(activityItems: [url], applicationActivities: [OpenInSafariActivity()])
+                        avc.popoverPresentationController?.sourceView = top.view
+                        avc.popoverPresentationController?.sourceRect = CGRect(x: top.view.bounds.midX, y: 40, width: 0, height: 0)
+                        top.present(avc, animated: true)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.nbBlack)
+                            .frame(width: 36, height: 36)
+                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                     }
+                    .buttonStyle(.plain)
                 }
             )
         }
+    }
+}
+
+// MARK: - Open in Safari custom activity
+// The system's built-in "Open in Safari" action is suppressed when the share sheet
+// is presented from within a WKWebView context. A custom UIActivity guarantees the
+// option is always visible in the share sheet's app/actions row.
+
+private final class OpenInSafariActivity: UIActivity {
+    private var url: URL?
+
+    override var activityTitle: String? { "Open in Safari" }
+    override var activityImage: UIImage? { UIImage(systemName: "safari") }
+    override var activityType: UIActivity.ActivityType? { .init("com.bskydreams.openInSafari") }
+
+    override func canPerform(withActivityItems activityItems: [Any]) -> Bool {
+        activityItems.contains { $0 is URL }
+    }
+
+    override func prepare(withActivityItems activityItems: [Any]) {
+        url = activityItems.first { $0 is URL } as? URL
+    }
+
+    override func perform() {
+        if let url { UIApplication.shared.open(url) }
+        activityDidFinish(true)
     }
 }
 

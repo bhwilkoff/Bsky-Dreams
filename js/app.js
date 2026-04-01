@@ -161,9 +161,18 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
-  const DISCOVER_FEED_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
-let feedMode           = 'discover';  // 'following' | 'discover'
+  const DISCOVER_FEED_URI  = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
+  const HOT_CLASSIC_URI    = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic';
+  const WITH_FRIENDS_URI   = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends';
+  // Following sources
+  const BEST_OF_FOLLOWS_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows';
+  const FOR_YOU_URI         = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
+  let feedMode           = 'discover';  // 'following' | 'discover'
   let feedCursor         = null; // pagination cursor for home feed
+  let feedCursorClassic  = null;
+  let feedCursorFriends  = null;
+  let feedCursorBestOf   = null;
+  let feedCursorForYou   = null;
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
   let profileCursor      = null; // pagination cursor for profile feed
@@ -1522,8 +1531,12 @@ let feedMode           = 'discover';  // 'following' | 'discover'
   const galleryEmpty   = $('gallery-empty');
   const galleryEndMsg  = $('gallery-end'); // M59: end-of-feed indicator
 
-  let galleryCursorTimeline = null;
-  let galleryCursorDiscover = null;
+  let galleryCursorTimeline  = null;
+  let galleryCursorDiscover  = null;
+  let galleryCursorFollowPic = null;
+  let galleryCursorArt       = null;
+  const FOLLOW_PICS_URI = 'at://did:plc:vpkhqolt662uhesyj6nxm7ys/app.bsky.feed.generator/followpics';
+  const ART_TREND_URI   = 'at://did:plc:y7crv2yh74s7qhmtx3mvbgv5/app.bsky.feed.generator/art-new';
   let galleryLoading_flag   = false;
   let galleryAllDone        = false;
   let gallerySeenCids       = new Set(); // dedup by blob CID (within session)
@@ -1728,27 +1741,26 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     galleryLoading.hidden = false;
 
     try {
-      const [timelineRes, discoverRes] = await Promise.allSettled([
+      const [timelineRes, discoverRes, picsRes, artRes] = await Promise.allSettled([
         galleryCursorTimeline !== 'done' ? API.getTimeline(30, galleryCursorTimeline || undefined) : Promise.resolve(null),
-        galleryCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 30, galleryCursorDiscover || undefined) : Promise.resolve(null),
+        galleryCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 20, galleryCursorDiscover || undefined) : Promise.resolve(null),
+        galleryCursorFollowPic !== 'done' ? API.getFeed(FOLLOW_PICS_URI, 20, galleryCursorFollowPic || undefined) : Promise.resolve(null),
+        galleryCursorArt !== 'done' ? API.getFeed(ART_TREND_URI, 15, galleryCursorArt || undefined) : Promise.resolve(null),
       ]);
 
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
+      const picsData     = picsRes.status === 'fulfilled' ? picsRes.value : null;
+      const artData      = artRes.status === 'fulfilled' ? artRes.value : null;
 
       // Update cursors
-      if (timelineData) {
-        galleryCursorTimeline = timelineData.cursor || 'done';
-      } else {
-        galleryCursorTimeline = 'done';
-      }
-      if (discoverData) {
-        galleryCursorDiscover = discoverData.cursor || 'done';
-      } else {
-        galleryCursorDiscover = 'done';
-      }
+      galleryCursorTimeline  = timelineData?.cursor || 'done';
+      galleryCursorDiscover  = discoverData?.cursor || 'done';
+      galleryCursorFollowPic = picsData?.cursor || 'done';
+      galleryCursorArt       = artData?.cursor || 'done';
 
-      if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done') {
+      if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done'
+          && galleryCursorFollowPic === 'done' && galleryCursorArt === 'done') {
         galleryAllDone = true;
       }
 
@@ -1756,6 +1768,8 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       const allItems = [
         ...(timelineData?.feed || []),
         ...(discoverData?.feed || []),
+        ...(picsData?.feed || []),
+        ...(artData?.feed || []),
       ];
 
       let rendered = 0;
@@ -1801,8 +1815,10 @@ let feedMode           = 'discover';  // 'following' | 'discover'
 
   /** Reset gallery state and load fresh. */
   function loadGallery() {
-    galleryCursorTimeline = null;
-    galleryCursorDiscover = null;
+    galleryCursorTimeline  = null;
+    galleryCursorDiscover  = null;
+    galleryCursorFollowPic = null;
+    galleryCursorArt       = null;
     galleryLoading_flag   = false;
     galleryAllDone        = false;
     gallerySeenCids       = new Set(); // reset blob-CID dedup for this session
@@ -1988,6 +2004,8 @@ let feedMode           = 'discover';  // 'following' | 'discover'
 
   let readerCursorTimeline  = null;
   let readerCursorDiscover  = null;
+  let readerCursorNews      = null;
+  const NEWS_FEED_URI = 'at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news';
   let readerLoading_flag    = false;
   let readerAllDone         = false;
   let readerSeenUriSet      = new Set(); // dedup post URIs within this reader session
@@ -2204,32 +2222,28 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     readerLoadingEl.hidden = false;
 
     try {
-      const [timelineRes, discoverRes] = await Promise.allSettled([
+      const [timelineRes, discoverRes, newsRes] = await Promise.allSettled([
         readerCursorTimeline !== 'done' ? API.getTimeline(30, readerCursorTimeline || undefined) : Promise.resolve(null),
-        readerCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 30, readerCursorDiscover || undefined) : Promise.resolve(null),
+        readerCursorDiscover !== 'done' ? API.getFeed(DISCOVER_FEED_URI, 20, readerCursorDiscover || undefined) : Promise.resolve(null),
+        readerCursorNews !== 'done' ? API.getFeed(NEWS_FEED_URI, 20, readerCursorNews || undefined) : Promise.resolve(null),
       ]);
 
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
+      const newsData     = newsRes.status === 'fulfilled' ? newsRes.value : null;
 
-      if (timelineData) {
-        readerCursorTimeline = timelineData.cursor || 'done';
-      } else {
-        readerCursorTimeline = 'done';
-      }
-      if (discoverData) {
-        readerCursorDiscover = discoverData.cursor || 'done';
-      } else {
-        readerCursorDiscover = 'done';
-      }
+      readerCursorTimeline = timelineData?.cursor || 'done';
+      readerCursorDiscover = discoverData?.cursor || 'done';
+      readerCursorNews     = newsData?.cursor || 'done';
 
-      if (readerCursorTimeline === 'done' && readerCursorDiscover === 'done') {
+      if (readerCursorTimeline === 'done' && readerCursorDiscover === 'done' && readerCursorNews === 'done') {
         readerAllDone = true;
       }
 
       const allItems = [
         ...(timelineData?.feed || []),
         ...(discoverData?.feed || []),
+        ...(newsData?.feed || []),
       ];
 
       // First pass: dedup post URIs and collapse same article URLs to highest-engagement post
@@ -2290,6 +2304,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
   function loadReader() {
     readerCursorTimeline = null;
     readerCursorDiscover = null;
+    readerCursorNews     = null;
     readerLoading_flag   = false;
     readerAllDone        = false;
     readerSeenUriSet     = new Set();
@@ -3024,7 +3039,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       loadFeed();
     } else {
       // Feed already loaded — restore the scroll observer that showView disconnected.
-      const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
       if (hasMore) setupFeedScrollObserver();
     }
   });
@@ -3082,7 +3097,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       } else if (view === 'feed' && feedLoaded) {
         // Feed already has content — the scroll observer was disconnected on the way
         // out (showView tears it down) so reconnect it without reloading the feed.
-        const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
         if (hasMore) setupFeedScrollObserver();
       }
       if (view === 'gallery') {
@@ -3518,6 +3533,13 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
   }
 
+  /** HN-style trending score: (likes - 1) / (hours + 2)^1.8 */
+  function _trendScore(post) {
+    if (!post) return 0;
+    const hrs = Math.max(0, (Date.now() - new Date(post.indexedAt || 0).getTime()) / 3600000);
+    return ((post.likeCount || 0) - 1) / Math.pow(hrs + 2, 1.8);
+  }
+
   async function loadFeed(append = false) {
     // Guard: prevent concurrent append calls. The IntersectionObserver fires immediately
     // when observe() is called on an already-visible sentinel (e.g. after an all-filtered
@@ -3526,6 +3548,10 @@ let feedMode           = 'discover';  // 'following' | 'discover'
 
     if (!append) {
       feedCursor         = null;
+      feedCursorClassic  = null;
+      feedCursorFriends  = null;
+      feedCursorBestOf   = null;
+      feedCursorForYou   = null;
       feedLoaded         = false;
       feedSeenBypass     = false;    // M40: reset bypass on fresh feed load
       feedDiscoverLooped = false;    // reset loop-back flag on fresh load / tab switch
@@ -3536,14 +3562,38 @@ let feedMode           = 'discover';  // 'following' | 'discover'
     feedLoading = true;
     showLoading();
     try {
-      // When feedCursor is null during an append (e.g. Discovery loop-back), pass undefined
-      // so the API fetches the first page again (api.js get() skips null/undefined params).
-      const apiCursor = (append && feedCursor) ? feedCursor : undefined;
-      const data = feedMode === 'discover'
-        ? await API.getFeed(DISCOVER_FEED_URI, 50, apiCursor)
-        : await API.getTimeline(50, apiCursor);
-      const items  = data.feed || [];
-      feedCursor   = data.cursor || null;
+      let items;
+      if (feedMode === 'discover') {
+        // Hybrid discover: 3 feeds in parallel — personalized, network-wide, social-graph trending
+        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
+        const [primary, classic, friends] = await Promise.all([
+          API.getFeed(DISCOVER_FEED_URI, 30, apiCursor),
+          API.getFeed(HOT_CLASSIC_URI, 20, append ? feedCursorClassic || undefined : undefined).catch(() => null),
+          API.getFeed(WITH_FRIENDS_URI, 20, append ? feedCursorFriends || undefined : undefined).catch(() => null),
+        ]);
+        feedCursor        = primary.cursor || null;
+        feedCursorClassic = classic?.cursor || null;
+        feedCursorFriends = friends?.cursor || null;
+        const all = [...(primary.feed || []), ...(classic?.feed || []), ...(friends?.feed || [])];
+        const seen = new Set();
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u)) return false; seen.add(u); return true; })
+                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
+      } else {
+        // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
+        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
+        const [timeline, bestOf, forYou] = await Promise.all([
+          API.getTimeline(30, apiCursor),
+          API.getFeed(BEST_OF_FOLLOWS_URI, 20, append ? feedCursorBestOf || undefined : undefined).catch(() => null),
+          API.getFeed(FOR_YOU_URI, 20, append ? feedCursorForYou || undefined : undefined).catch(() => null),
+        ]);
+        feedCursor       = timeline.cursor || null;
+        feedCursorBestOf = bestOf?.cursor || null;
+        feedCursorForYou = forYou?.cursor || null;
+        const all = [...(timeline.feed || []), ...(bestOf?.feed || []), ...(forYou?.feed || [])];
+        const seen = new Set();
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u)) return false; seen.add(u); return true; })
+                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
+      }
       feedLoaded   = true;
 
       if (!append) feedResults.innerHTML = '';
@@ -3592,7 +3642,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       // Set up or tear down the scroll observer AFTER feedLoading is cleared.
       // Doing it here also ensures the observer is restarted after API errors
       // (previously a failed append would leave the observer dead, requiring a PTR).
-      const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
       if (hasMore) {
         setupFeedScrollObserver();
       } else if (feedScrollObserver) {
@@ -3791,7 +3841,7 @@ let feedMode           = 'discover';  // 'following' | 'discover'
       (entries) => {
         // Fire when sentinel is visible AND there are more pages.
         // Also fire when Discovery has looped back (feedDiscoverLooped + null cursor = fresh fetch).
-        const hasMore = feedCursor || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
         if (entries[0]?.isIntersecting && hasMore) loadFeed(true);
       },
       { root: viewFeed, rootMargin: '0px 0px 400px 0px', threshold: 0 }
