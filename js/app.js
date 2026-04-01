@@ -186,7 +186,7 @@
   let searchMediaFilters = new Set(); // M49: active media-type filter keys
 
   // Avatar fallback — SVG with Memphis design + Bsky Dreams cloud logo
-  const AVATAR_FALLBACK = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#0047FF"/><circle cx="4" cy="4" r="2.5" fill="#FF5C35"/><circle cx="36" cy="4" r="2.5" fill="#B8E04A"/><circle cx="4" cy="36" r="2.5" fill="#B8E04A"/><circle cx="36" cy="36" r="2.5" fill="#FF5C35"/><line x1="0" y1="14" x2="14" y2="0" stroke="#0A0A0A" stroke-width="1" opacity="0.25"/><line x1="26" y1="40" x2="40" y2="26" stroke="#0A0A0A" stroke-width="1" opacity="0.25"/><svg x="4" y="10" width="32" height="24" viewBox="0 0 80 54"><path d="M68 46H12a8 8 0 0 1-8-8 8 8 0 0 1 7.2-7.96A12 12 0 0 1 23 18a12 12 0 0 1 7.5 2.64A16 16 0 0 1 45 10a16 16 0 0 1 16 14.8A10 10 0 0 1 70 34a10 10 0 0 1-2 20Z" fill="white" stroke="#0A0A0A" stroke-width="3" stroke-linejoin="round"/></svg></svg>')}`;
+  const AVATAR_FALLBACK = 'assets/app-icon.png';
   // Expose for use in innerHTML onerror attributes
   window._bskyAvatarFallback = AVATAR_FALLBACK;
 
