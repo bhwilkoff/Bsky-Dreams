@@ -192,8 +192,9 @@ struct MainAppView: View {
             Task { await auth.refreshIfNeeded() }
             // Belt-and-suspenders: pick up any share saved while app was backgrounded.
             store.processPendingShare()
-            // Refresh notification badge count on every foreground
             Task { await refreshBadges() }
+            // Re-merge cloud seen posts on every foreground (catches cross-device syncs)
+            Task { await mergeSeenFromCloud() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bskyNotificationTapped)) { notification in
             let navType = notification.userInfo?["nav_type"] as? String
@@ -237,11 +238,17 @@ struct MainAppView: View {
         guard !cloudURIs.isEmpty else { return }
         let existingURIs = Set(seenPosts.map { $0.uri })
         let cutoff = Date().addingTimeInterval(-seenMaxAge)
+        var added = 0
         for uri in cloudURIs where !existingURIs.contains(uri) {
             modelContext.insert(SeenPost(uri: uri))
+            added += 1
         }
         // Prune local entries beyond 7-day window
         seenPosts.filter { $0.seenAt < cutoff }.forEach { modelContext.delete($0) }
+        // Notify FeedView (and other views) to refresh their in-memory seenURISet
+        if added > 0 {
+            NotificationCenter.default.post(name: AppStore.seenPostsMergedNotification, object: nil)
+        }
     }
 
     private func refreshBadges() async {

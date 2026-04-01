@@ -1090,15 +1090,23 @@
     const session = AUTH.getSession();
     if (!session?.did) return;
     const cutoff = Date.now() - SEEN_SYNC_WINDOW_MS;
-    const uris   = [];
+    const localURIs = [];
     for (const [uri, entry] of feedSeenMap) {
-      if (entry.seenAt >= cutoff) uris.push(uri);
+      if (entry.seenAt >= cutoff) localURIs.push(uri);
     }
-    if (uris.length === 0) return;
+    if (localURIs.length === 0) return;
     try {
+      // Read-merge-write: fetch cloud record, union with local, write merged result.
+      // Prevents one platform from overwriting the other's seen posts.
+      let cloudURIs = [];
+      try {
+        const result = await API.getRecord(session.did, SEEN_SYNC_COLLECTION, SEEN_SYNC_RKEY);
+        if (Array.isArray(result?.value?.uris)) cloudURIs = result.value.uris;
+      } catch {}
+      const merged = [...new Set([...localURIs, ...cloudURIs])];
       await API.putRecord(session.did, SEEN_SYNC_COLLECTION, SEEN_SYNC_RKEY, {
         $type:    SEEN_SYNC_COLLECTION,
-        uris,
+        uris:     merged,
         syncedAt: Date.now(),
       });
     } catch (err) {
@@ -1190,6 +1198,9 @@
     if (document.visibilityState === 'hidden') {
       saveFeedSeen();       // flush to localStorage immediately
       saveSeenToCloud();    // best-effort immediate cloud flush; don't wait for 30 s debounce
+    } else if (document.visibilityState === 'visible') {
+      // Re-merge cloud seen posts on every tab focus (catches cross-device syncs)
+      loadSeenFromCloud();
     }
   });
 
@@ -1781,6 +1792,7 @@
         // automatically caught by feedSeenMap after the first occurrence is rendered.
         if (isFeedPostSeen(post.uri)) continue;
         if (_isAdultPost(post)) continue;
+        if (!_isEnglishPost(post)) continue;
         if (!postHasImages(post)) continue;
         const card = buildGalleryCard(post);
         if (!card) continue;
@@ -2256,6 +2268,7 @@
         if (!post?.uri) continue;
         if (readerSeenUriSet.has(post.uri)) continue;
         if (_isAdultPost(post)) continue;
+        if (!_isEnglishPost(post)) continue;
         if (seenUris.has(post.uri)) continue;
         seenUris.add(post.uri);
         readerSeenUriSet.add(post.uri);
@@ -3541,6 +3554,13 @@
     return (post?.labels || []).some(l => _ADULT_LABELS.has(l.val));
   }
 
+  /** True if a post is in English (or has no language tag). */
+  function _isEnglishPost(post) {
+    const langs = post?.record?.langs;
+    if (!langs || !langs.length) return true;
+    return langs.some(l => l.startsWith('en'));
+  }
+
   /** HN-style trending score: (likes - 1) / (hours + 2)^1.8 */
   function _trendScore(post) {
     if (!post) return 0;
@@ -3584,7 +3604,7 @@
         feedCursorFriends = friends?.cursor || null;
         const all = [...(primary.feed || []), ...(classic?.feed || []), ...(friends?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post)) return false; seen.add(u); return true; })
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
                    .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
       } else {
         // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
@@ -3599,7 +3619,7 @@
         feedCursorForYou = forYou?.cursor || null;
         const all = [...(timeline.feed || []), ...(bestOf?.feed || []), ...(forYou?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post)) return false; seen.add(u); return true; })
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
                    .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
       }
       feedLoaded   = true;

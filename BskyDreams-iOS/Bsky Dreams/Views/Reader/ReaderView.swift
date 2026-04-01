@@ -147,6 +147,7 @@ struct ReaderView: View {
             let allItems = home.feed + (discover?.feed ?? []) + (news?.feed ?? [])
             let filtered = allItems.compactMap { item -> PostView? in
                 guard !item.post.isAdultContent else { return nil }
+                guard item.post.isEnglish else { return nil }
                 guard let ext = item.post.embed?.external else { return nil }
                 guard isReadableArticle(ext) else { return nil }
                 guard !seenURISet.contains(item.post.uri) else { return nil }

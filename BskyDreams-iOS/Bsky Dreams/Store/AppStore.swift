@@ -172,6 +172,10 @@ final class AppStore {
 
     // MARK: - Seen Posts Cloud Sync
 
+    /// Notification posted after cloud seen-posts merge completes.
+    /// FeedView observes this to refresh its in-memory seenURISet.
+    static let seenPostsMergedNotification = Notification.Name("BskyDreamsSeenPostsMerged")
+
     /// Debounces a seen-posts upload: cancels any pending sync and schedules a new
     /// one 30 seconds out. Pass the current list of URIs (7-day window).
     func scheduleSeenSync(uris: [String], did: String) {
@@ -184,9 +188,14 @@ final class AppStore {
         }
     }
 
-    /// Immediately upload seen-posts URIs to AT Protocol (e.g. on app background).
+    /// Read-merge-write: fetch cloud record, union with local URIs, write merged result.
+    /// This prevents one platform from overwriting the other's seen posts.
     func saveSeenToCloud(uris: [String], did: String) async {
-        try? await ATProtocolClient.shared.putSeenRecord(repo: did, uris: uris)
+        do {
+            let cloudURIs = (try? await ATProtocolClient.shared.getSeenRecord(repo: did)) ?? []
+            let merged = Array(Set(uris).union(cloudURIs))
+            try await ATProtocolClient.shared.putSeenRecord(repo: did, uris: merged)
+        } catch {}
     }
 
     /// Fetch the cloud seen-posts record and return the URI list for merging into SwiftData.

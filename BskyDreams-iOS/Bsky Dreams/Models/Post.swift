@@ -42,6 +42,12 @@ struct PostView: Identifiable, Hashable {
         guard let labels else { return false }
         return labels.contains { Self.adultLabelValues.contains($0.val) }
     }
+
+    /// True if the post is in English (or has no language tag, which is common for older posts).
+    var isEnglish: Bool {
+        guard let langs = record.langs, !langs.isEmpty else { return true }
+        return langs.contains { $0.hasPrefix("en") }
+    }
 }
 
 // MARK: - PostView Codable
