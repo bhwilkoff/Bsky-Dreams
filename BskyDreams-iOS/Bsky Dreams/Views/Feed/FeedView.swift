@@ -63,6 +63,11 @@ struct FeedView: View {
         .sheet(isPresented: $showCompose) {
             ComposeView()
         }
+        .onReceive(NotificationCenter.default.publisher(for: AppStore.seenPostsMergedNotification)) { _ in
+            // Cloud merge completed — refresh in-memory set so newly synced URIs are filtered
+            let descriptor = FetchDescriptor<SeenPost>()
+            seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             if errorMessage != nil {
                 errorMessage = nil
@@ -285,7 +290,7 @@ struct FeedView: View {
                 if let forYou { all.append(contentsOf: forYou.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent }
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
                     .sorted { trendingScore($0.post) > trendingScore($1.post) }
 
             case .discover:
@@ -312,7 +317,7 @@ struct FeedView: View {
                 if let f { all.append(contentsOf: f.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent }
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
                     .sorted { trendingScore($0.post) > trendingScore($1.post) }
             }
 

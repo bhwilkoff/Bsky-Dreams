@@ -143,7 +143,7 @@ struct GalleryView: View {
             if let art { artTrendCursor = art.cursor }
 
             let combined = home.feed + (discover?.feed ?? []) + (pics?.feed ?? []) + (art?.feed ?? [])
-            let all = combined.filter { hasImages($0.post) && !$0.post.isAdultContent }
+            let all = combined.filter { hasImages($0.post) && !$0.post.isAdultContent && $0.post.isEnglish }
 
             if loadMore {
                 let existingUris = Set(posts.map { $0.post.uri })
