@@ -184,7 +184,7 @@ No build step required. The app runs as a static file.
 - **Video:** AVPlayer + HLS (single shared instance per TV session)
 - **Reader:** `URLSession` fetch (no CORS on iOS) + off-screen `WKWebView` for DOM extraction
 - **Fonts:** Syne + Inter loaded from `Resources/Fonts/` (registered in Info.plist)
-- **Deployment:** Xcode build → TestFlight / App Store (not yet submitted)
+- **Deployment:** Xcode build → App Store (live: https://apps.apple.com/us/app/bsky-dreams/id6760909675)
 
 ### Key Directories
 
@@ -206,6 +206,7 @@ No build step required. The app runs as a static file.
   - `Views/Analytics/` — AnalyticsView
   - `Views/Constellation/` — ConstellationView
   - `Views/Compose/` — ComposeView
+  - `Views/Stream/` — StreamView (landscape slideshow)
   - `Components/` — PostCardView, AvatarView, RichTextView, ImageGridView, etc.
   - `ContentView.swift` — RootView, MainAppView, SidebarView, DetailView, SettingsView
 
@@ -237,6 +238,13 @@ install — all third-party code is absent (pure Apple frameworks only).
 - **`ArticleReaderSheet`**: `post` parameter is optional (`var post: PostView? = nil`) so it can be called from `LinkCardView` in feed cards (no post context available).
 - **URLCache**: configured at app launch in `BskyDreamsApp.init()` — 100 MB memory / 500 MB disk — to persist `AsyncImage` and `URLSession` responses across sessions. Do not remove this configuration.
 - **Seen posts**: mark via SwiftData `SeenPost` insert in `.onAppear` — applies to FeedView, GalleryView, and ReaderView. Always guard with `seenURIs.contains(post.uri)` before inserting to prevent duplicates.
+- **NSFW filtering**: `PostView.isAdultContent` checks labels (`porn`, `sexual`, `nudity`, `graphic-media`, `adult`, `gore`, `nsfw`). Applied in FeedView, GalleryView, ReaderView merge steps. TV has its own `hideAdult` toggle. Search is intentionally unfiltered (user controls via toggle).
+- **Hybrid feeds**: FeedView merges multiple AT Protocol feeds in parallel for both Following and Discover modes. Secondary feeds use `try?` so failures never break the primary. See DECISIONS.md for feed URIs and architecture.
+- **Inline video fullscreen**: `VideoThumbnailView` presents `AVPlayerViewController` directly via UIKit `present(_:animated:completion:)` — NOT via SwiftUI `fullScreenCover`. Creates a fresh `AVPlayer` at the current seek position to avoid shared-player conflicts. Completion handler calls `player.play()` to resume after presentation.
+- **VideoPlayer animation crash**: `VideoThumbnailView` uses `.transaction { $0.animation = nil }` to block SwiftUI animation propagation into `AVPlayerViewController`. Without this, animated layout changes (e.g. inline reply opening) crash AVKit.
+- **Image resize**: `ComposeImage.resizeImageData(_:maxBytes:)` is the single shared resize function (in `AppStore.swift`). Used by both `ComposeView` and `InlineReplyView`. Never duplicate this logic.
+- **Stream conversation overlay**: Reply button in StreamView presents `ThreadView` via `fullScreenCover(item:)` (same pattern as article reader). Does NOT dismiss the stream — user returns to stream on back.
+- **Reader share sheet**: Uses `UIActivityViewController` presented via UIKit (NOT SwiftUI `ShareLink` or `.sheet`). Includes a custom `OpenInSafariActivity` because the system's "Open in Safari" action is suppressed when presenting from within a WKWebView context.
 
 ### iOS Constraints
 

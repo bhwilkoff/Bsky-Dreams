@@ -516,3 +516,85 @@ The Share Extension's Info.plist must also declare `LSApplicationQueriesSchemes:
 | `open:options:completionHandler:` with `nil` | **Works** | UIKit skips the options cast entirely |
 
 The main app's `onOpenURL` receives `bskydreams://share` and calls `processPendingShare()`. As a belt-and-suspenders fallback, `processPendingShare()` is also called on `willEnterForegroundNotification` in `MainAppView` so pending shares are never lost if the user manually switches to the app.
+
+---
+
+## [SHARED] Hybrid Feed Architecture — Multi-Source Merging
+*2026-04-01*
+
+Both Following and Discover tabs fetch from multiple AT Protocol feed generators in parallel, deduplicate by post URI, and sort by a HN-style trending score: `(likes - 1) / (hours + 2)^1.8`. Secondary feeds fail silently (`try?` / `.catch(() => null)`).
+
+**Discover sources** (3 feeds): Bluesky Discover (`whats-hot`, personalized), What's Hot Classic (`hot-classic`, network-wide pure engagement), Popular With Friends (`with-friends`, social graph trending).
+
+**Following sources** (3 feeds): Chronological timeline (`getTimeline`), Best of Follows (`best-of-follows`, top posts from follows), For You by spacecowboy17 (`for-you`, collaborative filtering).
+
+**Gallery sources** (4 feeds): Timeline + Discover + The 'Gram (`followpics`, all images from follows) + Artists: Trending (`art-new`, trending art by engagement).
+
+**TV sources** (3 feeds): Timeline + Discover + Video (`thevids`, official trending videos).
+
+**Reader sources** (3 feeds): Timeline + Discover + News (`verified-news`, verified news org headlines).
+
+All feed URIs verified live via `getFeedGenerator` before implementation. Trade-off: more API calls per page load, but all run concurrently so wall-clock latency equals the slowest single feed.
+
+---
+
+## [SHARED] NSFW Content Filtering in Feed Views
+*2026-04-01*
+
+All feed views (Home, Gallery, Reader) filter posts with adult content labels (`porn`, `sexual`, `nudity`, `graphic-media`, `adult`, `gore`, `nsfw`) during the merge/dedup step. iOS: `PostView.isAdultContent` computed property. Web: shared `_isAdultPost(post)` function. TV retains its own user-toggleable `hideAdult` filter. Search is intentionally unfiltered — users control via the existing "Hide Adult Content" toggle. Rationale: third-party feeds (hot-classic, with-friends, for-you, followpics, art-new) do not apply the same content filtering as Bluesky's personalized Discover feed.
+
+---
+
+## [SHARED] Stream View — Full-Screen Post Slideshow
+*2026-03-31*
+
+Web: full-screen slideshow with setup screen (feed source, duration, content filter, background color, toggles) and player (auto-advance timer via `requestAnimationFrame`, progress bar, keyboard navigation, touch swipe, Wake Lock API). No landscape requirement — works at any screen size. iOS: landscape-only via `fullScreenCover`, requires physical device rotation to start. Both: slide types (text, image, combined, link card), per-slide dot navigation, auto-hiding controls after 3s.
+
+---
+
+## [iOS] Stream Conversation — fullScreenCover Overlay
+*2026-03-31*
+
+Reply button in StreamView presents ThreadView via `fullScreenCover(item: $conversationPresentation)` with a `StreamConversationPresentation` carrier struct — same pattern as the article reader overlay. Does NOT dismiss the stream or rotate to portrait. User reads/replies in the conversation overlay and taps back to return to the stream. Timer resumes on dismiss if not paused.
+
+---
+
+## [iOS] Inline Video Fullscreen — UIKit Presentation
+*2026-03-31*
+
+`VideoThumbnailView` fullscreen button presents `AVPlayerViewController` directly via UIKit `present(_:animated:completion:)`. A fresh `AVPlayer` is created from the same HLS URL at the current seek position (avoids shared-player conflicts with SwiftUI's `VideoPlayer`). The completion handler resumes playback after the presentation animation. Dismissed via AVKit's native Done button. Rejected: SwiftUI `fullScreenCover` wrapping `AVPlayerViewController` — created a double-fullscreen layer with no dismiss path and white borders.
+
+---
+
+## [iOS] VideoPlayer Animation Crash Prevention
+*2026-03-31*
+
+`VideoThumbnailView` applies `.transaction { $0.animation = nil }` to block SwiftUI animation propagation into `AVPlayerViewController`. Without this, animated layout changes (e.g. inline reply box opening in ThreadView) crash AVKit because `AVPlayerLayer` does not support CoreAnimation implicit frame animations. This does not affect the video thumbnail or play button — they appear/disappear without animation, which is acceptable.
+
+---
+
+## [iOS] Reader Share Sheet — Custom OpenInSafariActivity
+*2026-04-01*
+
+ArticleReaderSheet share button presents `UIActivityViewController` via UIKit (walks responder chain to topmost VC). Includes a custom `OpenInSafariActivity: UIActivity` subclass that calls `UIApplication.shared.open(url)`. The system's built-in "Open in Safari" action is suppressed when the share sheet is presented from within a WKWebView context; the custom activity guarantees it always appears. Rejected: SwiftUI `ShareLink` (omits Safari); `UIActivityViewController` inside SwiftUI `.sheet` (sheet-within-a-sheet breaks activity VC).
+
+---
+
+## [iOS] Notification Reason Strings — Kebab-Case Raw Values
+*2026-03-31*
+
+`NotificationReason` enum raw values use AT Protocol's kebab-case: `starterpack-joined`, `like-via-repost`, `repost-via-repost`. The previous camelCase raw values (`starterpackJoined`, `likeViaRepost`, `repostViaRepost`) never matched the API strings, causing all three to fall through to `.unknown` ("interacted with you"). Navigation for via-repost types now goes to the subject post (not profile).
+
+---
+
+## [iOS] Image Resize — Shared Static Method
+*2026-04-01*
+
+`ComposeImage.resizeImageData(_:maxBytes:)` is a static method on `ComposeImage` (in `AppStore.swift`), shared by both `ComposeView` and `InlineReplyView`. Previously `InlineReplyView` had no resize step, causing blob uploads to fail for large camera photos (> 1 MB AT Protocol limit).
+
+---
+
+## [WEB] Smart App Banner + App Store Promotion
+*2026-03-31*
+
+`<meta name="apple-itunes-app" content="app-id=6760909675">` in `<head>` renders Safari's native Smart App Banner. Auth screen footer and Settings modal link to the App Store listing. GitHub repository link removed from user-facing UI (repo remains public).
