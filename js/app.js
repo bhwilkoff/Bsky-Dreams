@@ -1780,6 +1780,7 @@
         // buildGalleryCard calls markFeedPostSeen, so within-batch duplicates are
         // automatically caught by feedSeenMap after the first occurrence is rendered.
         if (isFeedPostSeen(post.uri)) continue;
+        if (_isAdultPost(post)) continue;
         if (!postHasImages(post)) continue;
         const card = buildGalleryCard(post);
         if (!card) continue;
@@ -2254,6 +2255,7 @@
         const post = item.post;
         if (!post?.uri) continue;
         if (readerSeenUriSet.has(post.uri)) continue;
+        if (_isAdultPost(post)) continue;
         if (seenUris.has(post.uri)) continue;
         seenUris.add(post.uri);
         readerSeenUriSet.add(post.uri);
@@ -3533,6 +3535,12 @@
     feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
   }
 
+  /** True if a post carries any adult/NSFW content label. */
+  const _ADULT_LABELS = new Set(['porn', 'sexual', 'nudity', 'graphic-media', 'adult', 'gore', 'nsfw']);
+  function _isAdultPost(post) {
+    return (post?.labels || []).some(l => _ADULT_LABELS.has(l.val));
+  }
+
   /** HN-style trending score: (likes - 1) / (hours + 2)^1.8 */
   function _trendScore(post) {
     if (!post) return 0;
@@ -3576,7 +3584,7 @@
         feedCursorFriends = friends?.cursor || null;
         const all = [...(primary.feed || []), ...(classic?.feed || []), ...(friends?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u)) return false; seen.add(u); return true; })
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post)) return false; seen.add(u); return true; })
                    .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
       } else {
         // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
@@ -3591,7 +3599,7 @@
         feedCursorForYou = forYou?.cursor || null;
         const all = [...(timeline.feed || []), ...(bestOf?.feed || []), ...(forYou?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u)) return false; seen.add(u); return true; })
+        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post)) return false; seen.add(u); return true; })
                    .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
       }
       feedLoaded   = true;
