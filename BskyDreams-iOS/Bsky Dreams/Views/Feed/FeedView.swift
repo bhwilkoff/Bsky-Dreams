@@ -285,7 +285,7 @@ struct FeedView: View {
                 if let forYou { all.append(contentsOf: forYou.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted }
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent }
                     .sorted { trendingScore($0.post) > trendingScore($1.post) }
 
             case .discover:
@@ -312,7 +312,7 @@ struct FeedView: View {
                 if let f { all.append(contentsOf: f.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted }
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent }
                     .sorted { trendingScore($0.post) > trendingScore($1.post) }
             }
 

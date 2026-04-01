@@ -35,6 +35,13 @@ struct PostView: Identifiable, Hashable {
 
     static func == (lhs: PostView, rhs: PostView) -> Bool { lhs.uri == rhs.uri }
     func hash(into hasher: inout Hasher) { hasher.combine(uri) }
+
+    /// True if the post carries any adult/NSFW content label.
+    private static let adultLabelValues: Set<String> = ["porn", "sexual", "nudity", "graphic-media", "adult", "gore", "nsfw"]
+    var isAdultContent: Bool {
+        guard let labels else { return false }
+        return labels.contains { Self.adultLabelValues.contains($0.val) }
+    }
 }
 
 // MARK: - PostView Codable
