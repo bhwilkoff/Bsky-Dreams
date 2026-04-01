@@ -258,6 +258,56 @@ struct ComposeImage: Identifiable {
     var imageData: Data
     var uiImage: UIImage? { UIImage(data: imageData) }
     var altText: String = ""
+
+    /// Resize image data to stay within AT Protocol's 1 MB blob limit.
+    /// Shared by ComposeView and InlineReplyView.
+    static func resizeImageData(_ data: Data, maxBytes: Int = 950_000) -> Data {
+        guard let image = UIImage(data: data) else { return data }
+
+        // Step 1 — cap the long side at 2048px
+        let maxDimension: CGFloat = 2048
+        let imgScale = image.scale
+        let pixelW = image.size.width * imgScale
+        let pixelH = image.size.height * imgScale
+        let longSide = max(pixelW, pixelH)
+
+        let working: UIImage
+        if longSide > maxDimension {
+            let factor = maxDimension / longSide
+            let newSize = CGSize(width: image.size.width * factor,
+                                 height: image.size.height * factor)
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            working = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            working = image
+        }
+
+        // Step 2 — quality sweep: start at 0.85, step down by 0.10
+        var quality: CGFloat = 0.85
+        while quality >= 0.05 {
+            if let compressed = working.jpegData(compressionQuality: quality),
+               compressed.count <= maxBytes {
+                return compressed
+            }
+            quality -= 0.10
+        }
+
+        // Step 3 — shrink dimensions progressively
+        var shrinkFactor: CGFloat = 0.70
+        while shrinkFactor >= 0.25 {
+            let newSize = CGSize(width: working.size.width * shrinkFactor,
+                                 height: working.size.height * shrinkFactor)
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            let smaller = renderer.image { _ in working.draw(in: CGRect(origin: .zero, size: newSize)) }
+            if let compressed = smaller.jpegData(compressionQuality: 0.75),
+               compressed.count <= maxBytes {
+                return compressed
+            }
+            shrinkFactor -= 0.15
+        }
+
+        return working.jpegData(compressionQuality: 0.4) ?? data
+    }
 }
 
 struct ComposeVideo: Identifiable {

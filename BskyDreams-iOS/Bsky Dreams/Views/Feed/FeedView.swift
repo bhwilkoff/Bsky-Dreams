@@ -10,10 +10,20 @@ struct FeedView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(\.modelContext) private var modelContext
 
-    private let discoverFeedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    // Discover sources
+    private let discoverFeedURI  = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    private let hotClassicURI    = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic"
+    private let withFriendsURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends"
+    // Following sources
+    private let bestOfFollowsURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows"
+    private let forYouURI        = "at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you"
 
     @State private var items: [FeedItem] = []
     @State private var cursor: String?
+    @State private var cursorHotClassic: String?
+    @State private var cursorWithFriends: String?
+    @State private var cursorBestOf: String?
+    @State private var cursorForYou: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
@@ -149,7 +159,7 @@ struct FeedView: View {
                 let descriptor = FetchDescriptor<SeenPost>()
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
                 items = []
-                cursor = nil
+                cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                 discoverLooped = false
                 autoFetchCount = 0
                 await loadFeed()
@@ -169,7 +179,7 @@ struct FeedView: View {
                     if store.feedMode != mode {
                         store.feedMode = mode
                         items = []
-                        cursor = nil
+                        cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                         discoverLooped = false
                         autoFetchCount = 0
                         Task { await loadFeed() }
@@ -250,48 +260,78 @@ struct FeedView: View {
         defer { isLoading = false }
 
         do {
-            let response: FeedResponse
-            let fetchCursor: String?
-            if loadMore && discoverLooped && store.feedMode == .discover {
-                fetchCursor = nil  // Discover exhausted — loop back to page 1
-            } else {
-                fetchCursor = loadMore ? cursor : nil
-            }
+            let mergedFeed: [FeedItem]
+            let seenSnapshot: Set<String>? = store.feedSeenBypass ? nil : seenURISet
 
             switch store.feedMode {
             case .following:
-                response = try await ATProtocolClient.shared.getTimeline(limit: 50, cursor: fetchCursor)
-            case .discover:
-                response = try await ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 50, cursor: fetchCursor)
-            }
+                // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
+                let fetchCursor = loadMore ? cursor : nil
 
-            // Build seen set ONCE for this batch — avoids O(n) Set rebuild per item
-            let seenSnapshot: Set<String>? = store.feedSeenBypass ? nil : seenURISet
+                async let timelineResult = ATProtocolClient.shared.getTimeline(limit: 30, cursor: fetchCursor)
+                async let bestOfResult = try? ATProtocolClient.shared.getFeed(uri: bestOfFollowsURI, limit: 20, cursor: loadMore ? cursorBestOf : nil)
+                async let forYouResult = try? ATProtocolClient.shared.getFeed(uri: forYouURI, limit: 20, cursor: loadMore ? cursorForYou : nil)
+
+                let timeline = try await timelineResult
+                let bestOf = await bestOfResult
+                let forYou = await forYouResult
+
+                cursor = timeline.cursor
+                cursorBestOf = bestOf?.cursor
+                cursorForYou = forYou?.cursor
+
+                var all = timeline.feed
+                if let bestOf { all.append(contentsOf: bestOf.feed) }
+                if let forYou { all.append(contentsOf: forYou.feed) }
+
+                var seen = Set<String>()
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted }
+                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
+
+            case .discover:
+                // Hybrid discover: 3 feeds in parallel — personalized trending, network-wide
+                // trending, and social-graph trending. Failures on secondary feeds are ignored.
+                let fetchCursor: String?
+                if loadMore && discoverLooped { fetchCursor = nil }
+                else { fetchCursor = loadMore ? cursor : nil }
+
+                async let primary = ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 30, cursor: fetchCursor)
+                async let classic = try? ATProtocolClient.shared.getFeed(uri: hotClassicURI, limit: 20, cursor: loadMore ? cursorHotClassic : nil)
+                async let friends = try? ATProtocolClient.shared.getFeed(uri: withFriendsURI, limit: 20, cursor: loadMore ? cursorWithFriends : nil)
+
+                let p = try await primary
+                let c = await classic
+                let f = await friends
+
+                cursor = p.cursor
+                cursorHotClassic = c?.cursor
+                cursorWithFriends = f?.cursor
+
+                var all = p.feed
+                if let c { all.append(contentsOf: c.feed) }
+                if let f { all.append(contentsOf: f.feed) }
+
+                var seen = Set<String>()
+                mergedFeed = all.filter { seen.insert($0.post.uri).inserted }
+                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
+            }
 
             if loadMore {
                 let existingUris = Set(items.map { $0.post.uri })
-                let newItems = response.feed.filter { item in
+                let newItems = mergedFeed.filter { item in
                     guard !existingUris.contains(item.post.uri) else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
 
-                // Pre-warm URLCache with images from newly appended posts
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
 
-                if let newCursor = response.cursor {
-                    cursor = newCursor
-                    if discoverLooped { discoverLooped = false }
-                    autoFetchCount = 0
-                } else if store.feedMode == .discover && !discoverLooped && response.feed.count > 0 {
+                if store.feedMode == .discover && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
                     discoverLooped = true
-                    cursor = nil
-                } else {
-                    cursor = response.cursor
                 }
-
-                if newItems.isEmpty && (cursor != nil || discoverLooped) && autoFetchCount < 3 {
+                let hasMore = cursor != nil || cursorHotClassic != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
+                if newItems.isEmpty && hasMore && autoFetchCount < 3 {
                     autoFetchCount += 1
                     await loadFeed(loadMore: true)
                 } else {
@@ -299,19 +339,29 @@ struct FeedView: View {
                 }
             } else {
                 var seen = Set<String>()
-                items = response.feed.filter { item in
+                items = mergedFeed.filter { item in
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 let urlsToWarm = items.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
-                cursor = response.cursor
+                cursor = mergedFeed.isEmpty ? nil : cursor
                 discoverLooped = false
                 autoFetchCount = 0
             }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// HN-style trending score: rewards posts that gain likes quickly.
+    private func trendingScore(_ post: PostView) -> Double {
+        let likes = Double(post.likeCount ?? 0)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let postDate = formatter.date(from: post.indexedAt) ?? Date()
+        let hours = max(0, Date().timeIntervalSince(postDate) / 3600)
+        return (likes - 1) / pow(hours + 2, 1.8)
     }
 }
 

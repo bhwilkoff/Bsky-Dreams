@@ -607,7 +607,8 @@ struct InlineReplyView: View {
     private func loadImages(from items: [PhotosPickerItem]) async {
         for item in items {
             if let data = try? await item.loadTransferable(type: Data.self) {
-                images.append(ComposeImage(imageData: data))
+                let resized = ComposeImage.resizeImageData(data)
+                images.append(ComposeImage(imageData: resized))
             }
         }
         selectedItems = []

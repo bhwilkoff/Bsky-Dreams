@@ -2,7 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct GalleryView: View {
-    private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    private let discoverURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+    private let followPicsURI = "at://did:plc:vpkhqolt662uhesyj6nxm7ys/app.bsky.feed.generator/followpics"
+    private let artTrendURI   = "at://did:plc:y7crv2yh74s7qhmtx3mvbgv5/app.bsky.feed.generator/art-new"
 
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
@@ -11,6 +13,8 @@ struct GalleryView: View {
     @State private var posts: [FeedItem] = []
     @State private var timelineCursor: String?
     @State private var discoverCursor: String?
+    @State private var followPicsCursor: String?
+    @State private var artTrendCursor: String?
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
@@ -114,17 +118,32 @@ struct GalleryView: View {
         }
 
         do {
-            let home = try await ATProtocolClient.shared.getTimeline(
+            // Fetch home timeline, discover, follow-pics, and trending art in parallel
+            async let homeResult = ATProtocolClient.shared.getTimeline(
                 limit: 50, cursor: loadMore ? timelineCursor : nil
             )
-            timelineCursor = home.cursor
-
-            let discover = try? await ATProtocolClient.shared.getFeed(
-                uri: discoverURI, limit: 50, cursor: loadMore ? discoverCursor : nil
+            async let discoverResult = try? ATProtocolClient.shared.getFeed(
+                uri: discoverURI, limit: 30, cursor: loadMore ? discoverCursor : nil
             )
-            if let discover { discoverCursor = discover.cursor }
+            async let picsResult = try? ATProtocolClient.shared.getFeed(
+                uri: followPicsURI, limit: 30, cursor: loadMore ? followPicsCursor : nil
+            )
+            async let artResult = try? ATProtocolClient.shared.getFeed(
+                uri: artTrendURI, limit: 20, cursor: loadMore ? artTrendCursor : nil
+            )
 
-            let all = (home.feed + (discover?.feed ?? [])).filter { hasImages($0.post) }
+            let home = try await homeResult
+            let discover = await discoverResult
+            let pics = await picsResult
+            let art = await artResult
+
+            timelineCursor = home.cursor
+            if let discover { discoverCursor = discover.cursor }
+            if let pics { followPicsCursor = pics.cursor }
+            if let art { artTrendCursor = art.cursor }
+
+            let combined = home.feed + (discover?.feed ?? []) + (pics?.feed ?? []) + (art?.feed ?? [])
+            let all = combined.filter { hasImages($0.post) }
 
             if loadMore {
                 let existingUris = Set(posts.map { $0.post.uri })
