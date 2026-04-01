@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-03-23
+## Current Date: 2026-04-01
 
 ---
 
@@ -37,9 +37,18 @@
 | TV (TikTok-style video feed, topic selector) | ✅ | ✅ | |
 | TV: 2× speed on hold | ✅ | ✅ | |
 | TV: adult content filter | ✅ | ✅ | |
+| TV: trending video feed source | ✅ | ✅ | `thevids` official Bluesky feed added as third source |
+| Stream (full-screen post slideshow) | ✅ | ✅ | Web: any orientation; iOS: landscape via fullScreenCover |
+| Stream: conversation overlay | 🌐 | ✅ | iOS: ThreadView in fullScreenCover; web: navigates to thread |
 | Reader (article cards, Direct/Readable/Archive modes) | ✅ | ✅ | |
-| Reader: seen tracking + mark-read | ✅ | ✅ | iOS: SwiftData SeenPost inserted on article appear; readURLs still in-session for opacity only |
-| Reader: progress bar during Readable extraction | ✅ | ✅ | |
+| Reader: verified news feed source | ✅ | ✅ | `verified-news` feed merged with timeline + discover |
+| Reader: seen-post filtering | ✅ | ✅ | Posts seen in home feed are filtered from Reader |
+| Reader: Open in Safari via share sheet | 📱 | ✅ | Custom UIActivity; web is browser-native |
+| Gallery: follow-pics + trending art sources | ✅ | ✅ | `followpics` + `art-new` feeds merged with timeline + discover |
+| Hybrid feeds (multi-source merging + trending score) | ✅ | ✅ | Both Following and Discover merge 3 feeds; Gallery merges 4 |
+| NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
+| Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
+| Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
 | Analytics dashboard (post stats, heatmap) | ✅ | ⏳ | iOS view exists, content TBD |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
 | Timeline scrubber (horizontal, time-offset) | ✅ | ✅ | iOS: full implementation (2026-03-19); sidebar tab, zoom levels, lane layout, profile button |
@@ -68,7 +77,11 @@
 - **M16**: Direct messages (chat.bsky.convo.* API, 30s polling)
 - **M22**: Analytics dashboard (Canvas API charts, post heatmap)
 - **M-Reader**: Article reader (Direct / Readable / Archive modes, three-proxy CORS chain, seen tracking, infinite scroll)
-- **Parity (2026-03-23)**: Lightbox download button (fetch→blob→anchor, with lime success state); Dark mode (html[data-theme="dark"] CSS token overrides, accent-colored shadows, Settings toggle, flash-free IIFE init)
+- **Parity (2026-03-23)**: Lightbox download button; Dark mode
+- **Stream (2026-03-31)**: Full-screen post slideshow (setup screen + player, no landscape requirement, keyboard/touch nav, Wake Lock API)
+- **Hybrid feeds (2026-04-01)**: Discover merges 3 feeds (whats-hot + hot-classic + with-friends); Following merges 3 feeds (timeline + best-of-follows + for-you); Gallery merges 4; Reader merges 3 (+ verified-news); TV merges 3 (+ thevids). NSFW filtering on all.
+- **App Store promotion (2026-03-31)**: Smart App Banner meta tag; auth footer + settings link to iOS App Store; GitHub repo link removed from UI
+- **Sidebar (2026-03-31)**: Reordered to match iOS (Post, Home, Search, Notifications, Messages, Gallery, TV, Stream, Reader, Analytics, Constellation, Timeline); icons updated to match iOS SF Symbols
 
 ### Next for Web
 
@@ -80,8 +93,8 @@
 
 ## iOS App Status
 
-**All primary views implemented.** App is feature-complete for daily use.
-Four rounds of polish fixes applied (2026-03-16 through 2026-03-17).
+**All primary views implemented.** App is live on the App Store (v1.26).
+App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Completed
 
@@ -116,37 +129,38 @@ Four rounds of polish fixes applied (2026-03-16 through 2026-03-17).
 - Lightbox: save-to-camera-roll with PHPhotoLibrary auth pre-check + Settings deep-link alert; pan after zoom via `.simultaneousGesture(DragGesture)` guarded on `imageScale > 1.01`
 - Timeline: auto-loads current user's profile on first open (`.onAppear` check for empty query + `auth.session?.handle`)
 - Sidebar channels: fixed SwiftData lightweight migration crash — `SavedSearch.channelType` must have inline default `= "search"` at property declaration level
+- Stream view (2026-03-31): landscape slideshow with configurable duration, content filter, background colors; conversation overlay via fullScreenCover (same pattern as article reader); reply button opens ThreadView without leaving stream
+- Hybrid feeds (2026-04-01): Discover (whats-hot + hot-classic + with-friends); Following (timeline + best-of-follows + for-you); Gallery (+ followpics + art-new); TV (+ thevids); Reader (+ verified-news). All sorted by HN-style trending score. NSFW filtering via `PostView.isAdultContent`
+- Notifications fix (2026-03-31): kebab-case raw values for `starterpack-joined`, `like-via-repost`, `repost-via-repost`; navigation goes to post not profile; grouping includes via-repost variants
+- Inline video fullscreen (2026-03-31): AVPlayerViewController via UIKit presentation (not SwiftUI fullScreenCover); fresh player at current seek position; `.transaction { $0.animation = nil }` on VideoThumbnailView prevents animation crash
+- Reader improvements (2026-04-01): seen-post filtering with auto-pagination (up to 5 extra pages); `articlesWithCards` computed property prevents invisible rows; share sheet via UIKit with custom OpenInSafariActivity
+- Image resize shared (2026-04-01): `ComposeImage.resizeImageData` static method used by both ComposeView and InlineReplyView
+- Feed scroll smoothness (2026-03-31): in-memory seenURISet cache in ReaderView (same as FeedView); image pre-warming; earlier pagination trigger (last 5 not last 1)
 
 ### Next for iOS
 
-- **Reader read-state persistence**: `readURLs` (in-session opacity indicator) should be persisted to SwiftData so articles stay dimmed across sessions — SeenPost already inserted, but `readURLs` set is separate
 - **Analytics view**: implement Canvas-equivalent charts using Swift Charts or Canvas
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
-- **Cross-device channel/prefs sync**: read/write `app.bsky-dreams.prefs` via AT Protocol repo (seen-posts sync is done; channels and UI prefs still SwiftData only)
-- **Timeline scrubber**: ✅ ported as standalone tab (2026-03-19); sidebar nav, zoom levels (7d→20m), engagement filter, lane layout algorithm, connector lines+dots via Canvas, save-as-channel, profile TIMELINE button
-- **Scroll position on back navigation**: investigate using `.scrollPosition(id:)` (iOS 17) to save/restore feed position when popping ThreadView back to FeedView
+- **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions
+- **Cross-device channel/prefs sync**: read/write `app.bsky-dreams.prefs` via AT Protocol repo
+- **Scroll position on back navigation**: investigate `.scrollPosition(id:)` (iOS 17) to save/restore feed position
 
 ---
 
 ## Open Questions
 
 ### Web
-1. `isAdultPost()` uses label-string check; `com.atproto.label.*` offers finer control
-2. Blob limit 1 MB — `resizeImageFile()` handles it but loses GIF animation
-3. Notifications: no polling; stale until user navigates to view
-4. `app.bsky-dreams.prefs` is publicly readable (non-sensitive prefs only)
-5. Klipy not yet on Bluesky animated-GIF allowlist (issue #9728) — no code change needed when added
+1. Blob limit 1 MB — `resizeImageFile()` handles it but loses GIF animation
+2. Notifications: no polling; stale until user navigates to view
+3. Klipy not yet on Bluesky animated-GIF allowlist (issue #9728) — no code change needed when added
 
 ### iOS
-1. Reader `readURLs` (`@State`) drives in-session opacity but is separate from SwiftData `SeenPost` inserts — the two need to be reconciled for fully persistent read-state display
-2. `app.bsky-dreams.prefs` sync not yet wired — iOS uses SwiftData `CachedPreferences` only; accent color chosen on device is not synced to web
-3. Analytics view exists as a shell — Swift Charts implementation needed before parity is achieved (Constellation is now complete)
-4. Klipy same allowlist issue as web — no code change needed when resolved
-5. Notifications badge count from `refreshBadges()` only counts unread in first page (limit: 1) — may undercount
-6. Accent color: `Color.nbAccent` static var reads UserDefaults on each call — views re-render with new color on next navigation, but not instantaneously mid-session; full live preview would require environment injection across all views
-7. Block: no unblock UI from post card (would need block record URI); users can unblock from profile page if block record is exposed in `viewer.blocking` AT URI (not currently decoded)
-8. Sidebar header safe area: uses `UIApplication.shared.connectedScenes...safeAreaInsets.top` for Dynamic Island padding — relies on UIKit window being ready; consider migrating to `GeometryReader.safeAreaInsets.top` inside the sidebar for a purely SwiftUI solution
+1. Reader `readURLs` (`@State`) is separate from SwiftData `SeenPost` — needs reconciliation for persistent read-state display
+2. `app.bsky-dreams.prefs` sync not yet wired — iOS uses SwiftData `CachedPreferences` only
+3. Analytics view exists as a shell — Swift Charts implementation needed
+4. Notifications badge count from `refreshBadges()` only counts unread in first page (limit: 1) — may undercount
+5. Block: no unblock UI from post card (would need block record URI)
 
 ### Both
 1. AT Protocol OAuth: when it stabilizes, app-password auth should be revisited
-2. Firehose/WebSocket: real-time notifications and DMs are architecturally blocked without a server — revisit if a lightweight proxy becomes viable
+2. Firehose/WebSocket: real-time notifications and DMs are architecturally blocked without a server
