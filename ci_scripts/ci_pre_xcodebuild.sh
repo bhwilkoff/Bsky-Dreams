@@ -9,8 +9,9 @@
 # user-facing version, e.g. 1.36) is intentionally left untouched — bump that
 # by hand in AppVersion.xcconfig when you ship a new release.
 #
-# Location matters: this folder must sit next to the .xcodeproj
-# (BskyDreams-iOS/Bsky Dreams/ci_scripts/) for Xcode Cloud to find it.
+# Location: this folder lives at the repository root, next to
+# BskyDreams.xcworkspace — the workspace the Xcode Cloud workflow targets.
+# Xcode Cloud only runs ci_scripts found beside the project/workspace it builds.
 
 set -e
 
@@ -21,10 +22,17 @@ if [ -z "$CI_BUILD_NUMBER" ]; then
   exit 0
 fi
 
-# Resolve AppVersion.xcconfig as a sibling of this ci_scripts folder, so the
-# script does not depend on the current working directory.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-XCCONFIG="$SCRIPT_DIR/../AppVersion.xcconfig"
+# CI_PRIMARY_REPOSITORY_PATH is the checkout root of the primary repo in
+# Xcode Cloud. Resolve the xcconfig from there so this script does not depend
+# on its own location or the working directory. Fall back to a path relative
+# to this script if the variable is somehow unset.
+if [ -n "$CI_PRIMARY_REPOSITORY_PATH" ]; then
+  REPO_ROOT="$CI_PRIMARY_REPOSITORY_PATH"
+else
+  REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+XCCONFIG="$REPO_ROOT/BskyDreams-iOS/Bsky Dreams/AppVersion.xcconfig"
 
 if [ ! -f "$XCCONFIG" ]; then
   echo "error: AppVersion.xcconfig not found at: $XCCONFIG"
