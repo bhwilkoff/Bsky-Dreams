@@ -103,6 +103,7 @@ struct ComposeView: View {
                         HStack(alignment: .top) {
                             AnimatedGifView(url: gif.uri, contentMode: .scaleAspectFit)
                                 .frame(maxWidth: .infinity, maxHeight: 160)
+                                .clipped()
                                 .nbBorder()
 
                             Button {
@@ -782,6 +783,9 @@ struct GifThumbnailView: View {
                         .padding(4)
                 }
                 .nbBorder()
+                // Make the whole cell tappable regardless of the embedded
+                // UIViewRepresentable's own measured size.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -819,12 +823,6 @@ struct AnimatedGifView: UIViewRepresentable {
         let bare = url.components(separatedBy: "?").first ?? url
         guard let gifURL = URL(string: bare) else { return }
         context.coordinator.load(gifURL, placeholderUrl: placeholderUrl, into: uiView)
-    }
-
-    /// Respect the proposed (SwiftUI frame) size rather than the image's intrinsic size.
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIImageView, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width,
-               height: proposal.height ?? uiView.intrinsicContentSize.height)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
