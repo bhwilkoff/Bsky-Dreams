@@ -6953,6 +6953,319 @@ a.post-timestamp:hover {
 }
 
 /* ================================================================
+   GROUP CHATS + REACTIONS (parity with iOS)
+================================================================ */
+
+/* Fallback secondary button used by group panels */
+.btn-secondary {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 2px solid var(--nb-black);
+  box-shadow: 2px 2px 0 var(--nb-black);
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+}
+.btn-secondary:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* --- Group avatar stack (conversation list) --- */
+.dms-avatar-stack {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+}
+.dms-stack-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface);
+  object-fit: cover;
+  background: var(--color-surface-alt);
+  margin-left: -12px;
+}
+.dms-stack-avatar:first-child { margin-left: 0; }
+
+/* --- Requests inbox --- */
+.dms-requests-entry .dms-requests-icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--nb-black);
+  background: var(--color-lime);
+  color: var(--nb-black);
+}
+.dms-requests-badge {
+  flex-shrink: 0;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dms-requests-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px var(--space-md);
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  border-bottom: 2px solid var(--nb-black);
+}
+.dms-requests-back { padding: 4px; color: var(--color-text); }
+.dms-request-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.dms-req-accept, .dms-req-decline {
+  padding: 5px 12px;
+  font-size: 0.8125rem;
+}
+
+/* --- New conversation: chips, group name, join link --- */
+.dms-new-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.dms-new-chips:empty { margin-bottom: 0; }
+.dms-recipient-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--color-accent-light);
+  border: 2px solid var(--nb-black);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.dms-chip-x {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--color-text);
+  padding: 0;
+}
+.dms-new-group-row,
+.dms-new-start-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.dms-new-group-row .dms-new-input { flex: 1; }
+.dms-new-create-btn { white-space: nowrap; flex-shrink: 0; }
+.dms-new-join-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 2px dashed var(--color-border);
+}
+.dms-new-join-label {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  margin-bottom: 6px;
+}
+.dms-new-join-input-row {
+  display: flex;
+  gap: 8px;
+}
+.dms-new-join-input-row .dms-new-input { flex: 1; }
+.dms-new-join-status {
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* --- Chat header (group subtitle + manage button) --- */
+.dms-group-subtitle {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  margin-top: -2px;
+  position: absolute;
+  bottom: 4px;
+  left: 52px;
+}
+.dms-chat-header { position: relative; }
+.dms-manage-btn { flex-shrink: 0; color: var(--color-text-muted); padding: 6px; }
+.dms-manage-btn:hover { color: var(--color-text); }
+
+/* --- System message pill --- */
+.dms-system-pill {
+  align-self: center;
+  max-width: 80%;
+  text-align: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  margin: 4px auto;
+}
+
+/* --- Group bubble sender avatar --- */
+.dms-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  position: relative;
+}
+.dms-bubble-sender-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--nb-black);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--color-surface-alt);
+}
+.dms-bubble-deleted { font-style: italic; color: var(--color-text-muted); }
+
+/* --- Reaction pills + picker --- */
+.dms-reaction-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+.dms-bubble-theirs .dms-reaction-pills { padding-left: 34px; }
+.dms-reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--nb-black);
+  background: var(--color-surface-alt);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.dms-reaction-pill-mine {
+  background: var(--color-accent);
+  color: #fff;
+}
+.dms-reaction-pill-mine .dms-reaction-count { color: #fff; }
+.dms-reaction-emoji { font-size: 0.8125rem; line-height: 1; }
+.dms-reaction-count { font-weight: 700; }
+
+.dms-bubble { cursor: pointer; }
+.dms-reaction-picker {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 5;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--color-surface);
+  border: 2px solid var(--nb-black);
+  box-shadow: 3px 3px 0 var(--nb-black);
+}
+.dms-bubble-mine .dms-reaction-picker { left: auto; right: 0; }
+.dms-reaction-picker-open { display: flex; }
+.dms-reaction-pick {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.dms-reaction-pick:hover { background: var(--color-surface-alt); }
+
+/* --- Group manage panel (modal overlay) --- */
+.dms-group-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(10, 10, 10, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+}
+.dms-group-panel {
+  width: 100%;
+  max-width: 440px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 3px solid var(--nb-black);
+  box-shadow: var(--shadow-elevated);
+  display: flex;
+  flex-direction: column;
+}
+.dms-group-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 3px solid var(--nb-black);
+}
+.dms-group-panel-header h3 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dms-group-panel-close { font-size: 1.4rem; line-height: 1; padding: 2px 8px; }
+.dms-group-panel-body { padding: var(--space-md); }
+.dms-group-section { margin-bottom: var(--space-lg); }
+.dms-group-section:last-child { margin-bottom: 0; }
+.dms-group-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.dms-group-section-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+.dms-group-add-search { margin-bottom: 10px; }
+.dms-group-add-search .dms-new-input { width: 100%; }
+.dms-group-members { list-style: none; margin: 0; padding: 0; }
+.dms-group-member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.dms-group-member:last-child { border-bottom: none; }
+.dms-group-member-info { flex: 1; min-width: 0; }
+.dms-you-tag { color: var(--color-text-muted); font-weight: 600; font-size: 0.8em; }
+.dms-member-remove { padding: 2px 8px; font-size: 1.1rem; line-height: 1; color: var(--color-text-muted); }
+.dms-member-remove:hover { color: var(--color-error, #c0392b); }
+.dms-invite-url-row { display: flex; gap: 8px; }
+.dms-invite-url { flex: 1; font-size: 0.8125rem; }
+.dms-group-leave-btn { width: 100%; }
+
+/* ================================================================
    M14: NETWORK CONSTELLATION
 ================================================================ */
 #view-constellation.view {

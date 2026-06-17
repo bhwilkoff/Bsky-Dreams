@@ -703,3 +703,24 @@ The rebuild (`DiscoverEngine` in `AppStore.swift`; mirrored in `js/app.js`):
 **Feed IA (simplified 2026-06-17):** the home feed is **three flat top-level tabs — Following · Conversations · Trending** — no nested sub-toggle. **Following** = your follows, chronological (`getTimeline` only, no re-rank); a clean "catch up on your people" feed, distinct from discovery, and it honors your moderation too. **Conversations** (default) and **Trending** are both the personalized discovery pipeline above — they differ only in the base signal (discussion vs popularity). An earlier design had two top tabs (Following/Discover) plus a Conversations/In Network/Trending sub-toggle; "In Network" was dropped as redundant (network-awareness is always-on in discovery ranking, and a chronological Following already represents your graph), and the two levels were flattened to remove the nesting.
 
 Rationale: this is the feed run through the project's four-question values check — it deepens understanding (you see *why*), invites participation (your graph + topics + the tab choice are the inputs), supports agency (your own moderation is honored, not a hardcoded list), and rewards conversation over virality. Trade-off: a per-session `getPreferences` + author-feed fetch to build the context, and a smaller candidate pool than the old firehose (mitigated by pagination).
+
+---
+
+## [SHARED] Group DMs + Message Reactions — `chat.bsky.group.*`
+*2026-06-17*
+
+Bluesky shipped group chats (up to 50, June 2026) and message reactions. Both build on the EXISTING DM infrastructure rather than a new surface — our `Conversation` model already carried `members: [ActorProfile]`, so groups are an enhancement of the Messages tab, not a new tab. Key implementation facts (lexicons flagged "unstable" upstream — re-verify field names before each release):
+
+- **Transport:** group endpoints (`chat.bsky.group.*`) use the same chat transport as `chat.bsky.convo.*` (same access token, same host) — no new client base URL.
+- **Group detection:** a convo is a group when `convoView.kind` is the `#groupConvo` union arm; the group **name / memberCount / joinLink live inside `kind`**, not on the convo directly. iOS decodes `kind` as a custom Codable union; web reads `convo.kind.$type`.
+- **Messages are a 3-way union now:** `#messageView | #deletedMessageView | #systemMessageView`. The existing decoder (text/sender optional → "deleted") had to gain a third arm: system messages carry a `data` union (`systemMessageDataAddMember/MemberJoin/RemoveMember/MemberLeave/EditGroup/…`) whose referred users are bare DIDs — render as centered pills ("X added Y", "Y joined") hydrating names from `convo.members`. iOS uses a custom `init(from:)` on `ChatMessage`; a memberwise init is kept for optimistic sends.
+- **Reactions:** `chat.bsky.convo.addReaction`/`removeReaction` take `{convoId, messageId, value}` (one emoji grapheme) and **echo back the full updated `messageView`** — refresh local state from the response rather than mutating a partial. `messageView.reactions = [{value, sender:{did}, createdAt}]`.
+- **Endpoints wired:** createGroup, addMembers, removeMembers, listConvoRequests + acceptConvo (requests inbox), requestJoin (invite-link join, takes a `code` not a convoId), createJoinLink, listJoinRequests/approve/rejectJoinRequest (owner approval, API present). Heterogeneous union arrays (`listConvoRequests`) are decoded with an always-succeeds failable wrapper so the array advances reliably and non-convo arms resolve to nil.
+- **No media in group chats yet** (Bluesky hasn't shipped it — text-only).
+
+---
+
+## [SHARED] Communities — Watch, Don't Build (no lexicon yet)
+*2026-06-17*
+
+Bluesky announced **Communities** (Reddit-style topic spaces — handles-as-URLs like `name.bsky.social`, three privacy levels public/invite/private, custom home pages built on atproto apps) but as of June 2026 it is **not launched and has no published lexicon/API.** Decision: do NOT build speculative UI against an unannounced schema (it would be thrown away). When the lexicon ships, Communities warrants its **own top-level surface** (browse/join/post within topic spaces — distinct from feeds and DMs), not a fold-in. Tracked in SCRATCHPAD; re-check the atproto changelog + `lexicons/` periodically.

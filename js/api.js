@@ -650,6 +650,64 @@ const API = (() => {
     return chatPost('chat.bsky.convo.leaveConvo', { convoId });
   }
 
+  /* ---- Group chats + reactions (parity with iOS, June 2026 lexicons) ----
+     Same chat host/headers as the 1:1 convo calls above. A convo is a GROUP
+     when convo.kind?.$type ends with "#groupConvo". */
+
+  // Group conversations (chat.bsky.group.*)
+  async function createGroup(name, members) {
+    // `members` excludes the creator (max 49). Returns { convo }.
+    return chatPost('chat.bsky.group.createGroup', { name, members });
+  }
+
+  async function addGroupMembers(convoId, members) {
+    return chatPost('chat.bsky.group.addMembers', { convoId, members });
+  }
+
+  async function removeGroupMembers(convoId, members) {
+    return chatPost('chat.bsky.group.removeMembers', { convoId, members });
+  }
+
+  async function listJoinRequests(convoId, cursor) {
+    return chatGet('chat.bsky.group.listJoinRequests', { convoId, limit: 50, cursor });
+  }
+
+  async function approveJoinRequest(convoId, member) {
+    return chatPost('chat.bsky.group.approveJoinRequest', { convoId, member });
+  }
+
+  async function rejectJoinRequest(convoId, member) {
+    return chatPost('chat.bsky.group.rejectJoinRequest', { convoId, member });
+  }
+
+  // Join a group via an invite-link code. Returns { status: "joined"|"pending", convo? }.
+  async function requestJoinGroup(code) {
+    return chatPost('chat.bsky.group.requestJoin', { code });
+  }
+
+  async function createJoinLink(convoId, joinRule = 'anyone', requireApproval = false) {
+    return chatPost('chat.bsky.group.createJoinLink', { convoId, joinRule, requireApproval });
+  }
+
+  // Convo requests + reactions (chat.bsky.convo.*)
+  async function listConvoRequests(cursor) {
+    return chatGet('chat.bsky.convo.listConvoRequests', { limit: 50, cursor });
+  }
+
+  async function acceptConvo(convoId) {
+    return chatPost('chat.bsky.convo.acceptConvo', { convoId });
+  }
+
+  // `value` is a single emoji grapheme; returns { message } with the full
+  // updated reactions array — use it to refresh local state.
+  async function addReaction(convoId, messageId, value) {
+    return chatPost('chat.bsky.convo.addReaction', { convoId, messageId, value });
+  }
+
+  async function removeReaction(convoId, messageId, value) {
+    return chatPost('chat.bsky.convo.removeReaction', { convoId, messageId, value });
+  }
+
   return {
     searchPosts,
     searchActors,
@@ -694,5 +752,17 @@ const API = (() => {
     getConvoForMembers,
     updateRead,
     leaveConvo,
+    createGroup,
+    addGroupMembers,
+    removeGroupMembers,
+    listJoinRequests,
+    approveJoinRequest,
+    rejectJoinRequest,
+    requestJoinGroup,
+    createJoinLink,
+    listConvoRequests,
+    acceptConvo,
+    addReaction,
+    removeReaction,
   };
 })();

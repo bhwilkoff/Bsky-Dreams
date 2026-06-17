@@ -31,6 +31,9 @@
 | Notification tap → navigate to relevant post/profile | ✅ | ✅ | |
 | Direct messages (conversation list, chat) | ✅ | ✅ | |
 | DMs: new conversation (handle search) | ✅ | ✅ | |
+| Group DMs (create, members, requests, invite links) | ✅ | ✅ | 2026-06-17; `chat.bsky.group.*`; up to 50; text-only (Bluesky limit) |
+| Message reactions (emoji, add/remove) | ✅ | ✅ | 2026-06-17; `chat.bsky.convo.addReaction/removeReaction` |
+| Communities (Reddit-style topic spaces) | ⏳ | ⏳ | Announced, NO lexicon yet — watch atproto changelog (own top-level surface when it ships) |
 | Gallery (image posts, card layout, like/repost, lightbox) | ✅ | ✅ | iOS: tap image → lightbox; tap metadata → conversation |
 | Lightbox: image download button | ✅ | ✅ | Web: added 2026-03-23 (fetch→blob→anchor download) |
 | Dark mode (color scheme toggle) | ✅ | ✅ | Web: added 2026-03-23 (html[data-theme="dark"], localStorage persistence, Settings toggle) |

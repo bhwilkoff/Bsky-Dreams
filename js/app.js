@@ -9466,6 +9466,73 @@
   let dmsPollTimer      = null;
   let dmsLastMessageId  = null;
   let dmsConvoCursor    = null;
+  let dmsMessages       = [];   // current chat's message objects (for reaction updates)
+
+  const DM_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+  /* ---- Group helpers (parity with iOS Conversation model) ---- */
+  // A convo is a group when convo.kind?.$type ends with "#groupConvo".
+  function _convoIsGroup(convo) {
+    const t = convo?.kind?.['$type'] || '';
+    if (t) return t.includes('groupConvo');
+    return (convo?.members || []).length > 2;
+  }
+  function _convoMemberCount(convo) {
+    return convo?.kind?.memberCount ?? (convo?.members || []).length;
+  }
+  function _convoJoinLink(convo) {
+    return convo?.kind?.joinLink || null;
+  }
+  function _convoOthers(convo) {
+    return (convo?.members || []).filter(m => m.did !== dmsOwnDid);
+  }
+  // Title to show in the convo list / chat header.
+  function _convoTitle(convo) {
+    if (_convoIsGroup(convo)) return convo?.kind?.name || 'Group';
+    const others = _convoOthers(convo);
+    const m = others[0] || convo?.members?.[0] || {};
+    return m.displayName || m.handle || 'Conversation';
+  }
+  // Resolve a DID to a display name using the convo's members.
+  function _nameForDid(convo, did) {
+    if (!did) return 'Someone';
+    if (did === dmsOwnDid) return 'You';
+    const m = (convo?.members || []).find(x => x.did === did);
+    return m?.displayName || m?.handle || 'Someone';
+  }
+
+  // Render a #systemMessageView's data as a sentence (mirrors SystemMessageData.summary).
+  function _systemMessageSummary(convo, data) {
+    const t = data?.['$type'] || '';
+    const nm = (key) => _nameForDid(convo, data?.[key]?.did);
+    if (t.endsWith('AddMember'))    return `${nm('addedBy')} added ${nm('member')}`;
+    if (t.endsWith('RemoveMember')) return `${nm('removedBy')} removed ${nm('member')}`;
+    if (t.endsWith('MemberJoin')) {
+      if (data?.approvedBy?.did) return `${nm('member')} joined · approved by ${nm('approvedBy')}`;
+      return `${nm('member')} joined`;
+    }
+    if (t.endsWith('MemberLeave')) return `${nm('member')} left`;
+    if (t.endsWith('EditGroup'))   return data?.newName ? `Group renamed to “${data.newName}”` : 'Group updated';
+    if (t.endsWith('CreateJoinLink') || t.endsWith('EnableJoinLink')) return 'Invite link enabled';
+    if (t.endsWith('DisableJoinLink')) return 'Invite link disabled';
+    if (t.includes('Lock')) return 'Conversation locked';
+    return 'Conversation updated';
+  }
+
+  // Message-type classification (3-way union: messageView | deletedMessageView | systemMessageView).
+  function _msgIsSystem(msg)  { return !!msg?.data && !!msg.data['$type']; }
+  function _msgIsDeleted(msg) { return !_msgIsSystem(msg) && (msg?.text == null || msg?.sender == null); }
+
+  // Group reactions by emoji value, preserving first-seen order.
+  function _groupReactions(reactions) {
+    const order = [];
+    const grouped = {};
+    (reactions || []).forEach(r => {
+      if (!grouped[r.value]) { grouped[r.value] = []; order.push(r.value); }
+      grouped[r.value].push(r);
+    });
+    return order.map(value => ({ value, reactions: grouped[value] }));
+  }
 
   function startDmsPolling() {
     stopDmsPolling();
@@ -9499,7 +9566,19 @@
       dmsConvoCursor = data.cursor || null;
       loadingEl.hidden = true;
 
-      if (!convos.length && !append) {
+      // Requests inbox entry (only on the first page).
+      if (!append) {
+        try {
+          const reqData = await API.listConvoRequests();
+          // Keep only the convoView arms (they carry an "id").
+          const requests = (reqData.requests || []).filter(r => r && r.id);
+          if (requests.length) {
+            listEl.appendChild(buildRequestsEntry(requests));
+          }
+        } catch { /* requests are best-effort */ }
+      }
+
+      if (!convos.length && !append && !listEl.children.length) {
         emptyEl.hidden = false;
         return;
       }
@@ -9515,35 +9594,157 @@
     }
   }
 
+  // Up to 3 overlapping member avatars for a group row.
+  function _avatarStackHtml(convo) {
+    const avatars = _convoOthers(convo).slice(0, 3);
+    const fb = window._bskyAvatarFallback || '';
+    const imgs = avatars.map(m =>
+      `<img class="dms-stack-avatar" src="${escHtml(m.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">`
+    ).join('');
+    return `<div class="dms-avatar-stack">${imgs}</div>`;
+  }
+
   function buildConvoItem(convo) {
     const li = document.createElement('li');
     li.className = 'dms-convo-item' + (convo.unreadCount > 0 ? ' dms-convo-unread' : '');
     li.dataset.convoId = convo.id;
 
-    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
-    const displayMember = others[0] || convo.members?.[0] || {};
-    const name = displayMember.displayName || displayMember.handle || 'Unknown';
-    const handle = displayMember.handle ? `@${displayMember.handle}` : '';
-    const avatarSrc = displayMember.avatar || window._bskyAvatarFallback || '';
-
+    const isGroup = _convoIsGroup(convo);
     const lastMsg = convo.lastMessage;
-    const preview = lastMsg?.text ? lastMsg.text.slice(0, 60) + (lastMsg.text.length > 60 ? '\u2026' : '') : '';
+    const previewRaw = _msgIsSystem(lastMsg)
+      ? _systemMessageSummary(convo, lastMsg.data)
+      : (lastMsg?.text || '');
+    const preview = previewRaw ? previewRaw.slice(0, 60) + (previewRaw.length > 60 ? '\u2026' : '') : '';
     const ts = lastMsg?.sentAt ? formatTimestamp(lastMsg.sentAt) : '';
+    const fb = window._bskyAvatarFallback || '';
 
-    li.innerHTML = `
-      <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">\
-      <div class="dms-convo-info">
-        <div class="dms-convo-name-row">
-          <span class="dms-convo-name">${escHtml(name)}</span>
-          <span class="dms-convo-ts">${escHtml(ts)}</span>
+    if (isGroup) {
+      const name = _convoTitle(convo);
+      const count = _convoMemberCount(convo);
+      li.innerHTML = `
+        ${_avatarStackHtml(convo)}
+        <div class="dms-convo-info">
+          <div class="dms-convo-name-row">
+            <span class="dms-convo-name">${escHtml(name)}</span>
+            <span class="dms-convo-ts">${escHtml(ts)}</span>
+          </div>
+          <div class="dms-convo-handle">${count} member${count === 1 ? '' : 's'}</div>
+          <div class="dms-convo-preview">${escHtml(preview)}</div>
         </div>
-        <div class="dms-convo-handle">${escHtml(handle)}</div>
-        <div class="dms-convo-preview">${escHtml(preview)}</div>
-      </div>
-      ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
-    `;
+        ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
+      `;
+    } else {
+      const others = _convoOthers(convo);
+      const displayMember = others[0] || convo.members?.[0] || {};
+      const name = displayMember.displayName || displayMember.handle || 'Unknown';
+      const handle = displayMember.handle ? `@${displayMember.handle}` : '';
+      const avatarSrc = displayMember.avatar || fb;
+      li.innerHTML = `
+        <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="" onerror="this.src='${escHtml(fb)}'">\
+        <div class="dms-convo-info">
+          <div class="dms-convo-name-row">
+            <span class="dms-convo-name">${escHtml(name)}</span>
+            <span class="dms-convo-ts">${escHtml(ts)}</span>
+          </div>
+          <div class="dms-convo-handle">${escHtml(handle)}</div>
+          <div class="dms-convo-preview">${escHtml(preview)}</div>
+        </div>
+        ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
+      `;
+    }
 
     li.addEventListener('click', () => openDmsChat(convo));
+    return li;
+  }
+
+  /* ---- Requests inbox ---- */
+  function buildRequestsEntry(requests) {
+    const li = document.createElement('li');
+    li.className = 'dms-convo-item dms-requests-entry';
+    li.innerHTML = `
+      <div class="dms-requests-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <div class="dms-convo-info">
+        <div class="dms-convo-name">Requests</div>
+        <div class="dms-convo-preview">${requests.length} message request${requests.length === 1 ? '' : 's'}</div>
+      </div>
+      <span class="dms-requests-badge">${requests.length}</span>
+    `;
+    li.addEventListener('click', () => openRequestsInbox(requests));
+    return li;
+  }
+
+  function openRequestsInbox(requests) {
+    const listEl = $('dms-list');
+    listEl.innerHTML = '';
+    $('dms-loading').hidden = true;
+    $('dms-empty').hidden   = true;
+
+    const header = document.createElement('li');
+    header.className = 'dms-requests-header';
+    header.innerHTML = `
+      <button type="button" class="btn btn-ghost dms-requests-back" aria-label="Back to messages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span>Requests</span>
+    `;
+    header.querySelector('.dms-requests-back').addEventListener('click', () => loadDmsList());
+    listEl.appendChild(header);
+
+    requests.forEach(convo => listEl.appendChild(buildRequestRow(convo)));
+  }
+
+  function buildRequestRow(convo) {
+    const li = document.createElement('li');
+    li.className = 'dms-convo-item dms-request-row';
+    const isGroup = _convoIsGroup(convo);
+    const title = _convoTitle(convo);
+    const fb = window._bskyAvatarFallback || '';
+    const sub = isGroup
+      ? `${_convoMemberCount(convo)} members`
+      : (_convoOthers(convo)[0]?.handle ? `@${_convoOthers(convo)[0].handle}` : '');
+    const avatarHtml = isGroup
+      ? _avatarStackHtml(convo)
+      : `<img class="dms-convo-avatar" src="${escHtml(_convoOthers(convo)[0]?.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">`;
+
+    li.innerHTML = `
+      ${avatarHtml}
+      <div class="dms-convo-info">
+        <div class="dms-convo-name">${escHtml(title)}</div>
+        <div class="dms-convo-handle">${escHtml(sub)}</div>
+      </div>
+      <div class="dms-request-actions">
+        <button type="button" class="btn btn-primary dms-req-accept">Accept</button>
+        <button type="button" class="btn btn-ghost dms-req-decline">Decline</button>
+      </div>
+    `;
+    const acceptBtn  = li.querySelector('.dms-req-accept');
+    const declineBtn = li.querySelector('.dms-req-decline');
+    acceptBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = declineBtn.disabled = true;
+      try {
+        await API.acceptConvo(convo.id);
+        li.remove();
+        showBanner('Conversation accepted.');
+        loadDmsList();
+      } catch (err) {
+        acceptBtn.disabled = declineBtn.disabled = false;
+        showBanner(`Could not accept: ${err.message}`, true);
+      }
+    });
+    declineBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = declineBtn.disabled = true;
+      try {
+        await API.leaveConvo(convo.id);
+        li.remove();
+        showBanner('Request declined.');
+        loadDmsList();
+      } catch (err) {
+        acceptBtn.disabled = declineBtn.disabled = false;
+        showBanner(`Could not decline: ${err.message}`, true);
+      }
+    });
     return li;
   }
 
@@ -9552,11 +9753,12 @@
     dmsActiveConvo   = convo;
     dmsMessageCursor = null;
     dmsLastMessageId = null;
-    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
-    const displayMember = others[0] || convo.members?.[0] || {};
-    const name = displayMember.displayName || displayMember.handle || 'Messages';
+    dmsMessages      = [];
 
-    $('dms-chat-title').textContent = name;
+    const isGroup = _convoIsGroup(convo);
+    $('dms-chat-title').textContent = _convoTitle(convo);
+    setupChatHeader(convo);
+
     $('dms-list-panel').hidden  = true;
     $('dms-chat-panel').hidden  = false;
     $('dms-messages').innerHTML = '';
@@ -9564,6 +9766,40 @@
 
     await loadMessages(false);
     startDmsPolling();
+  }
+
+  // Group convos get a member-count subtitle + a "Manage" button in the header
+  // (in place of the 1:1 Leave button). Built dynamically since index.html is fixed.
+  function setupChatHeader(convo) {
+    const isGroup = _convoIsGroup(convo);
+    const titleEl = $('dms-chat-title');
+    const leaveBtn = $('dms-leave-btn');
+
+    // Remove any previously injected group elements.
+    document.getElementById('dms-manage-btn')?.remove();
+    document.getElementById('dms-group-subtitle')?.remove();
+
+    if (isGroup) {
+      leaveBtn.hidden = true;
+      const count = _convoMemberCount(convo);
+      const sub = document.createElement('div');
+      sub.id = 'dms-group-subtitle';
+      sub.className = 'dms-group-subtitle';
+      sub.textContent = `${count} member${count === 1 ? '' : 's'}`;
+      titleEl.insertAdjacentElement('afterend', sub);
+
+      const manageBtn = document.createElement('button');
+      manageBtn.id = 'dms-manage-btn';
+      manageBtn.type = 'button';
+      manageBtn.className = 'btn btn-ghost dms-manage-btn';
+      manageBtn.setAttribute('aria-label', 'Manage group');
+      manageBtn.title = 'Manage group';
+      manageBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/><circle cx="5" cy="12" r="1.6"/></svg>';
+      manageBtn.addEventListener('click', () => openGroupManagePanel());
+      leaveBtn.insertAdjacentElement('afterend', manageBtn);
+    } else {
+      leaveBtn.hidden = false;
+    }
   }
 
   async function loadMessages(append = false) {
@@ -9585,11 +9821,12 @@
       const wasAtBottom  = scrollBottom < 60;
 
       msgs.forEach(msg => {
-        const bubble = buildMessageBubble(msg);
         if (append) {
-          messagesEl.insertBefore(bubble, messagesEl.firstChild);
+          dmsMessages.unshift(msg);
+          messagesEl.insertBefore(buildMessageBubble(msg), messagesEl.firstChild);
         } else {
-          messagesEl.appendChild(bubble);
+          dmsMessages.push(msg);
+          messagesEl.appendChild(buildMessageBubble(msg));
         }
       });
 
@@ -9625,6 +9862,7 @@
           if (msg.id === dmsLastMessageId) foundLast = true;
           return;
         }
+        dmsMessages.push(msg);
         messagesEl.appendChild(buildMessageBubble(msg));
       });
 
@@ -9636,27 +9874,212 @@
   }
 
   function buildMessageBubble(msg) {
-    const isMine = msg.sender?.did === dmsOwnDid;
+    // System messages render as centered pills (group events).
+    if (_msgIsSystem(msg)) {
+      const pill = document.createElement('div');
+      pill.className = 'dms-system-pill';
+      pill.textContent = _systemMessageSummary(dmsActiveConvo, msg.data);
+      return pill;
+    }
+
+    const isMine   = msg.sender?.did === dmsOwnDid;
+    const isGroup  = _convoIsGroup(dmsActiveConvo);
+    const deleted  = _msgIsDeleted(msg);
     const wrap = document.createElement('div');
     wrap.className = 'dms-bubble-wrap ' + (isMine ? 'dms-bubble-mine' : 'dms-bubble-theirs');
+    if (msg.id) wrap.dataset.messageId = msg.id;
+
+    // Row: optional sender avatar (incoming group messages) + bubble.
+    const row = document.createElement('div');
+    row.className = 'dms-bubble-row';
+
+    if (isGroup && !isMine) {
+      const sender = (dmsActiveConvo?.members || []).find(m => m.did === msg.sender?.did);
+      const img = document.createElement('img');
+      img.className = 'dms-bubble-sender-avatar';
+      img.src = sender?.avatar || window._bskyAvatarFallback || '';
+      img.alt = '';
+      img.onerror = function () { this.src = window._bskyAvatarFallback || ''; };
+      row.appendChild(img);
+    }
 
     const bubble = document.createElement('div');
-    bubble.className = 'dms-bubble';
-    bubble.textContent = msg.text || '';
+    bubble.className = 'dms-bubble' + (deleted ? ' dms-bubble-deleted' : '');
+    bubble.textContent = deleted ? 'Message deleted' : (msg.text || '');
+
+    // Reaction picker — tapping the bubble reveals a small emoji bar.
+    if (!deleted && msg.id) {
+      const picker = document.createElement('div');
+      picker.className = 'dms-reaction-picker';
+      DM_REACTIONS.forEach(emoji => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'dms-reaction-pick';
+        b.textContent = emoji;
+        b.addEventListener('click', (e) => { e.stopPropagation(); toggleReaction(msg, emoji); });
+        picker.appendChild(b);
+      });
+      bubble.addEventListener('click', () => {
+        const open = picker.classList.toggle('dms-reaction-picker-open');
+        if (open) {
+          document.querySelectorAll('.dms-reaction-picker-open').forEach(p => {
+            if (p !== picker) p.classList.remove('dms-reaction-picker-open');
+          });
+        }
+      });
+      row.appendChild(bubble);
+      row.appendChild(picker);
+    } else {
+      row.appendChild(bubble);
+    }
+
+    wrap.appendChild(row);
+
+    // Existing reactions as pills.
+    if (!deleted && msg.reactions && msg.reactions.length) {
+      wrap.appendChild(buildReactionPills(msg));
+    }
 
     const ts = document.createElement('time');
     ts.className = 'dms-bubble-ts';
     ts.textContent = msg.sentAt ? formatTimestamp(msg.sentAt) : '';
-
-    wrap.appendChild(bubble);
     wrap.appendChild(ts);
+
     return wrap;
+  }
+
+  // Grouped emoji-count pills; my own reactions highlighted; tap toggles.
+  function buildReactionPills(msg) {
+    const container = document.createElement('div');
+    container.className = 'dms-reaction-pills';
+    _groupReactions(msg.reactions).forEach(({ value, reactions }) => {
+      const mine = reactions.some(r => r.sender?.did === dmsOwnDid);
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'dms-reaction-pill' + (mine ? ' dms-reaction-pill-mine' : '');
+      pill.innerHTML = `<span class="dms-reaction-emoji">${escHtml(value)}</span><span class="dms-reaction-count">${reactions.length}</span>`;
+      pill.addEventListener('click', () => toggleReaction(msg, value));
+      container.appendChild(pill);
+    });
+    return container;
+  }
+
+  // Add my reaction, or remove it if I've already reacted with this emoji.
+  // The API returns the updated message; replace local state + rerender the bubble.
+  async function toggleReaction(msg, emoji) {
+    const alreadyMine = (msg.reactions || []).some(
+      r => r.value === emoji && r.sender?.did === dmsOwnDid
+    );
+    try {
+      const resp = alreadyMine
+        ? await API.removeReaction(dmsActiveConvoId, msg.id, emoji)
+        : await API.addReaction(dmsActiveConvoId, msg.id, emoji);
+      const updated = resp?.message;
+      if (!updated) return;
+      // Replace in dmsMessages and rerender the corresponding bubble.
+      const idx = dmsMessages.findIndex(m => m.id === msg.id);
+      if (idx !== -1) dmsMessages[idx] = updated;
+      const oldWrap = $('dms-messages').querySelector(`[data-message-id="${cssEscape(msg.id)}"]`);
+      if (oldWrap) oldWrap.replaceWith(buildMessageBubble(updated));
+    } catch (err) {
+      showBanner(`Couldn't update reaction: ${err.message}`, true);
+    }
+  }
+
+  // Minimal CSS.escape fallback for attribute selectors.
+  function cssEscape(s) {
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/["\\]/g, '\\$&');
+  }
+
+  /* ---- New conversation (multi-select → 1:1 or group) + join-via-link ---- */
+  let dmsSelectedRecipients = [];   // [{did, handle, displayName, avatar}]
+
+  // Lazily inject the extra new-convo UI (chips, group-name input, create + join)
+  // into the existing #dms-new-search container, once.
+  function ensureNewConvoUI() {
+    if (document.getElementById('dms-new-chips')) return;
+    const searchEl = $('dms-new-search');
+
+    const chips = document.createElement('div');
+    chips.id = 'dms-new-chips';
+    chips.className = 'dms-new-chips';
+    searchEl.insertBefore(chips, $('dms-new-input'));
+
+    const groupRow = document.createElement('div');
+    groupRow.id = 'dms-new-group-row';
+    groupRow.className = 'dms-new-group-row';
+    groupRow.hidden = true;
+    groupRow.innerHTML = `
+      <input type="text" id="dms-new-group-name" class="dms-new-input" placeholder="Group name…" maxlength="64" autocomplete="off">
+      <button type="button" class="btn btn-primary dms-new-create-btn" id="dms-new-create-btn">Create group</button>
+    `;
+    searchEl.appendChild(groupRow);
+
+    const startRow = document.createElement('div');
+    startRow.id = 'dms-new-start-row';
+    startRow.className = 'dms-new-start-row';
+    startRow.hidden = true;
+    startRow.innerHTML = `<button type="button" class="btn btn-primary dms-new-create-btn" id="dms-new-start-btn">Start conversation</button>`;
+    searchEl.appendChild(startRow);
+
+    const joinRow = document.createElement('div');
+    joinRow.id = 'dms-new-join-row';
+    joinRow.className = 'dms-new-join-row';
+    joinRow.innerHTML = `
+      <div class="dms-new-join-label">Join a group via invite link</div>
+      <div class="dms-new-join-input-row">
+        <input type="text" id="dms-new-join-input" class="dms-new-input" placeholder="bsky.app/messages/join/… or code" autocomplete="off">
+        <button type="button" class="btn btn-secondary" id="dms-new-join-btn">Join</button>
+      </div>
+      <div id="dms-new-join-status" class="dms-new-join-status" hidden></div>
+    `;
+    searchEl.appendChild(joinRow);
+
+    $('dms-new-create-btn').addEventListener('click', () => createGroupFromSelection());
+    $('dms-new-start-btn').addEventListener('click', () => startOneToOne());
+    $('dms-new-join-btn').addEventListener('click', () => joinViaLink());
+    $('dms-new-join-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); joinViaLink(); } });
+  }
+
+  function resetNewConvoUI() {
+    dmsSelectedRecipients = [];
+    $('dms-new-input').value = '';
+    $('dms-new-results').innerHTML = '';
+    if (document.getElementById('dms-new-chips')) {
+      $('dms-new-chips').innerHTML = '';
+      $('dms-new-group-row').hidden = true;
+      $('dms-new-start-row').hidden = true;
+      $('dms-new-group-name').value = '';
+      $('dms-new-join-input').value = '';
+      $('dms-new-join-status').hidden = true;
+    }
+  }
+
+  function renderRecipientChips() {
+    const chips = $('dms-new-chips');
+    chips.innerHTML = '';
+    dmsSelectedRecipients.forEach(actor => {
+      const chip = document.createElement('span');
+      chip.className = 'dms-recipient-chip';
+      chip.innerHTML = `<span>${escHtml(actor.displayName || actor.handle)}</span><button type="button" class="dms-chip-x" aria-label="Remove">×</button>`;
+      chip.querySelector('.dms-chip-x').addEventListener('click', () => {
+        dmsSelectedRecipients = dmsSelectedRecipients.filter(a => a.did !== actor.did);
+        renderRecipientChips();
+      });
+      chips.appendChild(chip);
+    });
+    // Group name needed when 2+ recipients; otherwise a simple "Start conversation".
+    const n = dmsSelectedRecipients.length;
+    $('dms-new-group-row').hidden = n < 2;
+    $('dms-new-start-row').hidden = n !== 1;
   }
 
   $('dms-new-btn').addEventListener('click', () => {
     const searchEl = $('dms-new-search');
+    ensureNewConvoUI();
     searchEl.hidden = !searchEl.hidden;
-    if (!searchEl.hidden) $('dms-new-input').focus();
+    if (!searchEl.hidden) { resetNewConvoUI(); renderRecipientChips(); $('dms-new-input').focus(); }
   });
 
   let dmsNewSearchTimer = null;
@@ -9671,6 +10094,7 @@
         const resultsEl = $('dms-new-results');
         resultsEl.innerHTML = '';
         actors.forEach(actor => {
+          if (dmsSelectedRecipients.some(a => a.did === actor.did)) return;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'dms-new-result-btn';
@@ -9681,22 +10105,97 @@
               <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
             </div>
           `;
-          btn.addEventListener('click', async () => {
-            try {
-              const convoData = await API.getConvoForMembers([actor.did]);
-              $('dms-new-search').hidden = true;
-              $('dms-new-input').value = '';
-              $('dms-new-results').innerHTML = '';
-              await openDmsChat(convoData.convo);
-            } catch (err) {
-              showBanner(`Could not open conversation: ${err.message}`);
-            }
+          btn.addEventListener('click', () => {
+            dmsSelectedRecipients.push({
+              did: actor.did, handle: actor.handle,
+              displayName: actor.displayName, avatar: actor.avatar,
+            });
+            $('dms-new-input').value = '';
+            $('dms-new-results').innerHTML = '';
+            renderRecipientChips();
+            $('dms-new-input').focus();
           });
           resultsEl.appendChild(btn);
         });
       } catch { /* silent */ }
     }, 300);
   });
+
+  async function startOneToOne() {
+    if (dmsSelectedRecipients.length !== 1) return;
+    const btn = $('dms-new-start-btn');
+    btn.disabled = true;
+    try {
+      const convoData = await API.getConvoForMembers([dmsSelectedRecipients[0].did]);
+      $('dms-new-search').hidden = true;
+      resetNewConvoUI();
+      await openDmsChat(convoData.convo);
+    } catch (err) {
+      showBanner(`Could not open conversation: ${err.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function createGroupFromSelection() {
+    const name = $('dms-new-group-name').value.trim();
+    if (dmsSelectedRecipients.length < 2) return;
+    if (!name) { showBanner('Enter a group name.', true); return; }
+    const btn = $('dms-new-create-btn');
+    btn.disabled = true;
+    try {
+      // Creator is excluded from members per the lexicon.
+      const dids = dmsSelectedRecipients.map(a => a.did);
+      const resp = await API.createGroup(name, dids);
+      $('dms-new-search').hidden = true;
+      resetNewConvoUI();
+      await openDmsChat(resp.convo);
+    } catch (err) {
+      showBanner(`Could not create group: ${err.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Extract a join code from a pasted bsky.app/messages/join/<code> URL or a raw code.
+  function extractJoinCode(raw) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return '';
+    try {
+      const u = new URL(trimmed);
+      if (u.host) {
+        const comps = u.pathname.split('/').filter(Boolean);
+        if (comps.length) return comps[comps.length - 1];
+      }
+    } catch { /* not a URL */ }
+    return trimmed;
+  }
+
+  async function joinViaLink() {
+    const code = extractJoinCode($('dms-new-join-input').value);
+    if (!code) return;
+    const btn = $('dms-new-join-btn');
+    const statusEl = $('dms-new-join-status');
+    btn.disabled = true;
+    statusEl.hidden = true;
+    try {
+      const resp = await API.requestJoinGroup(code);
+      if (resp.status === 'joined' && resp.convo) {
+        $('dms-new-search').hidden = true;
+        resetNewConvoUI();
+        await openDmsChat(resp.convo);
+      } else {
+        statusEl.textContent = "Request sent. You'll join once an admin approves.";
+        statusEl.hidden = false;
+        $('dms-new-join-input').value = '';
+      }
+    } catch (err) {
+      statusEl.textContent = "Couldn't join with that link. Check the code and try again.";
+      statusEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
   $('dms-compose-text').addEventListener('input', (e) => {
     const len = e.target.value.length;
@@ -9720,7 +10219,9 @@
       const messagesEl = $('dms-messages');
       const noMsgs = messagesEl.querySelector('.dms-no-msgs');
       if (noMsgs) noMsgs.remove();
-      messagesEl.appendChild(buildMessageBubble({ ...msg, sender: { did: dmsOwnDid } }));
+      const localMsg = { ...msg, sender: { did: dmsOwnDid }, reactions: msg.reactions || [] };
+      dmsMessages.push(localMsg);
+      messagesEl.appendChild(buildMessageBubble(localMsg));
       dmsLastMessageId = msg.id;
       messagesEl.scrollTop = messagesEl.scrollHeight;
     } catch (err) {
@@ -9733,8 +10234,13 @@
 
   $('dms-back-btn').addEventListener('click', () => {
     stopDmsPolling();
+    closeGroupManagePanel();
     dmsActiveConvoId = null;
     dmsActiveConvo   = null;
+    dmsMessages      = [];
+    document.getElementById('dms-manage-btn')?.remove();
+    document.getElementById('dms-group-subtitle')?.remove();
+    $('dms-leave-btn').hidden = false;
     $('dms-chat-panel').hidden = true;
     $('dms-list-panel').hidden = false;
     loadDmsList();
@@ -9762,6 +10268,219 @@
       btn.disabled = false;
     }
   });
+
+  /* ---- Group manage panel (members, add/remove, invite link, leave) ---- */
+  function closeGroupManagePanel() {
+    document.getElementById('dms-group-panel-overlay')?.remove();
+  }
+
+  function openGroupManagePanel() {
+    if (!dmsActiveConvo || !_convoIsGroup(dmsActiveConvo)) return;
+    closeGroupManagePanel();
+    const convo = dmsActiveConvo;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'dms-group-panel-overlay';
+    overlay.className = 'dms-group-panel-overlay';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeGroupManagePanel(); });
+
+    const panel = document.createElement('div');
+    panel.className = 'dms-group-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Manage group');
+
+    const link = _convoJoinLink(convo);
+    const linkSection = link && link.code
+      ? `<div class="dms-invite-url-row">
+           <input type="text" class="dms-new-input dms-invite-url" id="dms-invite-url" readonly value="https://bsky.app/messages/join/${escHtml(link.code)}">
+           <button type="button" class="btn btn-secondary" id="dms-invite-copy">Copy</button>
+         </div>`
+      : `<button type="button" class="btn btn-secondary" id="dms-invite-create">Create invite link</button>`;
+
+    panel.innerHTML = `
+      <div class="dms-group-panel-header">
+        <h3>${escHtml(_convoTitle(convo))}</h3>
+        <button type="button" class="btn btn-ghost dms-group-panel-close" id="dms-group-panel-close" aria-label="Close">×</button>
+      </div>
+      <div class="dms-group-panel-body">
+        <div class="dms-group-section">
+          <div class="dms-group-section-head">
+            <span class="dms-group-section-title">Members (${_convoMemberCount(convo)})</span>
+            <button type="button" class="btn btn-secondary dms-group-add-btn" id="dms-group-add-btn">Add people</button>
+          </div>
+          <div id="dms-group-add-search" class="dms-group-add-search" hidden>
+            <input type="search" id="dms-group-add-input" class="dms-new-input" placeholder="Find a person (@handle)…" autocomplete="off">
+            <div id="dms-group-add-results" class="dms-new-results"></div>
+          </div>
+          <ul class="dms-group-members" id="dms-group-members"></ul>
+        </div>
+        <div class="dms-group-section">
+          <div class="dms-group-section-title">Invite link</div>
+          <div id="dms-invite-section">${linkSection}</div>
+        </div>
+        <div class="dms-group-section">
+          <button type="button" class="btn btn-danger dms-group-leave-btn" id="dms-group-leave-btn">Leave group</button>
+        </div>
+      </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    renderGroupMembers(convo);
+
+    $('dms-group-panel-close').addEventListener('click', () => closeGroupManagePanel());
+    $('dms-group-add-btn').addEventListener('click', () => {
+      const s = $('dms-group-add-search');
+      s.hidden = !s.hidden;
+      if (!s.hidden) $('dms-group-add-input').focus();
+    });
+
+    let addSearchTimer = null;
+    $('dms-group-add-input').addEventListener('input', (e) => {
+      clearTimeout(addSearchTimer);
+      const q = e.target.value.trim();
+      const resultsEl = $('dms-group-add-results');
+      if (!q) { resultsEl.innerHTML = ''; return; }
+      addSearchTimer = setTimeout(async () => {
+        try {
+          const data = await API.searchActors(q, 8);
+          resultsEl.innerHTML = '';
+          (data.actors || []).forEach(actor => {
+            if ((dmsActiveConvo.members || []).some(m => m.did === actor.did)) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'dms-new-result-btn';
+            btn.innerHTML = `
+              <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">
+              <div>
+                <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
+                <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
+              </div>`;
+            btn.addEventListener('click', () => addGroupMember(actor));
+            resultsEl.appendChild(btn);
+          });
+        } catch { /* silent */ }
+      }, 300);
+    });
+
+    $('dms-group-leave-btn').addEventListener('click', () => leaveGroup());
+
+    if (link && link.code) {
+      $('dms-invite-copy').addEventListener('click', () => {
+        const url = `https://bsky.app/messages/join/${link.code}`;
+        navigator.clipboard?.writeText(url).then(
+          () => showBanner('Invite link copied.'),
+          () => showBanner('Could not copy link.', true)
+        );
+      });
+    } else {
+      $('dms-invite-create').addEventListener('click', () => createInviteLink());
+    }
+  }
+
+  function renderGroupMembers(convo) {
+    const ul = document.getElementById('dms-group-members');
+    if (!ul) return;
+    ul.innerHTML = '';
+    const fb = window._bskyAvatarFallback || '';
+    (convo.members || []).forEach(member => {
+      const li = document.createElement('li');
+      li.className = 'dms-group-member';
+      const isMe = member.did === dmsOwnDid;
+      li.innerHTML = `
+        <img class="dms-convo-avatar" src="${escHtml(member.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">
+        <div class="dms-group-member-info">
+          <div class="dms-convo-name">${escHtml(member.displayName || member.handle || 'Unknown')}${isMe ? ' <span class="dms-you-tag">(you)</span>' : ''}</div>
+          <div class="dms-convo-handle">@${escHtml(member.handle || '')}</div>
+        </div>
+        ${isMe ? '' : '<button type="button" class="btn btn-ghost dms-member-remove" aria-label="Remove member" title="Remove">×</button>'}
+      `;
+      const removeBtn = li.querySelector('.dms-member-remove');
+      if (removeBtn) removeBtn.addEventListener('click', () => removeGroupMember(member));
+      ul.appendChild(li);
+    });
+  }
+
+  async function addGroupMember(actor) {
+    try {
+      const resp = await API.addGroupMembers(dmsActiveConvoId, [actor.did]);
+      dmsActiveConvo = resp.convo;
+      setupChatHeader(dmsActiveConvo);
+      renderGroupMembers(dmsActiveConvo);
+      const head = document.querySelector('.dms-group-section-title');
+      if (head) head.textContent = `Members (${_convoMemberCount(dmsActiveConvo)})`;
+      $('dms-group-add-search').hidden = true;
+      $('dms-group-add-input').value = '';
+      $('dms-group-add-results').innerHTML = '';
+      showBanner(`Added ${actor.displayName || actor.handle}.`);
+    } catch (err) {
+      showBanner(`Could not add member: ${err.message}`, true);
+    }
+  }
+
+  async function removeGroupMember(member) {
+    if (!confirm(`Remove ${member.displayName || member.handle} from the group?`)) return;
+    try {
+      const resp = await API.removeGroupMembers(dmsActiveConvoId, [member.did]);
+      dmsActiveConvo = resp.convo;
+      setupChatHeader(dmsActiveConvo);
+      renderGroupMembers(dmsActiveConvo);
+      const head = document.querySelector('.dms-group-section-title');
+      if (head) head.textContent = `Members (${_convoMemberCount(dmsActiveConvo)})`;
+      showBanner(`Removed ${member.displayName || member.handle}.`);
+    } catch (err) {
+      showBanner(`Could not remove member: ${err.message}`, true);
+    }
+  }
+
+  async function createInviteLink() {
+    const btn = document.getElementById('dms-invite-create');
+    if (btn) btn.disabled = true;
+    try {
+      const resp = await API.createJoinLink(dmsActiveConvoId);
+      const code = resp.joinLink?.code;
+      if (!code) throw new Error('No code returned');
+      const section = document.getElementById('dms-invite-section');
+      section.innerHTML = `
+        <div class="dms-invite-url-row">
+          <input type="text" class="dms-new-input dms-invite-url" id="dms-invite-url" readonly value="https://bsky.app/messages/join/${escHtml(code)}">
+          <button type="button" class="btn btn-secondary" id="dms-invite-copy">Copy</button>
+        </div>`;
+      $('dms-invite-copy').addEventListener('click', () => {
+        navigator.clipboard?.writeText(`https://bsky.app/messages/join/${code}`).then(
+          () => showBanner('Invite link copied.'),
+          () => showBanner('Could not copy link.', true)
+        );
+      });
+      showBanner('Invite link created.');
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showBanner(`Could not create invite link: ${err.message}`, true);
+    }
+  }
+
+  async function leaveGroup() {
+    if (!dmsActiveConvoId) return;
+    if (!confirm('Leave this group? You will stop receiving its messages.')) return;
+    const convoId = dmsActiveConvoId;
+    try {
+      await API.leaveConvo(convoId);
+      stopDmsPolling();
+      closeGroupManagePanel();
+      document.getElementById('dms-manage-btn')?.remove();
+      document.getElementById('dms-group-subtitle')?.remove();
+      $('dms-leave-btn').hidden = false;
+      dmsActiveConvoId = null;
+      dmsActiveConvo   = null;
+      dmsMessages      = [];
+      $('dms-chat-panel').hidden = true;
+      $('dms-list-panel').hidden = false;
+      loadDmsList();
+      showBanner('Left group.');
+    } catch (err) {
+      showBanner(`Could not leave group: ${err.message}`, true);
+    }
+  }
 
   /* ================================================================
      M14: NETWORK CONSTELLATION
