@@ -6,6 +6,7 @@ struct SearchView: View {
 
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
+    @Environment(NetworkMonitor.self) private var network
     @Query(sort: \SavedSearch.createdAt) private var savedSearches: [SavedSearch]
 
     @State private var query: String = ""
@@ -18,6 +19,7 @@ struct SearchView: View {
     @State private var showFilters = false
     @State private var showSaveChannelAlert = false
     @State private var newChannelName = ""
+    @State private var errorMessage: String?
 
     @State private var scrollToTopTrigger = 0
 
@@ -29,7 +31,17 @@ struct SearchView: View {
     @State private var hideAdult = true
 
     var body: some View {
-        resultsList
+        VStack(spacing: 0) {
+            if network.isOffline { NBOfflineBanner() }
+            if let errorMessage {
+                NBErrorBanner(
+                    message: errorMessage,
+                    retry: { self.errorMessage = nil; performSearch() },
+                    onDismiss: { self.errorMessage = nil }
+                )
+            }
+            resultsList
+        }
         .nbNavBar(title: "SEARCH", leading: { NBHamburger() })
         .toolbar {
             // Keyboard dismiss button — shown above keyboard when TextField is focused
@@ -112,6 +124,7 @@ struct SearchView: View {
         guard !savedSearches.contains(where: { $0.query.lowercased() == query.lowercased() }) else { return }
         let channel = SavedSearch(name: newChannelName, query: query)
         modelContext.insert(channel)
+        Haptics.success()
     }
 
     private var searchBar: some View {
@@ -128,6 +141,7 @@ struct SearchView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(Color.nbTextTertiary)
                     }
+                    .accessibilityLabel("Clear search")
                 }
             }
             .padding(.horizontal, 12)
@@ -157,15 +171,20 @@ struct SearchView: View {
                         .background(Color.nbWhite)
                         .nbBorder()
                 }
+                .accessibilityLabel("Save as channel")
             }
 
-            Button { showFilters.toggle() } label: {
+            Button {
+                Haptics.selection()
+                showFilters.toggle()
+            } label: {
                 Image(systemName: "slider.horizontal.3")
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
                     .background(showFilters ? Color.nbAccent : Color.nbWhite)
                     .nbBorder()
             }
+            .accessibilityLabel(showFilters ? "Hide filters" : "Show filters")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -191,7 +210,7 @@ struct SearchView: View {
                 HStack(spacing: 0) {
                     ForEach(AppStore.SearchMode.allCases, id: \.self) { m in
                         Button {
-                            if mode != m { mode = m; performSearch() }
+                            if mode != m { Haptics.selection(); mode = m; performSearch() }
                         } label: {
                             Text(m.rawValue.uppercased())
                                 .font(.syne(13, weight: .bold))
@@ -213,7 +232,7 @@ struct SearchView: View {
                 if mode == .posts {
                     HStack(spacing: 0) {
                         Button {
-                            if sort != "latest" { sort = "latest"; performSearch() }
+                            if sort != "latest" { Haptics.selection(); sort = "latest"; performSearch() }
                         } label: {
                             Text("LATEST")
                                 .font(.syne(12, weight: .bold))
@@ -228,7 +247,7 @@ struct SearchView: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            if sort != "top" { sort = "top"; performSearch() }
+                            if sort != "top" { Haptics.selection(); sort = "top"; performSearch() }
                         } label: {
                             Text("TOP")
                                 .font(.syne(12, weight: .bold))
@@ -250,6 +269,22 @@ struct SearchView: View {
                     ProgressView("Searching...")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
+                } else if posts.isEmpty && actors.isEmpty {
+                    if query.isEmpty {
+                        NBEmptyState(
+                            icon: "magnifyingglass",
+                            title: "Search Bluesky",
+                            message: "Find posts and people across the network."
+                        )
+                        .padding(.top, 40)
+                    } else {
+                        NBEmptyState(
+                            icon: "magnifyingglass",
+                            title: "No Results",
+                            message: "No \(mode == .posts ? "posts" : "people") found for \u{201C}\(query)\u{201D}."
+                        )
+                        .padding(.top, 40)
+                    }
                 } else {
                     // Results
                     if mode == .posts {
@@ -370,7 +405,10 @@ struct SearchView: View {
                 let result = try await ATProtocolClient.shared.searchActors(q: cleanQuery)
                 actors = result.actors
             }
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = "Search failed. \(error.localizedDescription)"
+        }
     }
 }
 

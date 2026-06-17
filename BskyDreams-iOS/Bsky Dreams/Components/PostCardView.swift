@@ -26,8 +26,19 @@ struct PostCardView: View {
     @State private var showDeleteConfirm = false
     @State private var isMuted = false
     @State private var isBlocked = false
+    @State private var actionError: String?
 
     private var isOwnPost: Bool { post.author.did == auth.session?.did }
+
+    /// Surface a transient, user-visible failure message that auto-dismisses.
+    private func showActionError(_ message: String) {
+        Haptics.error()
+        withAnimation { actionError = message }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation { actionError = nil }
+        }
+    }
 
     // Depth colors — 8 cycling colors for nested thread replies
     private static let depthColors: [Color] = [
@@ -74,6 +85,13 @@ struct PostCardView: View {
                         .frame(width: 3)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if let actionError {
+                    NBErrorBanner(message: actionError)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
             .padding(.horizontal, CGFloat(depth) * 12)
         }
         .contentShape(Rectangle())
@@ -97,7 +115,12 @@ struct PostCardView: View {
                 title: "Report Post",
                 onReport: { reason in
                     Task {
-                        try? await ATProtocolClient.shared.reportPost(uri: post.uri, cid: post.cid, reason: reason)
+                        do {
+                            try await ATProtocolClient.shared.reportPost(uri: post.uri, cid: post.cid, reason: reason)
+                            Haptics.success()
+                        } catch {
+                            showActionError("Couldn't submit report.")
+                        }
                     }
                 }
             )
@@ -176,6 +199,9 @@ struct PostCardView: View {
                     .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
+            .accessibilityLabel("Reply")
+            .accessibilityValue("\(post.replyCount ?? 0)")
+            .accessibilityAddTraits(.isButton)
 
             // Repost
             Button { showRepostSheet = true } label: {
@@ -185,6 +211,9 @@ struct PostCardView: View {
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
+            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+            .accessibilityValue("\(repostCount)")
+            .accessibilityAddTraits(.isButton)
 
             // Like
             Button { toggleLike() } label: {
@@ -194,6 +223,9 @@ struct PostCardView: View {
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
+            .accessibilityLabel(isLiked ? "Unlike" : "Like")
+            .accessibilityValue("\(likeCount)")
+            .accessibilityAddTraits(.isButton)
 
             Spacer()
 
@@ -227,6 +259,8 @@ struct PostCardView: View {
                     .foregroundStyle(Color.nbTextTertiary)
                     .padding(4)
             }
+            .accessibilityLabel("More actions")
+            .accessibilityAddTraits(.isButton)
         }
     }
 
@@ -242,7 +276,8 @@ struct PostCardView: View {
         let wasLiked = isLiked
         let prevCount = likeCount
 
-        // Optimistic update
+        // Optimistic update — haptic at the user-tap moment
+        Haptics.light()
         isLiked.toggle()
         likeCount += isLiked ? 1 : -1
 
@@ -257,6 +292,7 @@ struct PostCardView: View {
                 // Rollback
                 isLiked = wasLiked
                 likeCount = prevCount
+                showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.")
             }
         }
     }
@@ -271,8 +307,10 @@ struct PostCardView: View {
                 } else {
                     try await ATProtocolClient.shared.muteActor(actor: post.author.did)
                 }
+                Haptics.success()
             } catch {
                 isMuted = wasMuted
+                showActionError(wasMuted ? "Couldn't unmute account." : "Couldn't mute account.")
             }
         }
     }
@@ -283,14 +321,22 @@ struct PostCardView: View {
             do {
                 _ = try await ATProtocolClient.shared.blockActor(did: post.author.did, myDid: myDid)
                 isBlocked = true
-            } catch {}
+                Haptics.success()
+            } catch {
+                showActionError("Couldn't block account.")
+            }
         }
     }
 
     private func deletePost() {
         guard let did = auth.session?.did else { return }
         Task {
-            try? await ATProtocolClient.shared.deletePost(uri: post.uri, did: did)
+            do {
+                try await ATProtocolClient.shared.deletePost(uri: post.uri, did: did)
+                Haptics.success()
+            } catch {
+                showActionError("Couldn't delete post.")
+            }
         }
     }
 
@@ -299,6 +345,8 @@ struct PostCardView: View {
         let wasReposted = isReposted
         let prevCount = repostCount
 
+        // Optimistic update — haptic at the user-tap moment
+        Haptics.light()
         isReposted.toggle()
         repostCount += isReposted ? 1 : -1
 
@@ -312,6 +360,7 @@ struct PostCardView: View {
             } catch {
                 isReposted = wasReposted
                 repostCount = prevCount
+                showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.")
             }
         }
     }

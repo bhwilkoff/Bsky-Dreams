@@ -109,6 +109,7 @@ struct StreamView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Persisted settings
     @AppStorage("stream_duration")       private var streamDuration: Double = 8.0
@@ -138,6 +139,7 @@ struct StreamView: View {
     @State private var seenURISet: Set<String> = []
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>? = nil
+    @State private var errorMessage: String? = nil
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
@@ -527,6 +529,7 @@ struct StreamView: View {
                                 .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Reply")
                     }
 
                     Button {
@@ -542,6 +545,7 @@ struct StreamView: View {
                             .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isPaused ? "Play" : "Pause")
 
                     Button { isLandscape = false } label: {
                         Image(systemName: "xmark")
@@ -552,6 +556,7 @@ struct StreamView: View {
                             .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Close stream")
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
@@ -581,19 +586,28 @@ struct StreamView: View {
                             .progressViewStyle(.circular)
                             .tint(controlFg)
                             .scaleEffect(1.5)
+                    } else if slides.isEmpty, let errorMessage {
+                        NBErrorBanner(
+                            message: errorMessage,
+                            retry: { self.errorMessage = nil; Task { await loadMore() } },
+                            onDismiss: { self.errorMessage = nil }
+                        )
+                        .padding(.horizontal, 24)
                     } else if let slide = currentSlide {
                         slideContent(slide)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .id(slide.id)
-                            .transition(.asymmetric(
-                                insertion: slideDirection >= 0
-                                    ? .move(edge: .trailing).combined(with: .opacity)
-                                    : .move(edge: .leading).combined(with: .opacity),
-                                removal: slideDirection >= 0
-                                    ? .move(edge: .leading).combined(with: .opacity)
-                                    : .move(edge: .trailing).combined(with: .opacity)
+                            .transition(reduceMotion
+                                ? .opacity
+                                : .asymmetric(
+                                    insertion: slideDirection >= 0
+                                        ? .move(edge: .trailing).combined(with: .opacity)
+                                        : .move(edge: .leading).combined(with: .opacity),
+                                    removal: slideDirection >= 0
+                                        ? .move(edge: .leading).combined(with: .opacity)
+                                        : .move(edge: .trailing).combined(with: .opacity)
                             ))
-                            .animation(.spring(response: 0.38, dampingFraction: 0.86), value: currentIndex)
+                            .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: currentIndex)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -892,20 +906,26 @@ struct StreamView: View {
 
     private func advance() {
         guard !slides.isEmpty else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+        Haptics.selection()   // advancing to the next slide (auto/tap/swipe)
+        let step = {
             slideDirection = 1
             if currentIndex < slides.count - 1 { currentIndex += 1 }
         }
+        if reduceMotion { step() }
+        else { withAnimation(.spring(response: 0.38, dampingFraction: 0.86), step) }
         resetTimer()
         if currentIndex >= slides.count - 6 { Task { await loadMore() } }
     }
 
     private func retreat() {
         guard currentIndex > 0 else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+        Haptics.selection()
+        let step = {
             slideDirection = -1
             currentIndex -= 1
         }
+        if reduceMotion { step() }
+        else { withAnimation(.spring(response: 0.38, dampingFraction: 0.86), step) }
         resetTimer()
     }
 
@@ -993,7 +1013,15 @@ struct StreamView: View {
             }
             slides.append(contentsOf: newSlides)
             feedCursor = nextCursor
-        } catch { /* continue with loaded content */ }
+            // Surface a load failure only when there is nothing on screen yet;
+            // otherwise the user keeps browsing already-loaded slides silently.
+            if slides.isEmpty { errorMessage = "Couldn't load posts to stream. Check your connection and try again." }
+            else { errorMessage = nil }
+        } catch {
+            if slides.isEmpty {
+                errorMessage = "Couldn't load posts to stream. Check your connection and try again."
+            }
+        }
     }
 
     private func buildSlidesFromPost(_ post: PostView, postIndex: Int) -> [IndexedSlide] {

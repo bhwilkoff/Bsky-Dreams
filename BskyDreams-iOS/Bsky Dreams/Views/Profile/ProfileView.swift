@@ -20,6 +20,9 @@ struct ProfileView: View {
     @State private var showMuteConfirm = false
     @State private var showBlockConfirm = false
     @State private var showReportSheet = false
+    @State private var errorMessage: String?
+
+    @Environment(NetworkMonitor.self) private var network
 
     var isOwnProfile: Bool { profile?.did == auth.session?.did }
 
@@ -29,7 +32,24 @@ struct ProfileView: View {
                 ProgressView("Loading profile...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let profile {
-                profileContent(profile)
+                VStack(spacing: 0) {
+                    if network.isOffline { NBOfflineBanner() }
+                    if let errorMessage {
+                        NBErrorBanner(message: errorMessage, retry: nil, onDismiss: { self.errorMessage = nil })
+                    }
+                    profileContent(profile)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    if network.isOffline { NBOfflineBanner() }
+                    NBEmptyState(
+                        icon: "person.crop.circle.badge.exclamationmark",
+                        title: "Profile Unavailable",
+                        message: errorMessage ?? "This profile could not be loaded.",
+                        actionTitle: "Retry",
+                        action: { Task { await loadProfile() } }
+                    )
+                }
             }
         }
         .nbNavBar(title: profile.map { "@\($0.handle)" } ?? "", leading: { NBBackButton() }, trailing: {
@@ -51,6 +71,7 @@ struct ProfileView: View {
                         .frame(width: 36, height: 36)
                         .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 }
+                .accessibilityLabel("More options")
             }
         })
         .confirmationDialog(
@@ -70,7 +91,15 @@ struct ProfileView: View {
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(title: "Report Account") { reason in
                 guard let did = profile?.did else { return }
-                Task { try? await ATProtocolClient.shared.reportAccount(did: did, reason: reason) }
+                Task {
+                    do {
+                        try await ATProtocolClient.shared.reportAccount(did: did, reason: reason)
+                        Haptics.success()
+                    } catch {
+                        Haptics.error()
+                        errorMessage = "Couldn't submit report. \(error.localizedDescription)"
+                    }
+                }
             }
         }
         .task { await loadProfile() }
@@ -107,6 +136,15 @@ struct ProfileView: View {
                         .padding(.bottom, 4)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
+                }
+
+                if posts.isEmpty && !postsLoading {
+                    NBEmptyState(
+                        icon: "square.stack.3d.up.slash",
+                        title: "No Posts Yet",
+                        message: "This account hasn't posted anything."
+                    )
+                    .padding(.top, 40)
                 }
 
                 if postsLoading && !posts.isEmpty {
@@ -201,6 +239,7 @@ struct ProfileView: View {
                             .background(Color.nbBlack.offset(x: 2, y: 2))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("View analytics")
 
                     Spacer()
 
@@ -217,6 +256,7 @@ struct ProfileView: View {
                             .background(Color.nbBlack.offset(x: 2, y: 2))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("View network constellation")
 
                     Spacer()
 
@@ -233,6 +273,7 @@ struct ProfileView: View {
                             .background(Color.nbBlack.offset(x: 2, y: 2))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("View timeline")
 
                     Spacer()
                 }
@@ -288,6 +329,7 @@ struct ProfileView: View {
     }
 
     private func toggleFollow() {
+        Haptics.light()
         if isFollowing {
             showUnfollowConfirm = true
         } else {
@@ -297,23 +339,41 @@ struct ProfileView: View {
 
     private func performFollow() {
         guard let myDid = auth.session?.did, let profileDid = profile?.did else { return }
+        // Optimistic update
+        let prevFollowing = isFollowing
+        let prevFollowUri = followUri
+        isFollowing = true
         Task {
             do {
                 let result = try await ATProtocolClient.shared.follow(did: profileDid, myDid: myDid)
-                isFollowing = true
                 followUri = result.uri
-            } catch {}
+            } catch {
+                // Roll back
+                isFollowing = prevFollowing
+                followUri = prevFollowUri
+                Haptics.error()
+                errorMessage = "Couldn't follow this account. \(error.localizedDescription)"
+            }
         }
     }
 
     private func performUnfollow() {
         guard let myDid = auth.session?.did, let fUri = followUri else { return }
+        // Optimistic update
+        let prevFollowing = isFollowing
+        let prevFollowUri = followUri
+        isFollowing = false
+        followUri = nil
         Task {
             do {
                 try await ATProtocolClient.shared.unfollow(followUri: fUri, myDid: myDid)
-                isFollowing = false
-                followUri = nil
-            } catch {}
+            } catch {
+                // Roll back
+                isFollowing = prevFollowing
+                followUri = prevFollowUri
+                Haptics.error()
+                errorMessage = "Couldn't unfollow this account. \(error.localizedDescription)"
+            }
         }
     }
 
@@ -328,8 +388,11 @@ struct ProfileView: View {
                 } else {
                     try await ATProtocolClient.shared.muteActor(actor: did)
                 }
+                Haptics.success()
             } catch {
                 isMuted = wasMuted
+                Haptics.error()
+                errorMessage = wasMuted ? "Couldn't unmute this account. \(error.localizedDescription)" : "Couldn't mute this account. \(error.localizedDescription)"
             }
         }
     }
@@ -340,12 +403,17 @@ struct ProfileView: View {
             do {
                 _ = try await ATProtocolClient.shared.blockActor(did: did, myDid: myDid)
                 isBlocked = true
-            } catch {}
+                Haptics.success()
+            } catch {
+                Haptics.error()
+                errorMessage = "Couldn't block this account. \(error.localizedDescription)"
+            }
         }
     }
 
     private func loadProfile() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let p = try await ATProtocolClient.shared.getProfile(actor: actor)
@@ -355,7 +423,9 @@ struct ProfileView: View {
             isMuted = p.viewer?.muted == true
             isBlocked = p.viewer?.blocked == true
             await loadPosts()
-        } catch {}
+        } catch {
+            errorMessage = "Couldn't load this profile. \(error.localizedDescription)"
+        }
     }
 
     private func loadPosts(loadMore: Bool = false) async {
@@ -373,6 +443,8 @@ struct ProfileView: View {
                 posts = response.feed
             }
             cursor = response.cursor
-        } catch {}
+        } catch {
+            errorMessage = "Couldn't load posts. \(error.localizedDescription)"
+        }
     }
 }

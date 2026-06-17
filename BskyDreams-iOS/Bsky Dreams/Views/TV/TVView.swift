@@ -20,6 +20,7 @@ struct TVView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(\.toggleSidebar) private var toggleSidebar
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query private var seenPosts: [SeenPost]
 
     private var seenURIs: Set<String> { Set(seenPosts.map { $0.uri }) }
@@ -302,8 +303,10 @@ struct TVView: View {
                 .scrollPosition(id: $scrollPositionID)
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea()
-                .onChange(of: scrollPositionID) { _, id in
+                .onChange(of: scrollPositionID) { old, id in
                     let idx = id ?? 0
+                    // Haptic when advancing to a new video (swipe or auto-advance)
+                    if let oldID = old, oldID != id { Haptics.selection() }
                     playVideo(at: idx)
                     if idx < videos.count {
                         markVideoSeen(videos[idx])
@@ -329,6 +332,7 @@ struct TVView: View {
                     .background(Color.nbBlack.offset(x: 2, y: 2))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Back to topics")
                 .padding(.leading, 16)
                 .padding(.top, backButtonTopPadding)
                 Spacer()
@@ -341,7 +345,12 @@ struct TVView: View {
             // Auto-advance to the next video when the current one finishes
             let next = currentIndex + 1
             if next < videos.count {
-                withAnimation { scrollPositionID = next }
+                // Haptic is emitted by the scrollPositionID onChange handler below
+                if reduceMotion {
+                    scrollPositionID = next
+                } else {
+                    withAnimation { scrollPositionID = next }
+                }
             }
         }
     }
@@ -547,6 +556,7 @@ struct TVVideoCell: View {
         // Long press activates 2x speed for as long as the finger is held
         .onLongPressGesture(minimumDuration: 0.3, maximumDistance: 20, pressing: { pressing in
             guard isActive else { return }
+            if pressing && !is2xSpeed { Haptics.light() }  // engage 2x hold
             is2xSpeed = pressing
             player.rate = pressing ? 2.0 : 1.0
         }, perform: {})
@@ -654,6 +664,7 @@ struct TVOverlayView: View {
                             .font(.system(size: 24))
                             .foregroundStyle(.white)
                     }
+                    .accessibilityLabel("Open conversation")
 
                     // Mute — controls the shared player directly
                     Button {
@@ -664,6 +675,7 @@ struct TVOverlayView: View {
                             .font(.system(size: 24))
                             .foregroundStyle(.white)
                     }
+                    .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
                     // Like
                     Button {

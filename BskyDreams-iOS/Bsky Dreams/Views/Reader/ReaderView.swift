@@ -7,6 +7,7 @@ struct ReaderView: View {
     private let newsFeedURI = "at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news"
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(NetworkMonitor.self) private var network
     @State private var articles: [PostView] = []
     @State private var timelineCursor: String?
     @State private var discoverCursor: String?
@@ -33,9 +34,8 @@ struct ReaderView: View {
     var body: some View {
         Group {
             if (isLoading || !hasLoaded) && articles.isEmpty {
-                ProgressView("Loading articles...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage, articles.isEmpty {
+                loadingState
+            } else if let err = errorMessage, articles.isEmpty, !network.isOffline {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -48,8 +48,6 @@ struct ReaderView: View {
                         .nbButton()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if articles.isEmpty {
-                ContentUnavailableView("No Articles", systemImage: "doc.text", description: Text("Pull to refresh or check back later."))
             } else {
                 articleList
             }
@@ -68,6 +66,43 @@ struct ReaderView: View {
     private var articleList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 10)
+                }
+
+                if let err = errorMessage, !articlesWithCards.isEmpty {
+                    NBErrorBanner(message: err) {
+                        Task { await load() }
+                    }
+                    .padding(.top, 10)
+                }
+
+                HintBanner(id: "reader.welcome", text: "Tap an article to read it distraction-free in Readable mode.")
+                    .padding(.top, 10)
+
+                if articlesWithCards.isEmpty && !isLoading && errorMessage == nil {
+                    NBEmptyState(
+                        icon: "doc.text",
+                        title: "You're all caught up",
+                        message: "No new articles right now",
+                        actionTitle: "Refresh",
+                        action: {
+                            Task {
+                                let descriptor = FetchDescriptor<SeenPost>()
+                                seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                                articles = []
+                                timelineCursor = nil
+                                discoverCursor = nil
+                                newsCursor = nil
+                                await load()
+                            }
+                        }
+                    )
+                    .padding(.top, 40)
+                }
+
                 ForEach(articlesWithCards, id: \.post.uri) { item in
                     ArticleCardView(
                         post: item.post,
@@ -113,6 +148,25 @@ struct ReaderView: View {
                 ArticleReaderSheet(card: card, post: post)
             }
         }
+    }
+
+    private var loadingState: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 10)
+                }
+                ForEach(0..<5, id: \.self) { _ in
+                    NBSkeletonPostRow()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func load(loadMore: Bool = false) async {

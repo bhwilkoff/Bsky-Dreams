@@ -103,16 +103,11 @@ struct AnalyticsView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else if posts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(.system(size: 44))
-                            .foregroundStyle(Color.nbBorder)
-                        Text("Enter a handle above and tap LOAD,\nor tap MY ANALYTICS for your own stats.")
-                            .font(.inter(14))
-                            .foregroundStyle(Color.nbTextSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    }
+                    NBEmptyState(
+                        icon: "chart.bar.xaxis",
+                        title: "NO POSTS TO ANALYZE",
+                        message: "Enter a handle above and tap LOAD, or tap MY ANALYTICS for your own stats."
+                    )
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
                     if let p = profile { profileStripCard(p) }
@@ -409,7 +404,13 @@ struct AnalyticsView: View {
                             .padding(.vertical, 6)
                             .background(sortBy == opt ? Color.nbAccent : Color.nbWhite)
                             .contentShape(Rectangle())
-                            .onTapGesture { sortBy = opt }
+                            .onTapGesture {
+                                guard sortBy != opt else { return }
+                                Haptics.selection()
+                                sortBy = opt
+                            }
+                            .accessibilityLabel("Sort by \(opt.rawValue)")
+                            .accessibilityAddTraits(sortBy == opt ? [.isButton, .isSelected] : .isButton)
                     }
                 }
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))

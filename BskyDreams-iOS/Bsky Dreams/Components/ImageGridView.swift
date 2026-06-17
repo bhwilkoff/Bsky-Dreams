@@ -66,7 +66,7 @@ struct ImageGridView: View {
     /// Both maxWidth AND height in a single .frame() call is required before .clipped()
     /// so scaledToFill knows to fill both dimensions. See DECISIONS.md.
     private func gridImage(_ img: EmbedImage, index: Int, height: CGFloat) -> some View {
-        AsyncImage(url: URL(string: img.thumb)) { phase in
+        CachedImage(url: URL(string: img.thumb), maxPixelSize: 200) { phase in
             switch phase {
             case .success(let image): image.resizable().scaledToFill()
             default: Color.nbBorder.opacity(0.3)
@@ -170,6 +170,7 @@ struct LightboxView: View {
             dismissOffset = 0
             isDismissGesture = false
             zoomResets[old] = UUID()
+            Haptics.selection()
         }
         .alert("Photos Access Required", isPresented: $showSettingsAlert) {
             Button("Open Settings") {
@@ -217,6 +218,7 @@ struct LightboxView: View {
                 .frame(width: 44, height: 44)
             }
             .disabled(isSaving)
+            .accessibilityLabel("Save image")
             .padding(.leading, 8)
 
             Spacer()
@@ -228,6 +230,7 @@ struct LightboxView: View {
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.2), in: Circle())
             }
+            .accessibilityLabel("Close")
             .padding(.trailing, 12)
         }
         .padding(.top, 8)
@@ -626,7 +629,7 @@ struct LinkCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Full-width thumbnail (160pt tall) — matches web app's `.post-external-thumb`
             if let thumb = card.thumb, let url = URL(string: thumb) {
-                AsyncImage(url: url) { phase in
+                CachedImage(url: url, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img):
                         img.resizable().scaledToFill()
@@ -709,7 +712,7 @@ struct YouTubeLinkCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Thumbnail
             ZStack {
-                AsyncImage(url: thumbnailURL) { phase in
+                CachedImage(url: thumbnailURL, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
                     default: Color.black
@@ -857,7 +860,7 @@ struct QuotedPostView: View {
     @ViewBuilder
     private func quotedImageGrid(_ images: [EmbedImage]) -> some View {
         if images.count == 1 {
-            AsyncImage(url: URL(string: images[0].thumb)) { phase in
+            CachedImage(url: URL(string: images[0].thumb), maxPixelSize: 200) { phase in
                 switch phase {
                 case .success(let img): img.resizable().scaledToFill()
                 default: Color.nbBorder.opacity(0.3)
@@ -871,7 +874,7 @@ struct QuotedPostView: View {
         } else {
             HStack(spacing: 3) {
                 ForEach(images.prefix(3)) { img in
-                    AsyncImage(url: URL(string: img.thumb)) { phase in
+                    CachedImage(url: URL(string: img.thumb), maxPixelSize: 160) { phase in
                         switch phase {
                         case .success(let i): i.resizable().scaledToFill()
                         default: Color.nbBorder.opacity(0.3)

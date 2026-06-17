@@ -8,6 +8,7 @@ struct FeedView: View {
 
     @Environment(AppStore.self) private var store
     @Environment(AuthManager.self) private var auth
+    @Environment(NetworkMonitor.self) private var network
     @Environment(\.modelContext) private var modelContext
 
     // Discover sources
@@ -41,7 +42,7 @@ struct FeedView: View {
         Group {
             if isLoading && items.isEmpty {
                 loadingState
-            } else if let err = errorMessage, items.isEmpty {
+            } else if let err = errorMessage, items.isEmpty, !network.isOffline {
                 errorState(err)
             } else {
                 feedList
@@ -102,10 +103,47 @@ struct FeedView: View {
                 LazyVStack(spacing: 0) {
                     Color.clear.frame(height: 0).id("feed-top")
 
+                    if network.isOffline {
+                        NBOfflineBanner()
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                    }
+
+                    if let err = errorMessage, !items.isEmpty {
+                        NBErrorBanner(message: err) {
+                            Task { await loadFeed() }
+                        }
+                        .padding(.top, 10)
+                    }
+
+                    HintBanner(id: "feed.welcome", text: "Tap a post to open the conversation. Pull down to refresh.")
+                        .padding(.top, 10)
+
                     // NB Feed mode toggle
                     feedModeToggle
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
+
+                    if items.isEmpty && !isLoading && errorMessage == nil {
+                        NBEmptyState(
+                            icon: "checkmark.circle",
+                            title: "You're all caught up",
+                            message: "No new posts right now",
+                            actionTitle: "Refresh",
+                            action: {
+                                Task {
+                                    let descriptor = FetchDescriptor<SeenPost>()
+                                    seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                                    items = []
+                                    cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                                    discoverLooped = false
+                                    autoFetchCount = 0
+                                    await loadFeed()
+                                }
+                            }
+                        )
+                        .padding(.top, 40)
+                    }
 
                     ForEach(items) { item in
                         PostCardView(
@@ -163,11 +201,15 @@ struct FeedView: View {
                 // Re-sync seen set from SwiftData so cloud-merged posts are respected
                 let descriptor = FetchDescriptor<SeenPost>()
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                let previousURIs = Set(items.map { $0.post.uri })
                 items = []
                 cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                 discoverLooped = false
                 autoFetchCount = 0
                 await loadFeed()
+                if errorMessage == nil, items.contains(where: { !previousURIs.contains($0.post.uri) }) {
+                    Haptics.success()
+                }
             }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation { proxy.scrollTo("feed-top", anchor: .top) }
@@ -182,6 +224,7 @@ struct FeedView: View {
             ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
                 Button {
                     if store.feedMode != mode {
+                        Haptics.selection()
                         store.feedMode = mode
                         items = []
                         cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
@@ -208,12 +251,21 @@ struct FeedView: View {
     }
 
     private var loadingState: some View {
-        VStack(spacing: 16) {
-            ProgressView().scaleEffect(1.2)
-            Text("Loading feed...")
-                .font(.inter(14))
-                .foregroundStyle(Color.nbTextSecondary)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                }
+                ForEach(0..<5, id: \.self) { _ in
+                    NBSkeletonPostRow()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                }
+            }
         }
+        .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

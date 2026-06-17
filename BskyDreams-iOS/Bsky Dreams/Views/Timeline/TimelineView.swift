@@ -159,6 +159,7 @@ struct TimelineScrubberView: View {
                                 .foregroundStyle(Color.nbTextTertiary)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Clear search")
                     }
                 }
                 .padding(.horizontal, 10)
@@ -198,6 +199,7 @@ struct TimelineScrubberView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel("Save as channel")
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -210,9 +212,11 @@ struct TimelineScrubberView: View {
                 // Zoom out
                 zoomBtn("−") {
                     guard zoomIndex > 0 else { return }
+                    Haptics.selection()
                     zoomIndex -= 1
                     applyZoom()
                 }
+                .accessibilityLabel("Zoom out")
 
                 // Zoom label
                 Text(currentZoom.label)
@@ -227,9 +231,11 @@ struct TimelineScrubberView: View {
                 // Zoom in
                 zoomBtn("+") {
                     guard zoomIndex < kTLZoomLevels.count - 1 else { return }
+                    Haptics.selection()
                     zoomIndex += 1
                     applyZoom()
                 }
+                .accessibilityLabel("Zoom in")
 
                 Spacer()
 
@@ -343,20 +349,12 @@ struct TimelineScrubberView: View {
     }
 
     private var emptyView: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "chart.xyaxis.line")
-                .font(.system(size: 36, weight: .ultraLight))
-                .foregroundStyle(Color.nbBlack.opacity(0.2))
-            Text("No posts found for this search.")
-                .font(.syne(15, weight: .bold))
-                .foregroundStyle(Color.nbBlack)
-            Text("Try zooming out or widening the date range.")
-                .font(.inter(13))
-                .foregroundStyle(Color.nbTextSecondary)
-                .multilineTextAlignment(.center)
-        }
+        NBEmptyState(
+            icon: "chart.xyaxis.line",
+            title: "NO POSTS FOUND",
+            message: "Try zooming out or widening the date range."
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
     private var placeholderView: some View {

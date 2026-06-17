@@ -268,6 +268,7 @@ struct ConstellationView: View {
     var initialActor: String? = nil
 
     @Environment(AuthManager.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Graph data
     @State private var searchQuery = ""
@@ -275,6 +276,7 @@ struct ConstellationView: View {
     @State private var edges: [GraphEdge] = []
     @State private var isLoading = false
     @State private var statsText = ""
+    @State private var errorMessage: String? = nil
     @State private var selectedNode: GraphNode? = nil
     @State private var profileToOpen: GraphNode? = nil
 
@@ -309,6 +311,14 @@ struct ConstellationView: View {
         VStack(spacing: 0) {
             searchBar
             if !statsText.isEmpty { statsBar }
+            if let errorMessage {
+                NBErrorBanner(
+                    message: errorMessage,
+                    retry: { Task { await buildGraph() } },
+                    onDismiss: { self.errorMessage = nil }
+                )
+                .padding(.top, 8)
+            }
             if isLoading {
                 ProgressView("Building network graph...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -453,11 +463,20 @@ struct ConstellationView: View {
                     onTap: { tapLoc, viewSize in
                         if let hit = hitNode(tapLoc, viewSize) {
                             let fresh = nodes.first(where: { $0.id == hit.id })
-                            withAnimation(.easeInOut(duration: 0.15)) {
+                            Haptics.selection()   // node selected/deselected via tap
+                            if reduceMotion {
                                 selectedNode = (selectedNode?.id == hit.id) ? nil : fresh
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedNode = (selectedNode?.id == hit.id) ? nil : fresh
+                                }
                             }
                         } else {
-                            withAnimation(.easeInOut(duration: 0.15)) { selectedNode = nil }
+                            if reduceMotion {
+                                selectedNode = nil
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.15)) { selectedNode = nil }
+                            }
                         }
                     },
                     onPanChange: { startLoc, translation, viewSize in
@@ -524,15 +543,19 @@ struct ConstellationView: View {
             if let node = selectedNode {
                 SelectedNodePanel(
                     node: node,
-                    onDismiss:     { withAnimation { selectedNode = nil } },
+                    onDismiss: {
+                        if reduceMotion { selectedNode = nil }
+                        else { withAnimation { selectedNode = nil } }
+                    },
                     onViewProfile: { profileToOpen = node },
                     onExplore: { handle in
-                        withAnimation { selectedNode = nil }
+                        if reduceMotion { selectedNode = nil }
+                        else { withAnimation { selectedNode = nil } }
                         searchQuery = "@\(handle)"
                         Task { await buildGraph() }
                     }
                 )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
     }
@@ -543,13 +566,15 @@ struct ConstellationView: View {
                 .font(.inter(11))
                 .foregroundStyle(Color.nbTextSecondary)
             Button("Reset View") {
-                withAnimation(.spring(duration: 0.4)) {
+                let reset = {
                     panOffset = .zero
                     basePan   = .zero
                     zoom      = 1.0
                     baseZoom  = 1.0
                     selectedNode = nil
                 }
+                if reduceMotion { reset() }
+                else { withAnimation(.spring(duration: 0.4), reset) }
             }
             .font(.inter(12, weight: .semibold))
             .foregroundStyle(Color.nbBlack)
@@ -705,6 +730,7 @@ struct ConstellationView: View {
         simAlpha     = 0
         isSimulating = false
         isLoading    = true
+        errorMessage = nil
         nodes        = []
         edges        = []
         statsText    = ""
@@ -806,7 +832,10 @@ struct ConstellationView: View {
                 }
             }
 
-            guard !nodeMap.isEmpty else { return }
+            guard !nodeMap.isEmpty else {
+                errorMessage = "No network data found for that topic or handle. Try another search."
+                return
+            }
 
             // Prune weak reply edges in large graphs
             if nodeMap.count > 30 {
@@ -870,7 +899,9 @@ struct ConstellationView: View {
             // Kick off continuous physics — will run until settled (~1.4 s)
             kickSim(alpha: 1.0)
 
-        } catch {}
+        } catch {
+            errorMessage = "Couldn't build the network graph. Check your connection and try again."
+        }
     }
 
     private func scoreNode(
@@ -937,6 +968,7 @@ private struct SelectedNodePanel: View {
                         .overlay(Rectangle().strokeBorder(Color.nbBorder, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
             .padding(.horizontal, 16)
 

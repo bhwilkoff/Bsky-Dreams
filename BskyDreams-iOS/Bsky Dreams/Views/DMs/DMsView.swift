@@ -10,6 +10,7 @@ struct DMsView: View {
     @State private var loadError: String? = nil
     @State private var showNewConvo = false
     @State private var justCreatedConvo: Conversation? = nil
+    @State private var actionError: String? = nil
 
     private var myDid: String { auth.session?.did ?? "" }
 
@@ -34,7 +35,13 @@ struct DMsView: View {
             } else if conversations.isEmpty {
                 emptyState
             } else {
-                convoList
+                VStack(spacing: 8) {
+                    if let actionError {
+                        NBErrorBanner(message: actionError, onDismiss: { self.actionError = nil })
+                            .padding(.top, 8)
+                    }
+                    convoList
+                }
             }
         }
         .nbNavBar(title: "MESSAGES", leading: { NBHamburger() }, trailing: {
@@ -45,6 +52,8 @@ struct DMsView: View {
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 .contentShape(Rectangle())
                 .onTapGesture { showNewConvo = true }
+                .accessibilityLabel("New conversation")
+                .accessibilityAddTraits(.isButton)
         })
         .task { await loadConversations() }
         .onChange(of: store.pendingDMConvoId) { _, convoId in
@@ -98,38 +107,15 @@ struct DMsView: View {
 
     private var emptyState: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Spacer(minLength: 60)
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 56))
-                    .foregroundStyle(Color.nbBorder)
-                Text("NO MESSAGES YET")
-                    .font(.syne(18, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(Color.nbBlack)
-                Text("Start a conversation with anyone on Bluesky")
-                    .font(.inter(14))
-                    .foregroundStyle(Color.nbTextSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                Button { showNewConvo = true } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "square.and.pencil")
-                        Text("START NEW CONVERSATION")
-                            .font(.syne(13, weight: .bold))
-                            .tracking(0.5)
-                    }
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(Color.nbAccent)
-                    .nbBorder()
-                    .nbShadow()
-                }
-                .buttonStyle(.plain)
-            }
+            NBEmptyState(
+                icon: "bubble.left.and.bubble.right",
+                title: "NO MESSAGES YET",
+                message: "Start a conversation with anyone on Bluesky",
+                actionTitle: "Start New Conversation",
+                action: { showNewConvo = true }
+            )
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 40)
+            .padding(.top, 40)
         }
         .refreshable { await loadConversations() }
     }
@@ -162,7 +148,9 @@ struct DMsView: View {
             if let idx = conversations.firstIndex(where: { $0.id == convo.id }) {
                 conversations[idx] = resp.convo
             }
-        } catch {}
+        } catch {
+            actionError = mute ? "Couldn't mute conversation. Try again." : "Couldn't unmute conversation. Try again."
+        }
     }
 }
 
@@ -259,6 +247,7 @@ struct ChatView: View {
     @State private var pollingTask: Task<Void, Never>?
     @State private var messageToDelete: ChatMessage? = nil
     @State private var showLeaveConfirm = false
+    @State private var chatError: String? = nil
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -268,6 +257,10 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageList
+            if let chatError {
+                NBErrorBanner(message: chatError, onDismiss: { self.chatError = nil })
+                    .padding(.vertical, 6)
+            }
             inputBar
         }
         .nbNavBar(
@@ -287,6 +280,7 @@ struct ChatView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Conversation options")
             }
         )
         .task { await loadInitialMessages() }
@@ -412,6 +406,7 @@ struct ChatView: View {
                     .foregroundStyle(canSend ? Color.nbAccent : Color.nbBorder)
             }
             .disabled(!canSend)
+            .accessibilityLabel("Send message")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -458,6 +453,7 @@ struct ChatView: View {
             messages = Array(resp.messages.reversed())
             cursor = resp.cursor
             hasMoreMessages = cursor != nil
+            chatError = nil
             // Mark as read using the newest message (first in API response)
             if let newestId = resp.messages.first?.id {
                 try? await ATProtocolClient.shared.updateRead(
@@ -465,7 +461,11 @@ struct ChatView: View {
                     messageId: newestId
                 )
             }
-        } catch {}
+        } catch {
+            if messages.isEmpty {
+                chatError = "Couldn't load messages. Pull to retry."
+            }
+        }
     }
 
     private func loadMoreMessages(proxy: ScrollViewProxy) async {
@@ -484,7 +484,9 @@ struct ChatView: View {
                     proxy.scrollTo(anchor, anchor: .top)
                 }
             }
-        } catch {}
+        } catch {
+            chatError = "Couldn't load earlier messages. Try again."
+        }
     }
 
     private func pollNewMessages() async {
@@ -500,7 +502,11 @@ struct ChatView: View {
                     messageId: newestId
                 )
             }
-        } catch {}
+        } catch {
+            // Background 30s poll — a transient failure is expected and will be
+            // retried on the next tick. Don't interrupt the user with a banner here;
+            // load/send/delete failures (which ARE surfaced) cover user-initiated actions.
+        }
     }
 
     private func startPolling() {
@@ -547,10 +553,14 @@ struct ChatView: View {
                 if let idx = messages.firstIndex(where: { $0.id == tempId }) {
                     messages[idx] = confirmed
                 }
+                chatError = nil
+                Haptics.light()
             } catch {
                 // Roll back: remove placeholder and restore typed text
                 messages.removeAll { $0.id == tempId }
                 messageText = text
+                chatError = "Message failed to send. Try again."
+                Haptics.error()
             }
             isSending = false
         }
@@ -563,7 +573,9 @@ struct ChatView: View {
                 messageId: msg.id
             )
             messages.removeAll { $0.id == msg.id }
-        } catch {}
+        } catch {
+            chatError = "Couldn't delete message. Try again."
+        }
         messageToDelete = nil
     }
 
@@ -572,7 +584,9 @@ struct ChatView: View {
             try await ATProtocolClient.shared.leaveConvo(convoId: conversation.id)
             onLeave?()
             dismiss()
-        } catch {}
+        } catch {
+            chatError = "Couldn't leave conversation. Try again."
+        }
     }
 
     private func sendTapback(_ emoji: String) {
@@ -595,8 +609,11 @@ struct ChatView: View {
                 if let idx = messages.firstIndex(where: { $0.id == tempId }) {
                     messages[idx] = confirmed
                 }
+                Haptics.light()
             } catch {
                 messages.removeAll { $0.id == tempId }
+                chatError = "Reaction failed to send. Try again."
+                Haptics.error()
             }
         }
     }

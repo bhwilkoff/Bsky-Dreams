@@ -29,7 +29,22 @@ struct ThreadView: View {
     @ViewBuilder
     private func threadContent(_ thread: ThreadViewPost) -> some View {
         if let threadPost = thread.post {
-            ScrollViewReader { proxy in
+            threadScroll(threadPost)
+        } else {
+            // Thread resolved but the root post is unavailable (deleted, blocked, or
+            // not found). Show an explicit empty state rather than a blank screen.
+            NBEmptyState(
+                icon: "bubble.left.and.exclamationmark.bubble.right",
+                title: "POST UNAVAILABLE",
+                message: "This post may have been deleted, or you don't have access to it."
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func threadScroll(_ threadPost: ThreadPost) -> some View {
+        ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 4) {
                     Color.clear.frame(height: 0).id("thread-top")
@@ -84,7 +99,6 @@ struct ThreadView: View {
             .refreshable { await loadThread() }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation { proxy.scrollTo("thread-top", anchor: .top) }
-            }
             }
         }
     }

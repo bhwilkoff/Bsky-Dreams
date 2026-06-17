@@ -39,10 +39,10 @@ struct GalleryView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if posts.isEmpty {
-                ContentUnavailableView(
-                    "No Image Posts",
-                    systemImage: "photo.stack",
-                    description: Text("Pull to refresh or check back later.")
+                NBEmptyState(
+                    icon: "photo.on.rectangle",
+                    title: "No photos yet",
+                    message: "Image posts from your feeds will show up here."
                 )
             } else {
                 cardFeed
@@ -266,7 +266,7 @@ struct GalleryCardView: View {
             } else {
                 LazyVGrid(columns: [.init(.flexible(), spacing: 2), .init(.flexible(), spacing: 2)], spacing: 2) {
                     ForEach(Array(images.prefix(4).enumerated()), id: \.element.id) { index, img in
-                        AsyncImage(url: URL(string: img.fullsize)) { phase in
+                        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 200) { phase in
                             switch phase {
                             case .success(let i): i.resizable().scaledToFill()
                             default: Color.nbBorder.opacity(0.3)
@@ -288,7 +288,7 @@ struct GalleryCardView: View {
     }
 
     private func singleImage(_ img: EmbedImage, allImages: [EmbedImage]) -> some View {
-        AsyncImage(url: URL(string: img.fullsize)) { phase in
+        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 400) { phase in
             switch phase {
             case .success(let i):
                 i.resizable().scaledToFit()
@@ -297,6 +297,7 @@ struct GalleryCardView: View {
                     .frame(height: 200)
             }
         }
+        .accessibilityHidden(!img.alt.isEmpty)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .bottomLeading) {
             if !img.alt.isEmpty {

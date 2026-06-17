@@ -113,6 +113,7 @@ struct ComposeView: View {
                                     .background(Color.nbBorder)
                                     .nbBorder()
                             }
+                            .accessibilityLabel("Remove GIF")
                         }
                     }
 
@@ -155,7 +156,11 @@ struct ComposeView: View {
             guard let item else { return }
             Task { await loadVideo(from: item) }
         }
-        .onChange(of: text) { _, newText in
+        .onChange(of: text) { oldText, newText in
+            // Warn (once) the moment the post crosses past the character limit.
+            if newText.count > maxLength && oldText.count <= maxLength {
+                Haptics.warning()
+            }
             // Auto-detect first URL in text and immediately fetch the link card
             if linkEmbed == nil, !showLinkInput {
                 if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue),
@@ -259,6 +264,7 @@ struct ComposeView: View {
                     .foregroundStyle((images.count >= 4 || composeVideo != nil) ? Color.nbBorder : Color.nbBlue)
             }
             .disabled(images.count >= 4 || composeVideo != nil)
+            .accessibilityLabel("Attach image")
 
             // Video picker — disabled when images are attached
             PhotosPicker(
@@ -269,6 +275,7 @@ struct ComposeView: View {
                     .foregroundStyle((!images.isEmpty || composeVideo != nil) ? Color.nbBorder : Color.nbBlue)
             }
             .disabled(!images.isEmpty || composeVideo != nil)
+            .accessibilityLabel("Attach video")
 
             Button {
                 showLinkInput.toggle()
@@ -276,6 +283,7 @@ struct ComposeView: View {
                 Image(systemName: "link")
                     .foregroundStyle(Color.nbBlue)
             }
+            .accessibilityLabel("Attach link")
 
             Button {
                 showGifPicker = true
@@ -287,6 +295,7 @@ struct ComposeView: View {
                     .padding(.vertical, 3)
                     .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
+            .accessibilityLabel("Attach GIF")
 
             Spacer()
         }
@@ -315,6 +324,7 @@ struct ComposeView: View {
                                 .clipShape(.circle)
                         }
                         .offset(x: 4, y: -4)
+                        .accessibilityLabel("Remove image")
                     }
                 }
             }
@@ -357,6 +367,7 @@ struct ComposeView: View {
                     .background(Color.nbBorder)
                     .nbBorder()
             }
+            .accessibilityLabel("Remove link")
         }
     }
 
@@ -417,6 +428,7 @@ struct ComposeView: View {
                     .background(Color.nbBorder)
                     .nbBorder()
             }
+            .accessibilityLabel("Remove video")
         }
     }
 
@@ -424,6 +436,11 @@ struct ComposeView: View {
 
     private func loadImages(from items: [PhotosPickerItem]) async {
         for item in items {
+            guard images.count < 4 else {
+                // Hit the 4-image limit — warn and stop adding more.
+                Haptics.warning()
+                break
+            }
             if let data = try? await item.loadTransferable(type: Data.self) {
                 let resized = ComposeImage.resizeImageData(data)
                 images.append(ComposeImage(imageData: resized))
@@ -586,7 +603,9 @@ struct ComposeView: View {
                     quoteCid: capturedQuotePost?.cid,
                     facets: facets
                 )
+                Haptics.success()
             } catch {
+                Haptics.error()
                 // Sheet is already dismissed — notify the user via a local notification
                 let content = UNMutableNotificationContent()
                 content.title = "Post failed"

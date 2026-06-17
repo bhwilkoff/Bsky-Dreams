@@ -23,22 +23,38 @@ struct NotificationGroup: Identifiable {
 struct NotificationsView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(NetworkMonitor.self) private var network
 
     @State private var notifications: [BskyNotification] = []
     @State private var groups: [NotificationGroup] = []
     @State private var cursor: String?
     @State private var isLoading = false
     @State private var scrollToTopTrigger = 0
+    @State private var errorMessage: String?
 
     var body: some View {
-        Group {
-            if isLoading && notifications.isEmpty {
-                ProgressView("Loading notifications...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if groups.isEmpty {
-                ContentUnavailableView("No Notifications", systemImage: "bell.slash", description: Text("You're all caught up!"))
-            } else {
-                notificationList
+        VStack(spacing: 0) {
+            if network.isOffline { NBOfflineBanner() }
+            if let errorMessage {
+                NBErrorBanner(
+                    message: errorMessage,
+                    retry: { self.errorMessage = nil; Task { await load() } },
+                    onDismiss: { self.errorMessage = nil }
+                )
+            }
+            Group {
+                if isLoading && notifications.isEmpty {
+                    ProgressView("Loading notifications...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if groups.isEmpty {
+                    NBEmptyState(
+                        icon: "bell.slash",
+                        title: "No Notifications",
+                        message: "You're all caught up!"
+                    )
+                } else {
+                    notificationList
+                }
             }
         }
         .nbNavBar(title: "NOTIFICATIONS", leading: { NBHamburger() }, trailing: {
@@ -156,7 +172,10 @@ struct NotificationsView: View {
             store.unreadNotificationCount = 0
             UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
             try? await ATProtocolClient.shared.updateNotificationsSeen()
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = "Couldn't load notifications. \(error.localizedDescription)"
+        }
     }
 
     private func loadMore() async {
@@ -172,10 +191,13 @@ struct NotificationsView: View {
             var newGroups = buildGroups(from: notifications)
             await enrichGroupsWithSubjectText(&newGroups)
             groups = newGroups
-        } catch {}
+        } catch {
+            errorMessage = "Couldn't load more notifications. \(error.localizedDescription)"
+        }
     }
 
     private func markAllRead() {
+        Haptics.success()
         notifications = notifications.map { var n = $0; n.isRead = true; return n }
         groups = groups.map { g in
             var updated = g
@@ -270,6 +292,7 @@ struct NotificationGroupRowView: View {
                             AvatarView(url: notif.author.avatar, size: 36)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("View \(notif.author.name)'s profile")
                         .offset(x: CGFloat(idx) * 10, y: CGFloat(idx) * 6)
                     }
                 }
@@ -281,6 +304,7 @@ struct NotificationGroupRowView: View {
                     AvatarView(url: notification.author.avatar, size: 44)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("View \(notification.author.name)'s profile")
             }
 
             Image(systemName: notification.reason.icon)
