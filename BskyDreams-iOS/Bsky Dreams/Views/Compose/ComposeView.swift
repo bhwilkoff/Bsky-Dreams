@@ -185,8 +185,16 @@ struct ComposeView: View {
             }
         }
         .sheet(isPresented: $showGifPicker) {
-            GifPickerView { gifUrl, thumbUrl in
-                gifEmbed = ExternalCard(uri: gifUrl, title: "GIF", description: "", thumb: thumbUrl.isEmpty ? nil : thumbUrl)
+            GifPickerView { gif in
+                // Build the Klipy embed the official Bluesky app parses for animation.
+                // The jpg still is set as `thumb`; the post() flow uploads it as a blob
+                // (mirroring the link-preview thumb upload) so non-GIF clients show a card.
+                gifEmbed = ExternalCard(
+                    uri: gif.blueskyEmbedURI,
+                    title: gif.title,
+                    description: "ALT: \(gif.title)",
+                    thumb: gif.jpgUrl.isEmpty ? nil : gif.jpgUrl
+                )
                 showGifPicker = false
             }
         }
@@ -646,7 +654,7 @@ struct ComposeView: View {
 private let klipyKey = "g1rqkiKBPyzWEydf5K3syROxIGAFxusrnd6yD5Dj2TT8C8U3k9dtTD7qlClmHdNz"
 
 struct GifPickerView: View {
-    let onSelect: (String, String) -> Void  // (gifUrl, thumbUrl)
+    let onSelect: (KlipyGif) -> Void  // full GIF so callers can build the animated embed
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -694,7 +702,7 @@ struct GifPickerView: View {
                         LazyVGrid(columns: columns, spacing: 4) {
                             ForEach(gifs.isEmpty ? trendingGifs : gifs) { gif in
                                 GifThumbnailView(gif: gif) {
-                                    onSelect(gif.gifUrl, gif.thumbUrl)
+                                    onSelect(gif)
                                     dismiss()
                                 }
                             }
@@ -891,28 +899,63 @@ struct AnimatedGifView: UIViewRepresentable {
 
 struct KlipyGif: Identifiable {
     let id: String       // slug — always a string, unlike the numeric id field
-    let title: String
-    let gifUrl: String   // sm.gif.url — posted as app.bsky.embed.external
-    let thumbUrl: String // xs.gif.url — small animated GIF for grid thumbnails
-    let thumbJpgUrl: String // xs.jpg.url — static JPEG placeholder while GIF loads
+    let title: String    // alt text used for the embed
+    let gifUrl: String   // embed-size gif.url — base file the post embed points at
+    let gifWidth: Int    // embed-size width  (ww= in the Bluesky embed URI)
+    let gifHeight: Int   // embed-size height (hh= in the Bluesky embed URI)
+    let mp4Url: String   // embed-size mp4.url — slug extracted for mp4= param
+    let webmUrl: String  // embed-size webm.url — slug extracted for webm= param
+    let jpgUrl: String   // embed-size jpg.url — uploaded as the thumb blob + shown on cards
+    let thumbUrl: String // xs.gif.url — small animated GIF for grid thumbnails in the picker
+    let thumbJpgUrl: String // xs.jpg.url — static JPEG placeholder while the grid GIF loads
 
     init?(item: KlipyItem) {
-        guard let slug = item.slug,
-              // Prefer sm GIF for the embed; fall back to md or xs
-              let gifUrl = item.file?.sm?.gif?.url
-                        ?? item.file?.md?.gif?.url
-                        ?? item.file?.xs?.gif?.url,
-              // xs GIF for animated thumbnails in the grid
-              let thumbUrl = item.file?.xs?.gif?.url
-                          ?? item.file?.sm?.gif?.url
+        guard let slug = item.slug else { return nil }
+        // Prefer the md size for the embed (good balance of quality vs. size),
+        // falling back to sm then xs. All sub-format urls share the same size's
+        // path prefix — only the filename/extension differs per format.
+        let sizes: [KlipyFileSize?] = [item.file?.md, item.file?.sm, item.file?.xs]
+        guard let size = sizes.compactMap({ $0 }).first(where: { $0.gif?.url != nil }),
+              let gifUrl = size.gif?.url
         else { return nil }
         self.id = slug
         self.title = item.title ?? "GIF"
         self.gifUrl = gifUrl
-        self.thumbUrl = thumbUrl
+        self.gifWidth = size.gif?.width ?? 0
+        self.gifHeight = size.gif?.height ?? 0
+        self.mp4Url = size.mp4?.url ?? ""
+        self.webmUrl = size.webm?.url ?? ""
+        self.jpgUrl = size.jpg?.url ?? ""
+        // xs GIF for animated thumbnails in the grid
+        self.thumbUrl = item.file?.xs?.gif?.url
+                     ?? item.file?.sm?.gif?.url
+                     ?? gifUrl
         self.thumbJpgUrl = item.file?.xs?.jpg?.url
                         ?? item.file?.sm?.jpg?.url
                         ?? ""
+    }
+
+    /// The `app.bsky.embed.external.uri` the official Bluesky app parses to render
+    /// an animated GIF: `<gif.url>?hh=<H>&ww=<W>&mp4=<mp4 slug>&webm=<webm slug>`.
+    /// The mp4/webm "slugs" are each url's filename without directory or extension.
+    var blueskyEmbedURI: String {
+        var params = "hh=\(gifHeight)&ww=\(gifWidth)"
+        if let mp4Slug = Self.filenameSlug(from: mp4Url) {
+            params += "&mp4=\(mp4Slug)"
+        }
+        if let webmSlug = Self.filenameSlug(from: webmUrl) {
+            params += "&webm=\(webmSlug)"
+        }
+        return "\(gifUrl)?\(params)"
+    }
+
+    /// Extract the filename without directory or extension from a Klipy url.
+    /// e.g. `https://static.klipy.com/ii/.../YkUbgkNm.mp4` → `YkUbgkNm`.
+    private static func filenameSlug(from urlString: String) -> String? {
+        guard !urlString.isEmpty else { return nil }
+        let last = (urlString as NSString).lastPathComponent
+        let stem = (last as NSString).deletingPathExtension
+        return stem.isEmpty ? nil : stem
     }
 }
 
@@ -950,15 +993,19 @@ struct KlipyFile: Decodable {
     let xs: KlipyFileSize?
 }
 
-// Each size variant: { gif: { url, width, height, size }, jpg: { ... }, webp: { ... }, ... }
+// Each size variant: { gif: { url, width, height, size }, jpg, webp, mp4, webm: { ... } }
 struct KlipyFileSize: Decodable {
     let gif: KlipyFileDirect?
     let jpg: KlipyFileDirect?
     let webp: KlipyFileDirect?
+    let mp4: KlipyFileDirect?
+    let webm: KlipyFileDirect?
 }
 
 struct KlipyFileDirect: Decodable {
     let url: String?
+    let width: Int?
+    let height: Int?
 }
 
 // MARK: - HTML Entity Decoding

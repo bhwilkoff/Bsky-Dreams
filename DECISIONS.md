@@ -65,7 +65,13 @@ Relative-time display links to `https://bsky.app/profile/{handle}/post/{rkey}`. 
 ## [SHARED] GIF Provider — Klipy as External Embed
 *2026-02-25*
 
-GIFs posted as `app.bsky.embed.external` with the Klipy CDN URL; thumbnail uploaded as blob. BlueSky's AppView CDN transcodes blobs to JPEG, stripping animation — CDN URL reference is the only way to preserve animation (same approach as Tenor/Giphy in the native app). Trade-off: Klipy not yet on BlueSky's animated-GIF allowlist (issue #9728); native app shows thumbnail only. No code change needed when allowlist is updated.
+GIFs posted as `app.bsky.embed.external` with the Klipy CDN URL; thumbnail uploaded as blob. BlueSky's AppView CDN transcodes blobs to JPEG, stripping animation — CDN URL reference is the only way to preserve animation (same approach as Tenor/Giphy in the native app).
+
+**Update 2026-06-17 — Klipy is now Bluesky's official GIF provider (Tenor migration shipped), so GIFs render ANIMATED in the official app — but ONLY if the embed matches Bluesky's parser exactly.** The previous note ("not on the allowlist; native shows a thumbnail") was wrong — it's not an allowlist, it's a URL-format gate. To animate everywhere, the `app.bsky.embed.external.external` must be:
+- `uri` = `<gif.url>?hh=<height>&ww=<width>&mp4=<mp4Slug>&webm=<webmSlug>` — host MUST stay `static.klipy.com` with path starting `/ii/` (which Klipy's `api.klipy.com` returns natively — verified live); the mp4/webm slugs are the same-size mp4/webm filenames (the official app rewrites the host to `k.gifs.bsky.app` at render time).
+- `title` = alt text; `description` = `"ALT: " + alt` — the uppercase `ALT: ` prefix is **load-bearing** (Bluesky uses it to mark an auto vs user-authored caption).
+- `thumb` = uploaded blob of the same-size `.jpg` still (the static-client fallback card).
+Incoming GIFs are detected animated via host `static.klipy.com` + `/ii/` (plus the existing tenor/giphy/klipy hosts); the `?hh=…` query is stripped before loading the `.gif` for playback. Implemented on both platforms.
 
 ---
 

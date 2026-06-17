@@ -518,8 +518,15 @@ struct InlineReplyView: View {
             Task { await loadImages(from: items) }
         }
         .sheet(isPresented: $showGifPicker) {
-            GifPickerView { gifUrl, _ in
-                gifEmbed = ExternalCard(uri: gifUrl, title: "GIF", description: "", thumb: nil)
+            GifPickerView { gif in
+                // Build the Klipy embed the official Bluesky app parses for animation.
+                // jpg still set as `thumb`; uploaded as a blob in submitReply().
+                gifEmbed = ExternalCard(
+                    uri: gif.blueskyEmbedURI,
+                    title: gif.title,
+                    description: "ALT: \(gif.title)",
+                    thumb: gif.jpgUrl.isEmpty ? nil : gif.jpgUrl
+                )
                 showGifPicker = false
             }
         }
@@ -682,13 +689,27 @@ struct InlineReplyView: View {
                 root: root,
                 parent: StrongRef(uri: replyTo.uri, cid: replyTo.cid)
             )
+
+            // Upload the GIF's still JPEG as the embed thumb blob so non-GIF clients
+            // render a static card (mirrors the ComposeView post() thumb upload).
+            // Thumb upload is best-effort — if it fails, still post the GIF.
+            var effectiveEmbed: ExternalCard? = uploadedBlobs.isEmpty ? gifEmbed : nil
+            if var embed = effectiveEmbed, let thumbURLStr = embed.thumb,
+               let thumbURL = URL(string: thumbURLStr), embed.uploadedThumb == nil {
+                if let (thumbData, _) = try? await URLSession.shared.data(from: thumbURL) {
+                    let thumbResp = try? await ATProtocolClient.shared.uploadBlob(data: thumbData, mimeType: "image/jpeg")
+                    embed.uploadedThumb = thumbResp?.blob
+                }
+                effectiveEmbed = embed
+            }
+
             _ = try await ATProtocolClient.shared.createPost(
                 text: text,
                 did: did,
                 reply: replyRef,
                 images: uploadedBlobs,
                 imageAlts: altTexts,
-                linkEmbed: uploadedBlobs.isEmpty ? gifEmbed : nil
+                linkEmbed: effectiveEmbed
             )
             onDismiss()
         } catch {

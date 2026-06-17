@@ -166,7 +166,7 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 ### Web
 1. Blob limit 1 MB — `resizeImageFile()` handles it but loses GIF animation
 2. Notifications: no polling; stale until user navigates to view
-3. Klipy not yet on Bluesky animated-GIF allowlist (issue #9728) — no code change needed when added
+3. ~~Klipy not yet on Bluesky animated-GIF allowlist (issue #9728)~~ **RESOLVED 2026-06-17**: Klipy is now Bluesky's official GIF provider; GIFs render animated when the embed matches Bluesky's parser (`static.klipy.com/ii/…?hh=&ww=&mp4=&webm=` + `ALT:` description + thumb blob). Implemented on both platforms.
 
 ### iOS
 1. Reader `readURLs` (`@State`) is separate from SwiftData `SeenPost` — needs reconciliation for persistent read-state display

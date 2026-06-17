@@ -6171,10 +6171,11 @@
     } catch { /* silently ignore */ }
   }
 
-  function quoteSelectGif(gifUrl, thumbUrl, alt) {
+  function quoteSelectGif(embed) {
+    const { uri, gifUrl, thumbUrl, alt } = embed;
     clearQuoteImages();
     clearQuoteVideo();
-    quoteLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+    quoteLinkEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
     quoteLinkWrap.innerHTML = `
       <div class="compose-link-preview compose-gif-preview">
         <img class="compose-gif-preview-img" src="${escHtml(gifUrl)}" alt="${escHtml(alt)}">
@@ -6811,6 +6812,8 @@
     try {
       const url  = new URL(external.uri);
       const host = url.hostname;
+      // Klipy GIF CDN — the parser-compatible embed uses static.klipy.com/ii/...
+      if (host === 'static.klipy.com' && url.pathname.startsWith('/ii/')) return true;
       if (
         host === 'tenor.com'   || host.endsWith('.tenor.com') ||
         host === 'giphy.com'   || host.endsWith('.giphy.com') ||
@@ -6827,6 +6830,10 @@
     const wrap = document.createElement('div');
     wrap.className = 'post-gif-wrap';
     let src = external.uri;
+    // Strip the Bluesky GIF-parser query (?hh=&ww=&mp4=&webm=) so the CDN serves
+    // the raw .gif file cleanly instead of treating the params as part of the path.
+    const qIdx = src.indexOf('?');
+    if (qIdx !== -1) src = src.slice(0, qIdx);
     // Tenor/Klipy media URLs sometimes end in .mp4 — swap to .gif for animated display
     if ((src.includes('tenor.com') || src.includes('klipy.com')) && src.endsWith('.mp4')) {
       src = src.replace(/\.mp4$/, '.gif');
@@ -7711,13 +7718,14 @@
       } catch { /* silently ignore */ }
     }
 
-    function selectGifEmbed(gifUrl, thumbUrl, alt) {
+    function selectGifEmbed(embed) {
+      const { uri, gifUrl, thumbUrl, alt } = embed;
       replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
       replyImages = [];
       refreshImgPreview();
       clearReplyVideo();
       clearReplyLinkPreview();
-      replyGifEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+      replyGifEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
       gifPanel.hidden = true;
       gifPreviewEl.innerHTML = `
         <div class="compose-link-preview compose-gif-preview">
@@ -8285,6 +8293,58 @@
     composeGifPanel.hidden = true;
   });
 
+  /**
+   * Build a Bluesky-compatible GIF embed descriptor from a Klipy API item.
+   *
+   * Official Bluesky only renders an external embed as an ANIMATED GIF when the
+   * `external.uri` matches its Tenor/Klipy parser: the GIF file URL followed by
+   * `?hh=<height>&ww=<width>&mp4=<mp4-slug>&webm=<webm-slug>`, where the slugs are
+   * the filename (without extension) of the SAME size's mp4/webm files. The host
+   * must stay `static.klipy.com` and the path must start with `/ii/`.
+   *
+   * Returns null if the item lacks a usable animated size.
+   *
+   * @param {object} item Klipy data item ({ title, file: { hd, md, sm, xs } })
+   * @returns {{ uri:string, gifUrl:string, thumbUrl:(string|null), alt:string } | null}
+   */
+  function buildKlipyGifEmbed(item) {
+    const file = item?.file || {};
+    // Prefer md, fall back to sm then xs — the chosen size must be internally
+    // consistent (gif/mp4/webm/jpg all from the same size object).
+    const size = file.md || file.sm || file.xs || file.hd || null;
+    const gif  = size?.gif;
+    if (!gif?.url) return null;
+
+    const alt  = item.title || '';
+    const w    = Math.max(1, Math.round(gif.width  || 0)) || undefined;
+    const h    = Math.max(1, Math.round(gif.height || 0)) || undefined;
+
+    // Slug = the filename of the mp4/webm WITHOUT its extension.
+    const slugOf = (url) => {
+      if (!url) return '';
+      try {
+        const path = new URL(url).pathname;
+        const name = path.substring(path.lastIndexOf('/') + 1);
+        return name.replace(/\.[^.]+$/, '');
+      } catch { return ''; }
+    };
+    const mp4Slug  = slugOf(size?.mp4?.url);
+    const webmSlug = slugOf(size?.webm?.url);
+
+    // Build `<gif.url>?hh=&ww=&mp4=&webm=` — only append params we actually have.
+    const params = [];
+    if (h) params.push(`hh=${h}`);
+    if (w) params.push(`ww=${w}`);
+    if (mp4Slug)  params.push(`mp4=${mp4Slug}`);
+    if (webmSlug) params.push(`webm=${webmSlug}`);
+    const uri = params.length ? `${gif.url}?${params.join('&')}` : gif.url;
+
+    // Still image (jpg) of the SAME size — uploaded as the thumb blob at post time.
+    const thumbUrl = size?.jpg?.url || file.xs?.jpg?.url || null;
+
+    return { uri, gifUrl: gif.url, thumbUrl, alt };
+  }
+
   // GIF search via Klipy — accepts target grid element and selection callback
   // Response: { result: true, data: { data: [ { title, file: { xs, gif, hd } } ] } }
   async function searchKlipyGifs(q, gridEl, onSelect) {
@@ -8299,17 +8359,16 @@
       }
       gridEl.innerHTML = '';
       items.forEach((item) => {
-        const thumbUrl = item.file?.xs?.jpg?.url || item.file?.xs?.gif?.url;
-        // Best available animated URL — no upload needed, so size is not a constraint
-        const gifUrl = item.file?.hd?.gif?.url || item.file?.gif?.url || item.file?.xs?.gif?.url;
-        // Use a medium-quality animated preview for the grid (better than xs thumbnail)
-        const previewUrl = item.file?.md?.gif?.url || item.file?.sm?.gif?.url || gifUrl;
-        if (!gifUrl) return;
+        const embed = buildKlipyGifEmbed(item);
+        if (!embed) return;
+        // Use a small (xs) animated preview for the grid — the chosen embed size
+        // (md/sm) is used only at post time.
+        const previewUrl = item.file?.xs?.gif?.url || item.file?.sm?.gif?.url || embed.gifUrl;
         const wrap = document.createElement('div');
         wrap.className = 'compose-gif-item-wrap';
         const img = document.createElement('img');
         img.src       = previewUrl;
-        img.alt       = item.title || '';
+        img.alt       = embed.alt;
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
         const watermark = document.createElement('img');
@@ -8319,7 +8378,7 @@
         watermark.setAttribute('aria-hidden', 'true');
         wrap.appendChild(img);
         wrap.appendChild(watermark);
-        wrap.addEventListener('click', () => onSelect(gifUrl, thumbUrl, item.title || ''));
+        wrap.addEventListener('click', () => onSelect(embed));
         gridEl.appendChild(wrap);
       });
     } catch (err) {
@@ -8343,12 +8402,13 @@
    * integration) is to store the CDN URL as app.bsky.embed.external so the GIF
    * is served directly from Klipy — no upload, no re-encoding, animation intact.
    *
-   * @param {string}      gifUrl   Direct Klipy animated GIF URL
-   * @param {string|null} thumbUrl Static xs.jpg thumbnail URL (uploaded as blob at post time
-   *                               so native Bluesky shows an image card instead of a text link)
-   * @param {string}      alt      GIF title / alt text
+   * @param {{ uri:string, gifUrl:string, thumbUrl:(string|null), alt:string }} embed
+   *        Bluesky-ready GIF embed from buildKlipyGifEmbed(). `uri` is the parser
+   *        URL (?hh=&ww=&mp4=&webm=); `gifUrl` is the bare animated URL for preview;
+   *        `thumbUrl` is the static jpg uploaded as a blob at post time.
    */
-  function selectGif(gifUrl, thumbUrl, alt) {
+  function selectGif(embed) {
+    const { uri, gifUrl, thumbUrl, alt } = embed;
     // Clear any existing images, video, or link preview — GIF is mutually exclusive
     composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
     composeImages = [];
@@ -8357,7 +8417,8 @@
 
     // _thumbUrl is a private hint used by the submit handler to upload a static
     // preview blob — it is not sent to the AT Protocol API directly.
-    composeLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+    // description "ALT: <alt>" is the load-bearing prefix Bluesky's GIF parser expects.
+    composeLinkEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
 
     // Show an animated preview in the link-preview slot with a dismiss button
     composeLinkWrap.innerHTML = `

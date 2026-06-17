@@ -582,6 +582,14 @@ private final class DismissGestureDelegate: NSObject, UIGestureRecognizerDelegat
 struct GifEmbedView: UIViewRepresentable {
     let url: URL
 
+    /// Strip any query string (e.g. Klipy's `?hh=&ww=&mp4=&webm=` animation params)
+    /// so the bare `.gif` file is fetched cleanly by the animated loader.
+    private var bareGifURLString: String {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        return components?.url?.absoluteString ?? url.absoluteString
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -596,7 +604,7 @@ struct GifEmbedView: UIViewRepresentable {
         <style>html,body{margin:0;padding:0;background:#000;display:flex;align-items:center;justify-content:center;height:100%;}
         img{max-width:100%;max-height:100%;object-fit:contain;}</style>
         </head>
-        <body><img src="\(url.absoluteString)"></body>
+        <body><img src="\(bareGifURLString)"></body>
         </html>
         """
         webView.loadHTMLString(html, baseURL: nil)
@@ -613,7 +621,8 @@ func isGifExternalCard(_ card: ExternalCard) -> Bool {
         let gifHosts = ["media.tenor.com", "c.tenor.com", "media.giphy.com",
                         "media0.giphy.com", "media1.giphy.com", "media2.giphy.com",
                         "media3.giphy.com", "i.giphy.com",
-                        "media.klipy.com", "cdn.klipy.com", "i.klipy.com"]
+                        "media.klipy.com", "cdn.klipy.com", "i.klipy.com",
+                        "static.klipy.com"]
         if gifHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return true }
     }
     return false
