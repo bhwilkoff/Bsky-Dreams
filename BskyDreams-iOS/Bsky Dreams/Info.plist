@@ -136,7 +136,7 @@
 		<key>UIImageName</key>
 		<string>LaunchCloud</string>
 		<key>UIImageRespectsSafeAreaInsets</key>
-		<false/>
+		<true/>
 	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
