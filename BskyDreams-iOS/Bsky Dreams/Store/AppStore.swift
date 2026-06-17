@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import SwiftUI
 import UIKit
+import Network
 
 // MARK: - Global App State
 
@@ -325,4 +326,43 @@ struct ComposeVideo: Identifiable {
     var thumbnail: UIImage?
     var mimeType: String = "video/mp4"
     var altText: String = ""
+}
+
+// MARK: - Network reachability
+//
+// NOTE: this type lives here (not a standalone NetworkMonitor.swift) because the
+// project uses Xcode file-system-synchronized groups, which intermittently fail to
+// pick up brand-new .swift files even after a clean build. Co-locating new types in
+// an already-compiled file is the reliable workaround (see DECISIONS.md).
+
+/// Observable network-reachability monitor. Inject via `.environment` and read
+/// `monitor.isOffline` to drive the offline banner and to distinguish a true
+/// "no network" condition from a server-side error. Degrade, don't block:
+/// cached content stays usable while offline.
+@Observable
+@MainActor
+final class NetworkMonitor {
+    /// True when the device has no usable network path. Starts `false` (optimistic)
+    /// so the UI never flashes an offline banner before the first path update.
+    private(set) var isOffline = false
+
+    /// True when the active path is expensive (cellular) or constrained (Low Data Mode).
+    private(set) var isConstrained = false
+
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "app.bskydreams.networkmonitor")
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let offline = path.status != .satisfied
+            let constrained = path.isConstrained || path.isExpensive
+            Task { @MainActor in
+                self?.isOffline = offline
+                self?.isConstrained = constrained
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    deinit { monitor.cancel() }
 }

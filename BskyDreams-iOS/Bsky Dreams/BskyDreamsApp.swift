@@ -71,8 +71,25 @@ struct BskyDreamsApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authManager = AuthManager()
     @State private var appStore = AppStore()
+    @State private var networkMonitor = NetworkMonitor()
 
     private static let bgTaskID = "com.bskydreams.app.notificationRefresh"
+
+    /// Build the SwiftData container with graceful fallback so a corrupt or
+    /// migration-failed store can never hard-crash the app at launch: try the
+    /// on-disk store, then fall back to an in-memory store (the app still runs;
+    /// local seen/saved data just won't persist this session).
+    private static func makeModelContainer() -> ModelContainer {
+        let schema = Schema([SeenPost.self, SavedSearch.self, CachedPreferences.self])
+        do {
+            return try ModelContainer(for: schema,
+                                      configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: false))
+        } catch {
+            // Last resort: in-memory so the app always launches.
+            return try! ModelContainer(for: schema,
+                                       configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        }
+    }
 
     init() {
         // Large disk cache so AsyncImage and URLSession responses persist across sessions
@@ -175,8 +192,8 @@ struct BskyDreamsApp: App {
                 case "reply":           (title, body) = ("New reply", "@\(author) replied to your post")
                 case "mention":         (title, body) = ("New mention", "@\(author) mentioned you")
                 case "quote":           (title, body) = ("New quote", "@\(author) quoted your post")
-                case "likeViaRepost":   (title, body) = ("New like", "@\(author) liked a post you reposted")
-                case "repostViaRepost": (title, body) = ("New repost", "@\(author) reposted a post you reposted")
+                case "like-via-repost":   (title, body) = ("New like", "@\(author) liked a post you reposted")
+                case "repost-via-repost": (title, body) = ("New repost", "@\(author) reposted a post you reposted")
                 default: continue
                 }
 
@@ -247,6 +264,7 @@ struct BskyDreamsApp: App {
             RootView()
                 .environment(authManager)
                 .environment(appStore)
+                .environment(networkMonitor)
                 .preferredColorScheme(appStore.preferredColorScheme)
                 .onOpenURL { url in
                     if url.scheme == "bskydreams", url.host == "share" {
@@ -267,6 +285,6 @@ struct BskyDreamsApp: App {
                     }
                 }
         }
-        .modelContainer(for: [SeenPost.self, SavedSearch.self, CachedPreferences.self])
+        .modelContainer(BskyDreamsApp.makeModelContainer())
     }
 }

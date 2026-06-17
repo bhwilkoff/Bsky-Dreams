@@ -5,7 +5,9 @@ struct AvatarView: View {
     var size: CGFloat = 40
 
     var body: some View {
-        AsyncImage(url: url.flatMap { URL(string: $0) }) { phase in
+        // URL-bound cached loader (downsampled to the avatar size) — avoids the
+        // recycled-cell wrong-avatar bug and full-res decode of tiny circles.
+        CachedImage(url: url.flatMap { URL(string: $0) }, maxPixelSize: size) { phase in
             switch phase {
             case .success(let image):
                 image
@@ -18,13 +20,12 @@ struct AvatarView: View {
                 // Show placeholder while loading
                 Color.nbBorder.opacity(0.3)
                     .overlay(ProgressView().scaleEffect(0.5))
-            @unknown default:
-                appIconFallback
             }
         }
         .frame(width: size, height: size)
         .clipShape(.circle)
         .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: 1.5))
+        .accessibilityHidden(true)
     }
 
     private var appIconFallback: some View {
