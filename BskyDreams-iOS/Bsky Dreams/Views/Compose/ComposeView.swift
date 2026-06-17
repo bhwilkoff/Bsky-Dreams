@@ -803,13 +803,28 @@ struct AnimatedGifView: UIViewRepresentable {
         let iv = UIImageView()
         iv.contentMode = contentMode
         iv.clipsToBounds = true
+        // Let the SwiftUI frame win — without low priorities the UIImageView imposes the
+        // image's intrinsic size and a large GIF blows past .frame(maxHeight:).
+        iv.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        iv.setContentHuggingPriority(.defaultLow, for: .vertical)
+        iv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        iv.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return iv
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {
         uiView.contentMode = contentMode
-        guard let gifURL = URL(string: url) else { return }
+        // Strip the Bluesky GIF-parser query (?hh=&ww=&mp4=&webm=) so the CDN serves the
+        // raw .gif; those params are embed metadata, not part of the file.
+        let bare = url.components(separatedBy: "?").first ?? url
+        guard let gifURL = URL(string: bare) else { return }
         context.coordinator.load(gifURL, placeholderUrl: placeholderUrl, into: uiView)
+    }
+
+    /// Respect the proposed (SwiftUI frame) size rather than the image's intrinsic size.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIImageView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width,
+               height: proposal.height ?? uiView.intrinsicContentSize.height)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -880,10 +895,20 @@ struct AnimatedGifView: UIViewRepresentable {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return ([], []) }
             let count = CGImageSourceGetCount(source)
             guard count > 1 else { return ([], []) }  // single frame = not animated
+            // Decode DOWNSAMPLED frames (cap the long side) instead of full-resolution.
+            // A multi-frame 498px GIF fully decoded is ~10s + heavy memory; thumbnailing
+            // through ImageIO is fast and a GIF preview never needs more than a few hundred px.
+            let thumbOpts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 400 * UIScreen.main.scale
+            ]
             var images: [UIImage] = []
             var delays: [Double] = []
             for i in 0..<count {
-                guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+                guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, i, thumbOpts as CFDictionary)
+                        ?? CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
                 images.append(UIImage(cgImage: cgImage))
                 let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any]
                 let gifProps = props?[kCGImagePropertyGIFDictionary as String] as? [String: Any]
@@ -911,10 +936,12 @@ struct KlipyGif: Identifiable {
 
     init?(item: KlipyItem) {
         guard let slug = item.slug else { return nil }
-        // Prefer the md size for the embed (good balance of quality vs. size),
-        // falling back to sm then xs. All sub-format urls share the same size's
-        // path prefix — only the filename/extension differs per format.
-        let sizes: [KlipyFileSize?] = [item.file?.md, item.file?.sm, item.file?.xs]
+        // Prefer the sm size (~220px) for the embed: GIFs are inherently low-res, sm
+        // is parser-valid for Bluesky (same static.klipy.com/ii path), and it keeps our
+        // own decode/render fast — md (498px) made the compose preview and feed hang for
+        // ~10s decoding full-res frames. Fall back to md then xs. All sub-format urls
+        // share the same size's path prefix — only the filename/extension differs.
+        let sizes: [KlipyFileSize?] = [item.file?.sm, item.file?.md, item.file?.xs]
         guard let size = sizes.compactMap({ $0 }).first(where: { $0.gif?.url != nil }),
               let gifUrl = size.gif?.url
         else { return nil }

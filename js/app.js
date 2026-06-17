@@ -8309,9 +8309,10 @@
    */
   function buildKlipyGifEmbed(item) {
     const file = item?.file || {};
-    // Prefer md, fall back to sm then xs — the chosen size must be internally
+    // Prefer sm (~220px) — parser-valid for Bluesky and keeps embeds/previews light;
+    // md (498px) GIFs are needlessly heavy. The chosen size must be internally
     // consistent (gif/mp4/webm/jpg all from the same size object).
-    const size = file.md || file.sm || file.xs || file.hd || null;
+    const size = file.sm || file.md || file.xs || file.hd || null;
     const gif  = size?.gif;
     if (!gif?.url) return null;
 
