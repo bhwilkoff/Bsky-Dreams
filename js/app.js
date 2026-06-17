@@ -168,6 +168,21 @@
   const BEST_OF_FOLLOWS_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows';
   const FOR_YOU_URI         = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
   let feedMode           = 'discover';  // 'following' | 'discover'
+
+  // ---- Rebuilt Discover: personalized + conversation-weighted (ports iOS DiscoverEngine) ----
+  // The user's own Bluesky moderation settings, fetched once per session so Discover
+  // honors them: { adultEnabled, hiddenLabels:Set, mutedWords:[lowercased] }.
+  let moderationPrefs    = { adultEnabled: false, hiddenLabels: new Set(), mutedWords: [] };
+  // Topic hashtags drawn from the user's OWN recent posts — their declared interests.
+  let interestTags       = new Set();
+  // True once preferences + interest model are loaded (idempotent build guard).
+  let discoverContextReady = false;
+  // How Discover ranks: 'conversations' (default) | 'network' | 'trending'. Persisted.
+  let discoverRankMode   = localStorage.getItem('nb_discover_rank') || 'conversations';
+  if (!['conversations', 'network', 'trending'].includes(discoverRankMode)) discoverRankMode = 'conversations';
+  // why-chip reasons keyed by post URI, computed at merge time.
+  let discoverWhy        = {};
+
   let feedCursor         = null; // pagination cursor for home feed
   let feedCursorClassic  = null;
   let feedCursorFriends  = null;
@@ -2749,6 +2764,7 @@
     // M52: apply saved default feed tab preference
     const savedTab = localStorage.getItem('bsky_default_tab');
     if (savedTab === 'following' || savedTab === 'discover') setFeedMode(savedTab);
+    else updateDiscoverRankToggle(); // ensure the rank toggle exists for default Discover
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -3546,6 +3562,75 @@
     feedTabDiscover.classList.toggle('feed-tab-active', !isFollowing);
     feedTabFollowing.setAttribute('aria-selected', isFollowing ? 'true' : 'false');
     feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
+    updateDiscoverRankToggle();
+  }
+
+  // ---- Discover rank toggle (Conversations / In Network / Trending) ----
+  // 3-way control shown only in Discover mode; persisted to localStorage; re-renders
+  // the feed on change. Default Conversations. Injected into the feed-tabs row so it
+  // matches the existing feed-mode toggle styling.
+  const _DISCOVER_RANK_MODES = [
+    { key: 'conversations', label: 'Conversations', icon: '💬' },
+    { key: 'network',       label: 'In Network',    icon: '🫂' },
+    { key: 'trending',      label: 'Trending',      icon: '🔥' },
+  ];
+  let _discoverRankToggleEl = null;
+
+  function buildDiscoverWhyChip(text) {
+    const chip = document.createElement('div');
+    chip.className = 'discover-why-chip';
+    let icon = '✨';
+    if (text.startsWith('From someone you follow') || text.startsWith('Followed by')) icon = '🫂';
+    else if (text.startsWith('Reposted by')) icon = '🔁';
+    else if (text.startsWith('Matches your interest')) icon = '#';
+    else if (text.startsWith('Active conversation')) icon = '💬';
+    else if (text.startsWith('Popular in your network')) icon = '🫂';
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'discover-why-icon';
+    iconSpan.setAttribute('aria-hidden', 'true');
+    iconSpan.textContent = icon;
+    const textSpan = document.createElement('span');
+    textSpan.className = 'discover-why-text';
+    textSpan.textContent = text;
+    chip.appendChild(iconSpan);
+    chip.appendChild(textSpan);
+    chip.setAttribute('aria-label', `Why you're seeing this: ${text}`);
+    return chip;
+  }
+
+  function updateDiscoverRankToggle() {
+    const tabs = document.querySelector('.feed-tabs');
+    if (!tabs) return;
+    if (!_discoverRankToggleEl) {
+      const el = document.createElement('div');
+      el.className = 'discover-rank-toggle';
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', 'Rank Discover by');
+      _DISCOVER_RANK_MODES.forEach((m) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'discover-rank-btn';
+        btn.dataset.rank = m.key;
+        btn.setAttribute('aria-label', `Rank by ${m.label}`);
+        btn.innerHTML = `<span class="discover-rank-icon" aria-hidden="true">${m.icon}</span><span class="discover-rank-label">${m.label}</span>`;
+        btn.addEventListener('click', () => {
+          if (discoverRankMode === m.key) return;
+          discoverRankMode = m.key;
+          localStorage.setItem('nb_discover_rank', m.key);
+          updateDiscoverRankToggle();
+          loadFeed(); // fresh load re-ranks with the new mode
+        });
+        el.appendChild(btn);
+      });
+      tabs.appendChild(el);
+      _discoverRankToggleEl = el;
+    }
+    _discoverRankToggleEl.hidden = (feedMode !== 'discover');
+    _discoverRankToggleEl.querySelectorAll('.discover-rank-btn').forEach((btn) => {
+      const sel = btn.dataset.rank === discoverRankMode;
+      btn.classList.toggle('discover-rank-active', sel);
+      btn.setAttribute('aria-pressed', sel ? 'true' : 'false');
+    });
   }
 
   /** True if a post carries any adult/NSFW content label. */
@@ -3568,6 +3653,182 @@
     return ((post.likeCount || 0) - 1) / Math.pow(hrs + 2, 1.8);
   }
 
+  /* ================================================================
+     DiscoverEngine — personalized, conversation-weighted Discover
+     (ports BskyDreams-iOS DiscoverEngine exactly). The intent: reward
+     conversation over virality, personalize from the user's OWN signals
+     (their network + their topics), honor the user's own moderation, and
+     tell them WHY each post is shown — no opaque "for you" box.
+  ================================================================ */
+
+  // Adult/violent labels always hidden when the user has adult content disabled.
+  const _DISCOVER_ADULT_LABELS = new Set([
+    'porn', 'sexual', 'nudity', 'graphic-media', 'adult', 'gore', 'nsfw', 'sexual-figurative',
+  ]);
+
+  /** Hashtags for a post — from the structured `tags` field plus any `#word` in the text. */
+  function _discoverHashtags(post) {
+    const out = new Set();
+    (post?.record?.tags || []).forEach((t) => { if (t) out.add(String(t).toLowerCase()); });
+    const text = post?.record?.text || '';
+    const re = /#([A-Za-z0-9_]{2,})/g;
+    let m;
+    while ((m = re.exec(text)) !== null) out.add(m[1].toLowerCase());
+    return out;
+  }
+
+  /** Moderation gate: true = hide this post from Discover. */
+  function _discoverShouldHide(item, prefs) {
+    const post = item?.post;
+    if (!post) return true;
+    const viewer = post.author?.viewer || {};
+    // Author muted/blocked (by you or them).
+    if (viewer.muted || viewer.blocking || viewer.blockedBy) return true;
+    // Post + author labels.
+    const labels = (post.labels || []).concat(post.author?.labels || []);
+    for (const lbl of labels) {
+      if (lbl?.neg === true) continue;
+      const val = lbl?.val;
+      if (!val) continue;
+      if (prefs.hiddenLabels.has(val)) return true;
+      if (!prefs.adultEnabled && _DISCOVER_ADULT_LABELS.has(val)) return true;
+    }
+    // Muted words (content + tags).
+    if (prefs.mutedWords.length) {
+      const tags = (post.record?.tags || []).join(' ');
+      const hay = ((post.record?.text || '') + ' ' + tags).toLowerCase();
+      for (const w of prefs.mutedWords) { if (w && hay.includes(w)) return true; }
+    }
+    return false;
+  }
+
+  /** Conversation-weighted, personalized score. Higher = ranked higher. */
+  function _discoverScore(item, mode, tags) {
+    const post = item.post;
+    const likes = post.likeCount || 0;
+    const replies = post.replyCount || 0;
+
+    const hours = Math.max(0, (Date.now() - new Date(post.indexedAt || 0).getTime()) / 3600000);
+    const recency = Math.pow(hours + 2, 1.6);
+
+    // Conversation: replies dominate; reply-to-like ratio rewards genuine discussion
+    // over applause. Raw likes are intentionally de-emphasized.
+    const replyRatio = replies / Math.max(1, likes);
+    let conversation = (replies * 3 + likes * 0.4) * (1 + Math.min(replyRatio, 2));
+
+    const isReply = !!post.record?.reply;
+    const isRepost = !!item.reason;
+    if ((post.record?.text || '').includes('?') && !isReply) conversation *= 1.25;  // questions
+    if (isRepost) conversation *= 0.5;                                               // penalize re-sharing
+    else if (!isReply) conversation *= 1.15;                                         // reward originals
+
+    // Network boost — your graph is the input, not a hidden model.
+    let network = 1.0;
+    const viewer = post.author?.viewer || {};
+    if (viewer.following) network += 1.2;
+    else {
+      const kf = viewer.knownFollowers?.count || 0;
+      if (kf > 0) network += Math.min(kf * 0.15, 0.9);
+    }
+
+    // Topic boost — overlap with the user's own hashtags.
+    let topic = 1.0;
+    if (tags.size) {
+      const ht = _discoverHashtags(post);
+      for (const t of ht) { if (tags.has(t)) { topic += 0.8; break; } }
+    }
+
+    switch (mode) {
+      case 'network':  return (conversation / recency) * Math.pow(network, 2) * topic;
+      case 'trending': return ((likes + replies - 1) / recency) * topic;
+      case 'conversations':
+      default:         return (conversation / recency) * network * topic;
+    }
+  }
+
+  /** A short, honest reason this post is in Discover — shown as a chip. null = no chip. */
+  function _discoverWhy(item, tags) {
+    const post = item.post;
+    const reasonBy = item.reason?.by;
+    if (reasonBy) {
+      const name = reasonBy.displayName || reasonBy.handle;
+      if (name) return `Reposted by ${name}`;
+    }
+    const viewer = post.author?.viewer || {};
+    if (viewer.following) return 'From someone you follow';
+    const kf = viewer.knownFollowers;
+    if (kf && kf.count > 0) {
+      const first = kf.followers?.[0];
+      const firstName = first?.displayName || first?.handle;
+      if (firstName) {
+        return kf.count === 1 ? `Followed by ${firstName}` : `Followed by ${firstName} +${kf.count - 1} you know`;
+      }
+      return 'Popular in your network';
+    }
+    if (tags.size) {
+      const ht = _discoverHashtags(post);
+      for (const t of ht) { if (tags.has(t)) return `Matches your interest in #${t}`; }
+    }
+    if ((post.replyCount || 0) >= 5) return `Active conversation · ${post.replyCount} replies`;
+    return null;
+  }
+
+  /**
+   * Fetch the user's moderation preferences + build the interest model.
+   * Idempotent; safe to call before a Discover load. Failures degrade gracefully
+   * (Discover still works, just with weaker personalization/moderation).
+   */
+  async function buildDiscoverContext() {
+    if (discoverContextReady) return;
+    discoverContextReady = true; // set first so concurrent calls don't double-fetch
+    try {
+      const prefs = await API.getPreferences().catch(() => null);
+      if (prefs && Array.isArray(prefs.preferences)) {
+        const m = { adultEnabled: false, hiddenLabels: new Set(), mutedWords: [] };
+        const labelers = [];
+        for (const p of prefs.preferences) {
+          switch (p.$type) {
+            case 'app.bsky.actor.defs#adultContentPref':
+              m.adultEnabled = !!p.enabled;
+              break;
+            case 'app.bsky.actor.defs#contentLabelPref':
+              if ((p.visibility === 'hide' || p.visibility === 'warn') && p.label) m.hiddenLabels.add(p.label);
+              break;
+            case 'app.bsky.actor.defs#mutedWordsPref':
+              (p.items || []).forEach((it) => {
+                const v = (it.value || '').toLowerCase();
+                if (v) m.mutedWords.push(v);
+              });
+              break;
+            case 'app.bsky.actor.defs#labelersPref':
+              (p.labelers || []).forEach((l) => { if (l.did) labelers.push(l.did); });
+              break;
+            default: break;
+          }
+        }
+        moderationPrefs = m;
+        API.setAcceptLabelers(labelers);
+      }
+    } catch (_) { /* moderation stays at defaults */ }
+
+    // Interest tags from the user's own recent posts (what THEY choose to post about).
+    try {
+      const did = AUTH.getSession()?.did;
+      if (did) {
+        const mine = await API.getAuthorFeed(did, 60, undefined).catch(() => null);
+        if (mine && Array.isArray(mine.feed)) {
+          const tags = new Set();
+          mine.feed.forEach((it) => {
+            // posts_no_replies equivalent: skip replies so interests come from originals
+            if (it.post?.record?.reply) return;
+            _discoverHashtags(it.post).forEach((t) => tags.add(t));
+          });
+          interestTags = tags;
+        }
+      }
+    } catch (_) { /* interests stay empty */ }
+  }
+
   async function loadFeed(append = false) {
     // Guard: prevent concurrent append calls. The IntersectionObserver fires immediately
     // when observe() is called on an already-visible sentinel (e.g. after an all-filtered
@@ -3583,6 +3844,7 @@
       feedLoaded         = false;
       feedSeenBypass     = false;    // M40: reset bypass on fresh feed load
       feedDiscoverLooped = false;    // reset loop-back flag on fresh load / tab switch
+      discoverWhy        = {};       // reset why-chip reasons on fresh load
       feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
       document.querySelector('.feed-seen-hint')?.remove();
     }
@@ -3592,20 +3854,33 @@
     try {
       let items;
       if (feedMode === 'discover') {
-        // Hybrid discover: 3 feeds in parallel — personalized, network-wide, social-graph trending
+        // Rebuilt Discover: personalized + conversation-weighted, honoring the user's own
+        // moderation. Sources are whats-hot (trending) + with-friends (social graph).
+        // hot-classic (pure network-wide engagement) was REMOVED: it's identical for every
+        // account and was the main source of the generic, NSFW-heavy firehose. Ranking +
+        // filtering happen client-side via the DiscoverEngine helpers above.
+        if (!discoverContextReady) await buildDiscoverContext();
         const apiCursor = (append && feedCursor) ? feedCursor : undefined;
-        const [primary, classic, friends] = await Promise.all([
-          API.getFeed(DISCOVER_FEED_URI, 30, apiCursor),
-          API.getFeed(HOT_CLASSIC_URI, 20, append ? feedCursorClassic || undefined : undefined).catch(() => null),
-          API.getFeed(WITH_FRIENDS_URI, 20, append ? feedCursorFriends || undefined : undefined).catch(() => null),
+        const [primary, friends] = await Promise.all([
+          API.getFeed(DISCOVER_FEED_URI, 40, apiCursor),
+          API.getFeed(WITH_FRIENDS_URI, 30, append ? feedCursorFriends || undefined : undefined).catch(() => null),
         ]);
         feedCursor        = primary.cursor || null;
-        feedCursorClassic = classic?.cursor || null;
         feedCursorFriends = friends?.cursor || null;
-        const all = [...(primary.feed || []), ...(classic?.feed || []), ...(friends?.feed || [])];
+        const prefs = moderationPrefs;
+        const tags  = interestTags;
+        const mode  = discoverRankMode;
+        const all = [...(primary.feed || []), ...(friends?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
-                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
+        items = all.filter((i) => {
+                  const u = i.post?.uri;
+                  if (!u || seen.has(u) || !_isEnglishPost(i.post) || _discoverShouldHide(i, prefs)) return false;
+                  seen.add(u);
+                  return true;
+                })
+                .sort((a, b) => _discoverScore(b, mode, tags) - _discoverScore(a, mode, tags));
+        // Compute the "why" chip reasons for the merged set.
+        items.forEach((i) => { discoverWhy[i.post.uri] = _discoverWhy(i, tags); });
       } else {
         // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
         const apiCursor = (append && feedCursor) ? feedCursor : undefined;
@@ -3893,6 +4168,13 @@
 
       const wrapper = document.createElement('div');
       wrapper.className = 'feed-item';
+
+      // Discover "why" chip — an honest, transparent reason this post is shown,
+      // ABOVE the card. Only in Discover mode and only when a reason exists.
+      if (feedMode === 'discover') {
+        const why = discoverWhy[post.uri];
+        if (why) wrapper.appendChild(buildDiscoverWhyChip(why));
+      }
 
       // Repost attribution
       if (item.reason?.$type === 'app.bsky.feed.defs#reasonRepost') {

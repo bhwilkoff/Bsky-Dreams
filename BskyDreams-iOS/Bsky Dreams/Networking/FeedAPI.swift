@@ -214,4 +214,51 @@ extension ATProtocolClient {
             "rkey": rkey
         ])
     }
+
+    // MARK: - Actor Preferences (moderation: muted words, label visibility, labelers)
+
+    /// Fetch the signed-in user's private Bluesky preferences. Carries the SAME
+    /// moderation settings the official app uses — muted words, per-label visibility,
+    /// adult-content toggle, and subscribed labelers — so Bsky Dreams can honor them.
+    func getPreferences() async throws -> PreferencesResponse {
+        try await get("app.bsky.actor.getPreferences")
+    }
+}
+
+// MARK: - Preferences models
+//
+// getPreferences returns a heterogeneous array discriminated by `$type`. We decode
+// each entry leniently into one struct with all possible fields optional, then sort
+// them out by type when building the ModerationPrefs.
+
+struct PreferencesResponse: Codable {
+    let preferences: [PreferenceItem]
+}
+
+struct PreferenceItem: Codable {
+    let type: String
+    // adultContentPref
+    let enabled: Bool?
+    // contentLabelPref
+    let label: String?
+    let labelerDid: String?
+    let visibility: String?     // "ignore" | "show" | "warn" | "hide"
+    // mutedWordsPref
+    let items: [MutedWordItem]?
+    // labelersPref
+    let labelers: [LabelerPrefItem]?
+
+    enum CodingKeys: String, CodingKey {
+        case type = "$type", enabled, label, labelerDid, visibility, items, labelers
+    }
+}
+
+struct MutedWordItem: Codable {
+    let value: String
+    let targets: [String]?      // ["content", "tag"]
+    let expiresAt: String?
+}
+
+struct LabelerPrefItem: Codable {
+    let did: String
 }

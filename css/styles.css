@@ -587,10 +587,66 @@ button {
 ================================================================ */
 .feed-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-xs);
   border-bottom: 3px solid var(--nb-black);
   margin-bottom: var(--space-md);
   padding-bottom: var(--space-xs);
+}
+
+/* ---- Discover rank toggle (Conversations / In Network / Trending) ---- */
+.discover-rank-toggle {
+  display: flex;
+  flex-basis: 100%;       /* drop to its own row below the feed tabs */
+  gap: 8px;
+  margin-top: var(--space-xs);
+}
+.discover-rank-toggle[hidden] { display: none; }
+
+.discover-rank-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: var(--color-surface);
+  border: 1.5px solid var(--nb-black);
+  border-radius: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, background 0.12s, color 0.12s;
+}
+.discover-rank-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--nb-black);
+}
+.discover-rank-active {
+  background: var(--color-accent);
+  border-width: 2px;
+  color: #fff;
+}
+.discover-rank-icon { font-size: 0.82rem; line-height: 1; }
+
+/* ---- Discover "why" chip — honest reason a post is shown ---- */
+.discover-why-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 4px;
+  margin: 0 0 4px 2px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+.discover-why-icon { font-size: 0.72rem; line-height: 1; opacity: 0.85; }
+.discover-why-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .feed-tab {

@@ -421,7 +421,7 @@ struct ProfileView: View {
             isFollowing = p.viewer?.following != nil
             followUri = p.viewer?.following
             isMuted = p.viewer?.muted == true
-            isBlocked = p.viewer?.blocked == true
+            isBlocked = p.viewer?.blocking != nil
             await loadPosts()
         } catch {
             errorMessage = "Couldn't load this profile. \(error.localizedDescription)"

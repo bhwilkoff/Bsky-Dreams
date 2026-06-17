@@ -265,12 +265,29 @@ final class ATProtocolClient {
 
     // MARK: - Private
 
+    /// Bluesky's official moderation labeler — always included so adult/violence
+    /// labels are attached. Additional labelers the user subscribed to are appended
+    /// from their preferences (set via `setAcceptLabelers`).
+    static let bskyModerationLabeler = "did:plc:ar7c4by46qjdydhdevvrndac"
+    private var subscribedLabelers: [String] = []
+
+    /// Update the labelers sent on every request (from the user's preferences).
+    func setAcceptLabelers(_ dids: [String]) {
+        subscribedLabelers = dids
+    }
+
     private func authorizedRequest(_ req: URLRequest) async throws -> URLRequest {
         guard let auth = authManager, let session = auth.session else {
             throw AuthError.notLoggedIn
         }
         var req = req
         req.setValue("Bearer \(session.accessJwt)", forHTTPHeaderField: "Authorization")
+        // Tell the AppView which labelers to apply. Without this header it only applies
+        // its built-in defaults; with it, the user's subscribed moderation labelers
+        // attach their labels (e.g. stricter adult-content labelers). Max 20.
+        var labelers = [Self.bskyModerationLabeler]
+        labelers.append(contentsOf: subscribedLabelers.filter { $0 != Self.bskyModerationLabeler })
+        req.setValue(labelers.prefix(20).joined(separator: ","), forHTTPHeaderField: "atproto-accept-labelers")
         return req
     }
 

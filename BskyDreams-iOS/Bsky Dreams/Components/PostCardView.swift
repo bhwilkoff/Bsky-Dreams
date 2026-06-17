@@ -146,7 +146,7 @@ struct PostCardView: View {
         .onAppear {
             syncState()
             isMuted = post.author.viewer?.muted == true
-            isBlocked = post.author.viewer?.blocked == true
+            isBlocked = post.author.viewer?.blocking != nil
         }
     }
 

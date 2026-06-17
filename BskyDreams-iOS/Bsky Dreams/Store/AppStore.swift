@@ -81,6 +81,55 @@ final class AppStore {
     var feedSeenBypass = false
     private var seenSyncTask: Task<Void, Never>? = nil
 
+    // MARK: - Discover moderation + personalization context
+
+    /// The user's own Bluesky moderation settings (muted words, hidden labels, adult pref,
+    /// subscribed labelers) — fetched once per session so Discover honors them.
+    var moderationPrefs = ModerationPrefs()
+    /// Topic hashtags drawn from the user's own posts — their declared interests.
+    var interestTags: Set<String> = []
+    /// True once preferences + interest model are loaded.
+    var discoverContextReady = false
+    /// How Discover ranks: Conversations (default), In Network, or Trending.
+    var discoverRankMode: DiscoverRankMode =
+        DiscoverRankMode(rawValue: UserDefaults.standard.string(forKey: "nb_discover_rank") ?? "") ?? .conversations
+
+    func setDiscoverRankMode(_ mode: DiscoverRankMode) {
+        discoverRankMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "nb_discover_rank")
+    }
+
+    /// Fetch the user's moderation preferences + build the interest model. Idempotent;
+    /// safe to call on session start. Failures degrade gracefully (Discover still works,
+    /// just with weaker personalization/moderation).
+    func buildDiscoverContext(did: String) async {
+        if let prefs = try? await ATProtocolClient.shared.getPreferences() {
+            var m = ModerationPrefs()
+            for p in prefs.preferences {
+                switch p.type {
+                case "app.bsky.actor.defs#adultContentPref":
+                    m.adultEnabled = p.enabled ?? false
+                case "app.bsky.actor.defs#contentLabelPref":
+                    if p.visibility == "hide" || p.visibility == "warn", let l = p.label { m.hiddenLabels.insert(l) }
+                case "app.bsky.actor.defs#mutedWordsPref":
+                    m.mutedWords.append(contentsOf: (p.items ?? []).map { $0.value.lowercased() }.filter { !$0.isEmpty })
+                case "app.bsky.actor.defs#labelersPref":
+                    m.subscribedLabelers = (p.labelers ?? []).map { $0.did }
+                default: break
+                }
+            }
+            moderationPrefs = m
+            ATProtocolClient.shared.setAcceptLabelers(m.subscribedLabelers)
+        }
+        // Interest tags from the user's own recent posts (what THEY choose to post about).
+        if let mine = try? await ATProtocolClient.shared.getAuthorFeed(actor: did, limit: 60, filter: "posts_no_replies") {
+            var tags = Set<String>()
+            for item in mine.feed { tags.formUnion(DiscoverEngine.hashtags(in: item.post)) }
+            interestTags = tags
+        }
+        discoverContextReady = true
+    }
+
     // MARK: - Share Extension Handoff
 
     /// Read pending shared content from the App Group container and open the compose sheet.
@@ -365,4 +414,152 @@ final class NetworkMonitor {
     }
 
     deinit { monitor.cancel() }
+}
+
+// MARK: - Discover engine (moderation + conversation-weighted personalization)
+//
+// Inlined here (not a standalone file) because Xcode file-system-synchronized groups
+// don't reliably pick up new .swift files (see DECISIONS.md). The Discover feed is
+// rebuilt around three principles aligned with the app's purpose:
+//   1. Honor the USER's own moderation (muted words, label visibility, blocks) — not a
+//      hardcoded list.
+//   2. Personalize from the user's OWN signals (their network + their topics), and tell
+//      them WHY each post is shown — no opaque "for you" box.
+//   3. Reward conversation (replies, questions) over raw virality; penalize reposts.
+
+/// The user's moderation settings, fetched from app.bsky.actor.getPreferences.
+struct ModerationPrefs {
+    var adultEnabled = false           // does the user allow adult content at all?
+    var hiddenLabels: Set<String> = [] // labels the user set to hide/warn
+    var mutedWords: [String] = []      // lowercased
+    var subscribedLabelers: [String] = []
+
+    /// Adult/violent labels always hidden when the user has adult content disabled.
+    static let adultLabels: Set<String> = [
+        "porn", "sexual", "nudity", "graphic-media", "adult", "gore", "nsfw", "sexual-figurative"
+    ]
+}
+
+/// How Discover ranks. The user can switch this; default is Conversations.
+enum DiscoverRankMode: String, CaseIterable {
+    case conversations = "Conversations"
+    case network = "In Network"
+    case trending = "Trending"
+    var icon: String {
+        switch self {
+        case .conversations: "bubble.left.and.bubble.right"
+        case .network: "person.2"
+        case .trending: "flame"
+        }
+    }
+}
+
+enum DiscoverEngine {
+    private static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoNoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func date(_ s: String) -> Date {
+        iso.date(from: s) ?? isoNoFrac.date(from: s) ?? Date()
+    }
+
+    /// Hashtags for a post — from the structured `tags` field plus any `#word` in the text.
+    static func hashtags(in post: PostView) -> Set<String> {
+        var out = Set((post.record.tags ?? []).map { $0.lowercased() })
+        let text = post.record.text
+        var idx = text.startIndex
+        while let hash = text[idx...].firstIndex(of: "#") {
+            var end = text.index(after: hash)
+            while end < text.endIndex, text[end].isLetter || text[end].isNumber || text[end] == "_" {
+                end = text.index(after: end)
+            }
+            let tag = text[text.index(after: hash)..<end]
+            if tag.count >= 2 { out.insert(tag.lowercased()) }
+            idx = end < text.endIndex ? text.index(after: end) : text.endIndex
+            if idx >= text.endIndex { break }
+        }
+        return out
+    }
+
+    /// Moderation gate: true = hide this post from Discover.
+    static func shouldHide(_ item: FeedItem, prefs: ModerationPrefs) -> Bool {
+        let post = item.post
+        // Author muted/blocked (by you or them).
+        if post.author.viewer?.isHidden == true { return true }
+        // Post + author labels.
+        let allLabels = (post.labels ?? []) + (post.author.labels ?? [])
+        for lbl in allLabels where !(lbl.neg ?? false) {
+            if prefs.hiddenLabels.contains(lbl.val) { return true }
+            if !prefs.adultEnabled && ModerationPrefs.adultLabels.contains(lbl.val) { return true }
+        }
+        // Muted words (content + tags).
+        if !prefs.mutedWords.isEmpty {
+            let hay = (post.record.text + " " + (post.record.tags ?? []).joined(separator: " ")).lowercased()
+            for w in prefs.mutedWords where hay.contains(w) { return true }
+        }
+        return false
+    }
+
+    /// Conversation-weighted, personalized score. Higher = ranked higher.
+    static func score(_ item: FeedItem, mode: DiscoverRankMode, interestTags: Set<String>) -> Double {
+        let post = item.post
+        let likes = Double(post.likeCount ?? 0)
+        let replies = Double(post.replyCount ?? 0)
+
+        let hours = max(0, Date().timeIntervalSince(date(post.indexedAt)) / 3600)
+        let recency = pow(hours + 2, 1.6)
+
+        // Conversation: replies dominate; reply-to-like ratio rewards genuine discussion
+        // over applause. Raw likes are intentionally de-emphasized.
+        let replyRatio = replies / max(1, likes)
+        var conversation = (replies * 3 + likes * 0.4) * (1 + min(replyRatio, 2))
+
+        let isReply = post.record.reply != nil
+        let isRepost = item.reason != nil
+        if post.record.text.contains("?") && !isReply { conversation *= 1.25 }   // questions
+        if isRepost { conversation *= 0.5 }                                       // penalize re-sharing
+        else if !isReply { conversation *= 1.15 }                                 // reward originals
+
+        // Network boost — your graph is the input, not a hidden model.
+        var network = 1.0
+        if post.author.viewer?.isFollowing == true { network += 1.2 }
+        else if let kf = post.author.viewer?.knownFollowers?.count, kf > 0 {
+            network += min(Double(kf) * 0.15, 0.9)
+        }
+
+        // Topic boost — overlap with the user's own hashtags.
+        var topic = 1.0
+        if !interestTags.isEmpty, !hashtags(in: post).isDisjoint(with: interestTags) { topic += 0.8 }
+
+        switch mode {
+        case .conversations: return (conversation / recency) * network * topic
+        case .network:       return (conversation / recency) * pow(network, 2.0) * topic
+        case .trending:      return ((likes + replies - 1) / recency) * topic
+        }
+    }
+
+    /// A short, honest reason this post is in Discover — shown as a chip. nil = no chip.
+    static func why(_ item: FeedItem, interestTags: Set<String>) -> String? {
+        let post = item.post
+        if let by = item.reason?.by?.name { return "Reposted by \(by)" }
+        if post.author.viewer?.isFollowing == true { return "From someone you follow" }
+        if let kf = post.author.viewer?.knownFollowers, kf.count > 0 {
+            if let first = kf.followers.first?.name {
+                return kf.count == 1 ? "Followed by \(first)" : "Followed by \(first) +\(kf.count - 1) you know"
+            }
+            return "Popular in your network"
+        }
+        if !interestTags.isEmpty, let m = hashtags(in: post).first(where: { interestTags.contains($0) }) {
+            return "Matches your interest in #\(m)"
+        }
+        if let r = post.replyCount, r >= 5 { return "Active conversation · \(r) replies" }
+        return nil
+    }
 }

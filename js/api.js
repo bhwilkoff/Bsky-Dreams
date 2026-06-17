@@ -10,6 +10,26 @@
 const API = (() => {
   const BASE = 'https://bsky.social/xrpc';
 
+  // Bluesky's official moderation labeler — always sent so adult/violence labels are
+  // attached to posts. The user's subscribed labelers (from their preferences) are
+  // appended via setAcceptLabelers(). Without the `atproto-accept-labelers` header the
+  // AppView applies only its built-in defaults; with it, the user's chosen moderation
+  // labelers attach their labels so Bsky Dreams can honor the user's own moderation.
+  const BSKY_MODERATION_LABELER = 'did:plc:ar7c4by46qjdydhdevvrndac';
+  let subscribedLabelers = [];
+
+  /** Set the additional labelers (DIDs) to accept on feed requests, from prefs. */
+  function setAcceptLabelers(dids) {
+    subscribedLabelers = Array.isArray(dids) ? dids : [];
+  }
+
+  /** Comma-joined accept-labelers header value (default + subscribed, max 20). */
+  function acceptLabelersHeader() {
+    const all = [BSKY_MODERATION_LABELER]
+      .concat(subscribedLabelers.filter((d) => d && d !== BSKY_MODERATION_LABELER));
+    return all.slice(0, 20).join(',');
+  }
+
   /* ----------------------------------------------------------------
      Internal helpers
   ---------------------------------------------------------------- */
@@ -54,7 +74,11 @@ const API = (() => {
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     }
     const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      // Honor the user's own moderation: tell the AppView which labelers to apply.
+      headers['atproto-accept-labelers'] = acceptLabelersHeader();
+    }
 
     const res = await fetch(url.toString(), { headers });
     if (!res.ok) {
@@ -342,6 +366,16 @@ const API = (() => {
   }
 
   /**
+   * Fetch the signed-in user's private Bluesky preferences. Carries the SAME
+   * moderation settings the official app uses — muted words, per-label visibility,
+   * adult-content toggle, and subscribed labelers — so Bsky Dreams can honor them.
+   * Returns { preferences: [...] } (heterogeneous array discriminated by $type).
+   */
+  async function getPreferences() {
+    return authGet('app.bsky.actor.getPreferences', {});
+  }
+
+  /**
    * Follow an actor (com.atproto.repo.createRecord → app.bsky.graph.follow)
    * @param {string} subjectDid - DID of the actor to follow
    * @returns {object} - { uri, cid } of the created follow record
@@ -621,6 +655,8 @@ const API = (() => {
     searchActors,
     getTimeline,
     getFeed,
+    getPreferences,
+    setAcceptLabelers,
     getPostThread,
     getPost,
     uploadBlob,

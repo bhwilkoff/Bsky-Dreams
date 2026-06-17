@@ -32,6 +32,8 @@ struct FeedView: View {
     @State private var scrollToTopTrigger = 0
     @State private var discoverLooped = false
     @State private var autoFetchCount = 0
+    /// Per-post "why this is in Discover" reason chips (Discover mode only).
+    @State private var whyReasons: [String: String] = [:]
 
     // Seen post tracking — @State instead of @Query so SwiftData inserts don't
     // trigger ForEach re-renders of every visible card on each mark-seen event.
@@ -124,6 +126,13 @@ struct FeedView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
 
+                    // Discover ranking control — lets the user steer how the feed is built.
+                    if store.feedMode == .discover {
+                        discoverRankToggle
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                    }
+
                     if items.isEmpty && !isLoading && errorMessage == nil {
                         NBEmptyState(
                             icon: "checkmark.circle",
@@ -146,23 +155,28 @@ struct FeedView: View {
                     }
 
                     ForEach(items) { item in
-                        PostCardView(
-                            post: item.post,
-                            showParentPreview: item.reply != nil,
-                            onReply: { post in
-                                let isOpening = replyingToURI != post.uri
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    replyingToURI = isOpening ? post.uri : nil
-                                }
-                                if isOpening {
-                                    // Scroll the tapped post into view so it's visible above the reply box
-                                    Task {
-                                        try? await Task.sleep(for: .milliseconds(400))
-                                        withAnimation { proxy.scrollTo(post.uri, anchor: .center) }
+                        VStack(alignment: .leading, spacing: 4) {
+                            if store.feedMode == .discover, let why = whyReasons[item.post.uri] {
+                                DiscoverWhyChip(text: why)
+                            }
+                            PostCardView(
+                                post: item.post,
+                                showParentPreview: item.reply != nil,
+                                onReply: { post in
+                                    let isOpening = replyingToURI != post.uri
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        replyingToURI = isOpening ? post.uri : nil
+                                    }
+                                    if isOpening {
+                                        // Scroll the tapped post into view so it's visible above the reply box
+                                        Task {
+                                            try? await Task.sleep(for: .milliseconds(400))
+                                            withAnimation { proxy.scrollTo(post.uri, anchor: .center) }
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                         .id(item.post.uri)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 4)
@@ -248,6 +262,39 @@ struct FeedView: View {
             Color.nbBlack
                 .offset(x: 3, y: 3)
         )
+    }
+
+    /// Lets the user steer how Discover is ranked. Conversations (default) favors replies
+    /// and questions; In Network favors your graph; Trending favors raw popularity.
+    private var discoverRankToggle: some View {
+        HStack(spacing: 8) {
+            ForEach(DiscoverRankMode.allCases, id: \.self) { mode in
+                let selected = store.discoverRankMode == mode
+                Button {
+                    if !selected {
+                        Haptics.selection()
+                        store.setDiscoverRankMode(mode)
+                        Task { await loadFeed() }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(mode.rawValue)
+                            .font(.inter(12, weight: .semibold))
+                    }
+                    .foregroundStyle(selected ? Color.white : Color.nbTextSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(selected ? Color.nbAccent : Color.nbWhite)
+                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: selected ? 2 : 1.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rank by \(mode.rawValue)")
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private var loadingState: some View {
@@ -346,31 +393,37 @@ struct FeedView: View {
                     .sorted { trendingScore($0.post) > trendingScore($1.post) }
 
             case .discover:
-                // Hybrid discover: 3 feeds in parallel — personalized trending, network-wide
-                // trending, and social-graph trending. Failures on secondary feeds are ignored.
+                // Rebuilt Discover: personalized + conversation-weighted, honoring the
+                // user's own moderation. Sources are whats-hot (trending) + with-friends
+                // (social graph). hot-classic (pure network-wide engagement) was REMOVED:
+                // it's identical for every account and was the main source of the generic,
+                // NSFW-heavy firehose. Ranking + filtering happen client-side via DiscoverEngine.
+                if !store.discoverContextReady, let did = auth.session?.did {
+                    await store.buildDiscoverContext(did: did)
+                }
                 let fetchCursor: String?
                 if loadMore && discoverLooped { fetchCursor = nil }
                 else { fetchCursor = loadMore ? cursor : nil }
 
-                async let primary = ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 30, cursor: fetchCursor)
-                async let classic = try? ATProtocolClient.shared.getFeed(uri: hotClassicURI, limit: 20, cursor: loadMore ? cursorHotClassic : nil)
-                async let friends = try? ATProtocolClient.shared.getFeed(uri: withFriendsURI, limit: 20, cursor: loadMore ? cursorWithFriends : nil)
+                async let primary = ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 40, cursor: fetchCursor)
+                async let friends = try? ATProtocolClient.shared.getFeed(uri: withFriendsURI, limit: 30, cursor: loadMore ? cursorWithFriends : nil)
 
                 let p = try await primary
-                let c = await classic
                 let f = await friends
 
                 cursor = p.cursor
-                cursorHotClassic = c?.cursor
                 cursorWithFriends = f?.cursor
 
                 var all = p.feed
-                if let c { all.append(contentsOf: c.feed) }
                 if let f { all.append(contentsOf: f.feed) }
 
+                let prefs = store.moderationPrefs
+                let tags = store.interestTags
+                let mode = store.discoverRankMode
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
-                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
+                mergedFeed = all
+                    .filter { seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs) }
+                    .sorted { DiscoverEngine.score($0, mode: mode, interestTags: tags) > DiscoverEngine.score($1, mode: mode, interestTags: tags) }
             }
 
             if loadMore {
@@ -380,6 +433,9 @@ struct FeedView: View {
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
+                if store.feedMode == .discover {
+                    for it in newItems { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
+                }
 
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
@@ -399,6 +455,10 @@ struct FeedView: View {
                 items = mergedFeed.filter { item in
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
+                }
+                if store.feedMode == .discover {
+                    whyReasons.removeAll()
+                    for it in items { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
                 let urlsToWarm = items.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
@@ -484,5 +544,37 @@ private struct FeedNavBar: View {
         .overlay(alignment: .bottom) {
             Color.nbBorder.frame(height: 1)
         }
+    }
+}
+
+// MARK: - "Why is this in Discover?" chip
+// A small, honest line of provenance above a Discover post. Transparency is the point:
+// the user should understand why a post reached them, not face an opaque "for you" box.
+
+struct DiscoverWhyChip: View {
+    let text: String
+
+    private var icon: String {
+        if text.hasPrefix("From someone you follow") || text.hasPrefix("Followed by") { return "person.2.fill" }
+        if text.hasPrefix("Reposted by") { return "arrow.2.squarepath" }
+        if text.hasPrefix("Matches your interest") { return "number" }
+        if text.hasPrefix("Active conversation") { return "bubble.left.and.bubble.right.fill" }
+        return "sparkles"
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .font(.inter(11, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(Color.nbTextSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .padding(.leading, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Why you're seeing this: \(text)")
     }
 }

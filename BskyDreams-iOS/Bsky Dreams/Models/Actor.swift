@@ -23,12 +23,16 @@ struct ActorProfile: Codable, Identifiable, Hashable {
 
 struct ActorViewer: Codable {
     let muted: Bool?
-    let blocked: Bool?
-    let mutedByList: String?
-    let blockedByList: String?
-    let following: String?      // AT URI of follow record
+    let blockedBy: Bool?        // true if THEY block you
+    let blocking: String?       // AT URI of YOUR block record (present if you block them)
+    let following: String?      // AT URI of follow record (present if you follow them)
     let followedBy: String?     // AT URI of their follow record
     let knownFollowers: KnownFollowers?
+
+    /// You follow this account.
+    var isFollowing: Bool { following != nil }
+    /// You muted or blocked this account, or they block you — hide their posts in Discover.
+    var isHidden: Bool { (muted ?? false) || (blocking != nil) || (blockedBy ?? false) }
 }
 
 struct KnownFollowers: Codable {

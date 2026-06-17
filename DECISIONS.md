@@ -685,3 +685,19 @@ The launch screen is defined via an Info.plist `UILaunchScreen` dictionary (not 
 *2026-06-17*
 
 Contextual first-run tips are delivered by `HintsManager` (`@Observable`) + `HintBanner` (cyan/blue, visually distinct from the coral error banner and lime offline banner). Each hint is dismissible permanently per-device; dismissals are kept in a stored `Set` reassigned on mutation so `@Observable` fires and dependent views update. A `HintBanner` is a transient, dismissable, one-time teaching tip — categorically different from `NBEmptyState` (structural), `NBErrorBanner` (attention/failure), and a multi-step walkthrough (not used here). The distinction matters: conflating "here's a tip" with "something is wrong" trains users to ignore both. Hints are governed by a master "Show Tips" toggle and a "Reset All Tips" action in Settings, so a user who dismissed everything can bring them back.
+
+---
+
+## [SHARED] Discover Feed — Personalized, Conversation-Weighted, User-Moderated
+*2026-06-17*
+
+Discover was rebuilt away from a global virality firehose. The old design merged three feed generators (`whats-hot` + `hot-classic` + `with-friends`) and sorted by raw likes-per-hour `(likes-1)/(hours+2)^1.8`. Two-thirds of those sources are network-wide identical for every account (`hot-classic` is pure global engagement; `whats-hot` is only lightly viewer-aware), so two different accounts saw the same posts — the feed was generic, not personal. Engagement-ranking a global pool also surfaced whatever is viral network-wide (large high-engagement NSFW/furry communities dominate), which no amount of per-account blocking can outrun. And the score optimized for exactly the rage-bait/repost dynamic the app's "build for human engagement" ethos rejects.
+
+The rebuild (`DiscoverEngine` in `AppStore.swift`; mirrored in `js/app.js`):
+- **Sources:** `whats-hot` + `with-friends` only. `hot-classic` removed — it was the generic, NSFW-heavy firehose.
+- **Honor the user's OWN moderation** via `app.bsky.actor.getPreferences` (never fetched before): muted words, per-label visibility (`contentLabelPref` hide/warn), adult-content toggle. Send the `atproto-accept-labelers` header (Bluesky's default labeler `did:plc:ar7c4by46qjdydhdevvrndac` + the user's subscribed labelers) so labels actually arrive. Filter author `viewer.muted`/`blocking`/`blockedBy` client-side. (Fixed `ActorViewer`: the model had `blocked` which never matched the API's `blocking`/`blockedBy`.)
+- **Personalize from the user's own signals** — their network (`author.viewer.following` + `knownFollowers`) and their topics (hashtags from their own recent posts). No opaque model.
+- **Conversation-weighted ranking:** replies dominate, reply-to-like ratio rewards discussion, questions boosted, originals favored, **reposts penalized (×0.5)**, raw likes de-emphasized. A user-facing **Conversations / In Network / Trending** toggle (persisted) lets the user steer it.
+- **Transparency:** every Discover post carries a "why you're seeing this" chip ("From someone you follow", "Followed by N you know", "Matches your interest in #X", "Active conversation · N replies"). No opaque "for you" box.
+
+Rationale: this is the feed run through the project's four-question values check — it deepens understanding (you see *why*), invites participation (your graph + topics + toggle are the inputs), supports agency (your own moderation is honored, not a hardcoded list), and rewards conversation over virality. Trade-off: a per-session `getPreferences` + author-feed fetch to build the context, and a smaller candidate pool than the old firehose (mitigated by pagination).
