@@ -285,9 +285,15 @@ final class ATProtocolClient {
         // Tell the AppView which labelers to apply. Without this header it only applies
         // its built-in defaults; with it, the user's subscribed moderation labelers
         // attach their labels (e.g. stricter adult-content labelers). Max 20.
-        var labelers = [Self.bskyModerationLabeler]
-        labelers.append(contentsOf: subscribedLabelers.filter { $0 != Self.bskyModerationLabeler })
-        req.setValue(labelers.prefix(20).joined(separator: ","), forHTTPHeaderField: "atproto-accept-labelers")
+        //
+        // IMPORTANT: labelers are an AppView concept ONLY. Never send this header to the
+        // chat service (api.bsky.chat) — it's meaningless there and can cause the chat
+        // backend to reject the request (this regressed group/DM sends).
+        if req.url?.host?.contains("bsky.chat") != true {
+            var labelers = [Self.bskyModerationLabeler]
+            labelers.append(contentsOf: subscribedLabelers.filter { $0 != Self.bskyModerationLabeler })
+            req.setValue(labelers.prefix(20).joined(separator: ","), forHTTPHeaderField: "atproto-accept-labelers")
+        }
         return req
     }
 
@@ -315,7 +321,10 @@ final class ATProtocolClient {
 
         guard httpResponse.statusCode == 200 else {
             let err = try? decoder.decode(ATError.self, from: data)
-            throw APIError.serverError(httpResponse.statusCode, err?.message ?? "Unknown error")
+            // Surface the XRPC error CODE (e.g. "ConvoLocked") plus message — the code is
+            // often the only useful detail and is sometimes the only field present.
+            let detail = [err?.error, err?.message].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
+            throw APIError.serverError(httpResponse.statusCode, detail.isEmpty ? "Unknown error" : detail)
         }
 
         return try decoder.decode(T.self, from: data)

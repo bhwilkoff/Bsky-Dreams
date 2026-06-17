@@ -759,7 +759,9 @@ struct ChatView: View {
                 // Roll back: remove placeholder and restore typed text
                 messages.removeAll { $0.id == tempId }
                 messageText = text
-                chatError = "Message failed to send. Try again."
+                // Surface the real reason (e.g. a server "ConvoLocked"/"InvalidConvo") so
+                // failures are diagnosable instead of a generic "try again".
+                chatError = "Couldn't send: \(error.localizedDescription)"
                 Haptics.error()
             }
             isSending = false
