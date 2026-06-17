@@ -218,6 +218,7 @@ install — all third-party code is absent (pure Apple frameworks only).
 
 ### iOS Conventions
 
+- **Binding design contract**: `docs/iOS-DESIGN.md` governs all iOS UI/IA — navigation, the four required feature states (loading/empty/error/offline), brand-vs-semantic color, Dynamic Type, haptics taxonomy, accessibility, and image loading. Quote a rule before adding any new view/sheet/picker/nav level; if no rule fits, add the rule there first. **Build gotcha**: the Xcode project uses file-system-synchronized groups that intermittently fail to pick up brand-new `.swift` files — inline new types into an already-compiled file (`AppStore.swift`, `DesignSystem.swift`) instead of creating new files; new `.xcassets` entries are picked up by `actool` regardless.
 - All AT Protocol API calls go through `ATProtocolClient.shared` — never call `URLSession` directly from views
 - Auth state is owned exclusively by `AuthManager` — views read via `@Environment(AuthManager.self)`
 - Global navigation state lives in `AppStore.navigationPath: NavigationPath` — push `PostDestination`, `ProfileDestination`, or `HashtagDestination`

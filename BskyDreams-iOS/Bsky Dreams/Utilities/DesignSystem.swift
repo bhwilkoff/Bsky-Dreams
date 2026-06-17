@@ -592,6 +592,13 @@ enum NBImageLoader {
     /// Synchronous cache peek for the exact URL — lets the view render instantly on a hit.
     static func cached(_ url: URL) -> UIImage? { nbImageCache.object(forKey: url as NSURL) }
 
+    /// Empties the in-memory decoded-image cache and the shared URL response cache.
+    /// Exposed to Settings → "Clear Image Cache".
+    static func clearCache() {
+        nbImageCache.removeAllObjects()
+        URLCache.shared.removeAllCachedResponses()
+    }
+
     /// Fetch + decode + downsample off the main actor. Returns a display-ready image.
     /// `maxPixel` caps the longest side (in points) so small cells don't decode huge bitmaps.
     static func load(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {

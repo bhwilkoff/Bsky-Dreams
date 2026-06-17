@@ -615,3 +615,73 @@ Fix, in three parts:
 3. **ci_scripts at the repo root.** Xcode Cloud only runs `ci_scripts` located beside the project/workspace the workflow targets. Since the workflow targets the root workspace, `ci_scripts/` lives at the repo root (not beside the `.xcodeproj`). `ci_pre_xcodebuild.sh` stamps `CI_BUILD_NUMBER` into `CURRENT_PROJECT_VERSION` in `AppVersion.xcconfig` (resolved via `CI_PRIMARY_REPOSITORY_PATH`), leaving `MARKETING_VERSION` for manual release bumps. No-ops outside Xcode Cloud.
 
 Also removed 252 MB of committed Xcode derived data (`build/`, 612 files) and gitignored it — Xcode Cloud re-clones the full repo per build, so compiled artifacts in the source tree are dead weight. The workflow must be created from the open root workspace (not the `.xcodeproj`), or Xcode rebinds it to the nested project and the root error returns.
+
+---
+
+## [iOS] Dynamic Type via `relativeTo:` on Custom Fonts
+*2026-06-17*
+
+The `.syne()` and `.inter()` font helpers build their fonts with `.custom(_, size:, relativeTo: .body)` instead of a fixed `.custom(_, size:)`. Without `relativeTo:`, a custom (non-system) font renders at a literal point size and ignores the user's Dynamic Type setting entirely — the app reads at one size regardless of the accessibility text-size slider, which fails Apple's accessibility expectations and makes the app unusable for low-vision users. Tying each custom font to a `TextStyle` lets the type-size system scale it proportionally. Post body text still uses `.system(size:)` (see the emoji-fallback decision), which already scales. Trade-off: very large accessibility sizes can force layout reflow in dense rows — acceptable, and far better than ignoring the setting.
+
+---
+
+## [iOS] Universal Feature-State Primitives + the Four-States Rule
+*2026-06-17*
+
+Every content surface (list, grid, search, sheet) must explicitly handle four states beyond the happy path: **loading**, **empty**, **error**, and **offline**. Shared primitives enforce this: `NBEmptyState` (structural "nothing here" message), `NBErrorBanner` (coral, with retry/dismiss — for transient failures that just occurred), `NBOfflineBanner` (lime — network unreachable), and `NBSkeleton` / `NBSkeletonPostRow` (shimmer placeholder during first load, reduce-motion aware). Previously each view either showed a spinner forever, a blank screen, or silently swallowed errors in a bare `catch {}` — the user could not tell "loading" from "broken" from "genuinely empty." Standardizing the primitives makes every feature legible in failure and keeps the neubrutalist styling consistent. The four states are a checklist, not a suggestion: a surface that doesn't define all four is incomplete.
+
+---
+
+## [iOS] Haptics Taxonomy — Semantic, Not Ad-Hoc
+*2026-06-17*
+
+The `Haptics` enum defines a fixed semantic vocabulary: `selection` (paging, toggles, tab/segment changes), `light`/`medium`/`heavy` (discrete user actions by weight), and `success`/`warning`/`error` (operation outcomes). Calls pick the meaning, not a specific generator. Ad-hoc `UIImpactFeedbackGenerator(style:)` calls scattered through views drift into inconsistency — the same conceptual event (e.g. a failed post) fires different feedback in different places, and feedback gets sprinkled where it adds noise. A central taxonomy makes haptics mean something: `error` always accompanies a surfaced `NBErrorBanner`, `selection` always accompanies a page/toggle change. Trade-off: a small indirection layer over UIKit's generators — worth it for a coherent feel.
+
+---
+
+## [iOS] CachedImage — URL-Bound Cached Async Image with Off-Main Downsample
+*2026-06-17*
+
+`CachedImage` (backed by `NBImageLoader`) replaces `AsyncImage` in high-churn media surfaces (feed/gallery image grids). It mirrors `AsyncImage`'s phase API but adds: a shared `NSCache` (600 items / 60 MB), off-main ImageIO downsampling to the display size (not full-resolution decode), and — critically — a re-check of the bound URL *after* the async load completes, discarding the result if the cell has been recycled to a different post. Plain `AsyncImage` in a `LazyVStack`/`LazyVGrid` shows the wrong image in a recycled cell (the in-flight load lands after the cell was reassigned) and decodes images at full resolution on the main thread, causing scroll hitches and memory spikes. The URL re-check kills the wrong-image bug; off-main downsample kills the hitch. `clearCache()` is exposed for the Settings "Clear Image Cache" action. This complements `URLCache` (transport layer) rather than replacing it. Existing grid cells still constrain both width and height before `.clipped()`.
+
+---
+
+## [iOS] NetworkMonitor — Reachability-Driven Graceful Degrade
+*2026-06-17*
+
+`NetworkMonitor` (`@Observable`, wrapping `NWPathMonitor`) is injected via `@Environment` and exposes connectivity state. Views observe it to show `NBOfflineBanner` and to keep cached content visible instead of replacing it with a confusing error. Without an explicit reachability signal, an offline launch produced a generic request failure indistinguishable from a server error — the user saw "something went wrong" rather than "you're offline," and a retry button that could not possibly succeed. The monitor lets the app degrade honestly: tell the user it's offline, keep showing what's cached, and re-enable actions when the path returns. Single shared instance; one `NWPathMonitor` on a background queue.
+
+---
+
+## [iOS] SwiftData Container — Graceful On-Disk → In-Memory Fallback
+*2026-06-17*
+
+The `ModelContainer` is created inside a `do/catch`: on failure to open the on-disk store, the app falls back to an in-memory container rather than trapping. A corrupt or migration-incompatible store (e.g. a botched lightweight migration, or a store written by a future schema) previously crashed the app on launch with no recovery path — the user was permanently locked out and could only fix it by deleting and reinstalling. The fallback guarantees the app always launches: cross-session persistence is lost for that session (seen-posts, saved channels), but the app is usable and the next clean launch can rebuild the store. Launch-blocking persistence is never worth a hard crash.
+
+---
+
+## [iOS] Synchronized-Group New-File Gotcha — Inline New Types into Existing Files
+*2026-06-17*
+
+The Xcode project uses file-system-synchronized groups (`PBXFileSystemSynchronizedRootGroup`). Brand-new standalone `.swift` files dropped into a synchronized group are **intermittently not picked up by the build** — confirmed via `xcodebuild` CLI even after a clean build and a DerivedData wipe; the type "cannot be found in scope" despite the file existing on disk. Mitigation: new Swift types added in this update (`NetworkMonitor`, `NBImageLoader` / `CachedImage`, and other primitives) were **inlined into already-compiled files** (`AppStore.swift`, `DesignSystem.swift`) rather than created as new standalone files. New **asset-catalog** entries (colorsets, imagesets) inside the existing `.xcassets` are picked up by `actool` regardless of the synchronized-group issue — which is why the branded launch assets work as new files. Rule for future work: prefer extending an existing compiled file over adding a new `.swift` file; if a new file is unavoidable, verify it compiles into the target before building on top of it.
+
+---
+
+## [iOS] Branded Launch Screen — `UILaunchScreen` Dict, Blue (Never Coral)
+*2026-06-17*
+
+The launch screen is defined via an Info.plist `UILaunchScreen` dictionary (not a storyboard): asset-catalog `LaunchBackground` colorset (brand blue `#0047FF`) plus a `LaunchCloud` imageset (white cloud with a thin black outline, generated from the same `cloud.fill` SF Symbol source as the app icons). The previous setup referenced a `UILaunchStoryboardName` storyboard that no longer existed, yielding a blank/default launch. The `UILaunchScreen` dict avoids the storyboard entirely and renders the brand instantly. The launch background is **blue**, matching the iOS default accent — never coral. (See the per-platform default-accent decision: iOS default is `#0047FF`, web default is `#FF5C35`.) Launch assets are new asset-catalog entries, which `actool` compiles reliably despite the synchronized-group new-file gotcha above.
+
+---
+
+## [iOS] Dark-Mode Accent Legibility — `Color.nbAccentLegible`
+*2026-06-17*
+
+`Color.nbAccentLegible` returns a lightened variant of the user's accent color in dark mode, used for foreground elements (links, mentions, icon tints) — while the raw accent is retained for fills (buttons, active backgrounds). The default blue accent `#0047FF` is too dark to read as text/icon color against a dark background; using the same accent for both fills and foregrounds made links and tinted glyphs nearly invisible in dark mode. Splitting fill-accent from foreground-accent keeps both legible across appearances without changing the brand. Same lesson carried from the sibling Archive-Watch app, where `#0047FF`-on-dark was the original offender.
+
+---
+
+## [iOS] First-Run Hints — `HintsManager` + `HintBanner`
+*2026-06-17*
+
+Contextual first-run tips are delivered by `HintsManager` (`@Observable`) + `HintBanner` (cyan/blue, visually distinct from the coral error banner and lime offline banner). Each hint is dismissible permanently per-device; dismissals are kept in a stored `Set` reassigned on mutation so `@Observable` fires and dependent views update. A `HintBanner` is a transient, dismissable, one-time teaching tip — categorically different from `NBEmptyState` (structural), `NBErrorBanner` (attention/failure), and a multi-step walkthrough (not used here). The distinction matters: conflating "here's a tip" with "something is wrong" trains users to ignore both. Hints are governed by a master "Show Tips" toggle and a "Reset All Tips" action in Settings, so a user who dismissed everything can bring them back.
