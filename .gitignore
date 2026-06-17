@@ -15,6 +15,10 @@ DerivedData/
 *.ipa
 *.xcarchive
 
+# Local Xcode build output (was committed by accident; Xcode Cloud builds from
+# source, so compiled artifacts must never live in the repo).
+build/
+
 # ─── Swift Package Manager ────────────────────────────────────────────────────
 .build/
 .swiftpm/
