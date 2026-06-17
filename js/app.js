@@ -161,13 +161,19 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
+  // Discovery sources (Conversations + Trending). Following uses getTimeline only.
   const DISCOVER_FEED_URI  = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
-  const HOT_CLASSIC_URI    = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic';
   const WITH_FRIENDS_URI   = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends';
-  // Following sources
-  const BEST_OF_FOLLOWS_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows';
-  const FOR_YOU_URI         = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
-  let feedMode           = 'discover';  // 'following' | 'discover'
+
+  // Three flat top-level feeds: 'following' | 'conversations' | 'trending'.
+  // Following = your follows, chronological (getTimeline only). Conversations (default) +
+  // Trending are both personalized + moderated discovery — they differ only in ranking.
+  // ("In Network" / 'network' was removed as redundant: network-awareness is always on in
+  // discovery ranking, and a chronological Following already covers your graph.) Persisted
+  // to localStorage; old 'discover'/'network' values migrate to 'conversations'.
+  let feedMode           = localStorage.getItem('nb_feed_mode') || 'conversations';
+  if (feedMode === 'discover' || feedMode === 'network') feedMode = 'conversations';
+  if (!['following', 'conversations', 'trending'].includes(feedMode)) feedMode = 'conversations';
 
   // ---- Rebuilt Discover: personalized + conversation-weighted (ports iOS DiscoverEngine) ----
   // The user's own Bluesky moderation settings, fetched once per session so Discover
@@ -177,17 +183,11 @@
   let interestTags       = new Set();
   // True once preferences + interest model are loaded (idempotent build guard).
   let discoverContextReady = false;
-  // How Discover ranks: 'conversations' (default) | 'network' | 'trending'. Persisted.
-  let discoverRankMode   = localStorage.getItem('nb_discover_rank') || 'conversations';
-  if (!['conversations', 'network', 'trending'].includes(discoverRankMode)) discoverRankMode = 'conversations';
   // why-chip reasons keyed by post URI, computed at merge time.
   let discoverWhy        = {};
 
-  let feedCursor         = null; // pagination cursor for home feed
-  let feedCursorClassic  = null;
-  let feedCursorFriends  = null;
-  let feedCursorBestOf   = null;
-  let feedCursorForYou   = null;
+  let feedCursor         = null; // pagination cursor for home feed (timeline / whats-hot)
+  let feedCursorFriends  = null; // pagination cursor for with-friends (discovery secondary)
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
   let profileCursor      = null; // pagination cursor for profile feed
@@ -653,7 +653,17 @@
       settingsForgetBtn.disabled     = true;
     }
 
-    const storedTab = localStorage.getItem('bsky_default_tab') || 'discover';
+    // Rebuild the default-tab options to match the three flat feed modes (the static HTML
+    // only ships Discover/Following). Migrate any legacy stored value to 'conversations'.
+    if (settingsDefaultTab.dataset.triple !== '1') {
+      settingsDefaultTab.innerHTML =
+        '<option value="following">Following</option>' +
+        '<option value="conversations">Conversations</option>' +
+        '<option value="trending">Trending</option>';
+      settingsDefaultTab.dataset.triple = '1';
+    }
+    let storedTab = localStorage.getItem('bsky_default_tab') || 'conversations';
+    if (storedTab === 'discover' || storedTab === 'network') storedTab = 'conversations';
     settingsDefaultTab.value = storedTab;
 
     pruneFeedSeen();
@@ -2761,10 +2771,15 @@
     loadSeenFromCloud();      // M20+: merge cloud seen-posts (7-day window) with localStorage
     loadFeedFilters();        // M39: restore persisted filter settings (localStorage fallback)
 
-    // M52: apply saved default feed tab preference
-    const savedTab = localStorage.getItem('bsky_default_tab');
-    if (savedTab === 'following' || savedTab === 'discover') setFeedMode(savedTab);
-    else updateDiscoverRankToggle(); // ensure the rank toggle exists for default Discover
+    // M52: apply saved default feed tab preference. Migrate legacy 'discover' → 'conversations'.
+    let savedTab = localStorage.getItem('bsky_default_tab');
+    if (savedTab === 'discover' || savedTab === 'network') savedTab = 'conversations';
+    if (savedTab === 'following' || savedTab === 'conversations' || savedTab === 'trending') {
+      setFeedMode(savedTab);
+    } else {
+      // No saved default — reflect the persisted/migrated feedMode in the tab UI.
+      renderFeedTabs();
+    }
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -3070,7 +3085,7 @@
       loadFeed();
     } else {
       // Feed already loaded — restore the scroll observer that showView disconnected.
-      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedHasMore();
       if (hasMore) setupFeedScrollObserver();
     }
   });
@@ -3128,7 +3143,7 @@
       } else if (view === 'feed' && feedLoaded) {
         // Feed already has content — the scroll observer was disconnected on the way
         // out (showView tears it down) so reconnect it without reloading the feed.
-        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedHasMore();
         if (hasMore) setupFeedScrollObserver();
       }
       if (view === 'gallery') {
@@ -3555,26 +3570,71 @@
      HOME / FOLLOWING FEED
   ================================================================ */
 
+  // ---- Three flat top-level feed tabs: Following · Conversations · Trending ----
+  // Matches the iOS FeedMode (following / conversations / trending) — no rank toggle,
+  // no nesting. The selected tab is persisted; switching reloads the feed.
+  const _FEED_MODES = [
+    { key: 'following',     label: 'Following' },
+    { key: 'conversations', label: 'Conversations' },
+    { key: 'trending',      label: 'Trending' },
+  ];
+
   function setFeedMode(mode) {
     feedMode = mode;
-    const isFollowing = mode === 'following';
-    feedTabFollowing.classList.toggle('feed-tab-active', isFollowing);
-    feedTabDiscover.classList.toggle('feed-tab-active', !isFollowing);
-    feedTabFollowing.setAttribute('aria-selected', isFollowing ? 'true' : 'false');
-    feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
-    updateDiscoverRankToggle();
+    localStorage.setItem('nb_feed_mode', mode);
+    renderFeedTabs();
   }
 
-  // ---- Discover rank toggle (Conversations / In Network / Trending) ----
-  // 3-way control shown only in Discover mode; persisted to localStorage; re-renders
-  // the feed on change. Default Conversations. Injected into the feed-tabs row so it
-  // matches the existing feed-mode toggle styling.
-  const _DISCOVER_RANK_MODES = [
-    { key: 'conversations', label: 'Conversations', icon: '💬' },
-    { key: 'network',       label: 'In Network',    icon: '🫂' },
-    { key: 'trending',      label: 'Trending',      icon: '🔥' },
-  ];
-  let _discoverRankToggleEl = null;
+  /** True when more feed pages can be fetched. Following paginates getTimeline; the
+   *  discovery feeds (conversations/trending) paginate whats-hot + with-friends and may
+   *  loop back to a fresh page once exhausted. */
+  function feedHasMore() {
+    return !!(feedCursor || feedCursorFriends || (feedMode !== 'following' && feedDiscoverLooped));
+  }
+
+  /** Rebuild the three feed tabs in place. The index.html ships two static buttons
+   *  (#feed-tab-discover, #feed-tab-following) plus the Filters toggle; we repurpose the
+   *  first two and inject a third so all three sit in the same `.feed-tabs` row, keeping
+   *  the Filters button last. Editing happens in JS only (index.html is not touched). */
+  function renderFeedTabs() {
+    const tabs = document.querySelector('.feed-tabs');
+    if (!tabs) return;
+    tabs.classList.add('feed-tabs--triple');
+    // The two existing static buttons, re-used in document order.
+    const reusable = [feedTabDiscover, feedTabFollowing];
+    _FEED_MODES.forEach((m, idx) => {
+      let btn = tabs.querySelector(`.feed-tab[data-mode="${m.key}"]`);
+      if (!btn) {
+        // Reuse a static button if one is still free, otherwise create a fresh one.
+        btn = reusable.find((b) => b && !b.dataset.mode) || null;
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.className = 'feed-tab';
+          btn.setAttribute('role', 'tab');
+          btn.setAttribute('aria-controls', 'feed-results');
+          // Insert before the Filters toggle so it stays last in the row.
+          const filterBtn = tabs.querySelector('.feed-filter-toggle-btn');
+          if (filterBtn) tabs.insertBefore(btn, filterBtn);
+          else tabs.appendChild(btn);
+        }
+        btn.type = 'button';
+        btn.dataset.mode = m.key;
+        btn.textContent = m.label;
+        btn.addEventListener('click', () => {
+          // No guard: clicking the active tab refreshes the feed.
+          setFeedMode(m.key);
+          loadFeed();
+        });
+      }
+      // Ensure correct order: each tab should precede the next mode / the filter button.
+      const next = tabs.querySelector(`.feed-tab[data-mode="${_FEED_MODES[idx + 1]?.key}"]`)
+                || tabs.querySelector('.feed-filter-toggle-btn');
+      if (next && btn.nextSibling !== next) tabs.insertBefore(btn, next);
+      const selected = feedMode === m.key;
+      btn.classList.toggle('feed-tab-active', selected);
+      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+  }
 
   function buildDiscoverWhyChip(text) {
     const chip = document.createElement('div');
@@ -3596,41 +3656,6 @@
     chip.appendChild(textSpan);
     chip.setAttribute('aria-label', `Why you're seeing this: ${text}`);
     return chip;
-  }
-
-  function updateDiscoverRankToggle() {
-    const tabs = document.querySelector('.feed-tabs');
-    if (!tabs) return;
-    if (!_discoverRankToggleEl) {
-      const el = document.createElement('div');
-      el.className = 'discover-rank-toggle';
-      el.setAttribute('role', 'group');
-      el.setAttribute('aria-label', 'Rank Discover by');
-      _DISCOVER_RANK_MODES.forEach((m) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'discover-rank-btn';
-        btn.dataset.rank = m.key;
-        btn.setAttribute('aria-label', `Rank by ${m.label}`);
-        btn.innerHTML = `<span class="discover-rank-icon" aria-hidden="true">${m.icon}</span><span class="discover-rank-label">${m.label}</span>`;
-        btn.addEventListener('click', () => {
-          if (discoverRankMode === m.key) return;
-          discoverRankMode = m.key;
-          localStorage.setItem('nb_discover_rank', m.key);
-          updateDiscoverRankToggle();
-          loadFeed(); // fresh load re-ranks with the new mode
-        });
-        el.appendChild(btn);
-      });
-      tabs.appendChild(el);
-      _discoverRankToggleEl = el;
-    }
-    _discoverRankToggleEl.hidden = (feedMode !== 'discover');
-    _discoverRankToggleEl.querySelectorAll('.discover-rank-btn').forEach((btn) => {
-      const sel = btn.dataset.rank === discoverRankMode;
-      btn.classList.toggle('discover-rank-active', sel);
-      btn.setAttribute('aria-pressed', sel ? 'true' : 'false');
-    });
   }
 
   /** True if a post carries any adult/NSFW content label. */
@@ -3702,25 +3727,19 @@
     return false;
   }
 
-  /** Conversation-weighted, personalized score. Higher = ranked higher. */
-  function _discoverScore(item, mode, tags) {
+  /**
+   * Personalized score for a discovery post. `conversational === true` = the Conversations
+   * feed (rewards discussion); otherwise the Trending feed (rewards popularity). Both apply
+   * the same network + topic personalization — they differ only in the base signal.
+   * (Ports iOS DiscoverEngine.score; the old 'network'/network^2 mode was removed.)
+   */
+  function _discoverScore(item, conversational, tags) {
     const post = item.post;
     const likes = post.likeCount || 0;
     const replies = post.replyCount || 0;
 
     const hours = Math.max(0, (Date.now() - new Date(post.indexedAt || 0).getTime()) / 3600000);
     const recency = Math.pow(hours + 2, 1.6);
-
-    // Conversation: replies dominate; reply-to-like ratio rewards genuine discussion
-    // over applause. Raw likes are intentionally de-emphasized.
-    const replyRatio = replies / Math.max(1, likes);
-    let conversation = (replies * 3 + likes * 0.4) * (1 + Math.min(replyRatio, 2));
-
-    const isReply = !!post.record?.reply;
-    const isRepost = !!item.reason;
-    if ((post.record?.text || '').includes('?') && !isReply) conversation *= 1.25;  // questions
-    if (isRepost) conversation *= 0.5;                                               // penalize re-sharing
-    else if (!isReply) conversation *= 1.15;                                         // reward originals
 
     // Network boost — your graph is the input, not a hidden model.
     let network = 1.0;
@@ -3738,12 +3757,21 @@
       for (const t of ht) { if (tags.has(t)) { topic += 0.8; break; } }
     }
 
-    switch (mode) {
-      case 'network':  return (conversation / recency) * Math.pow(network, 2) * topic;
-      case 'trending': return ((likes + replies - 1) / recency) * topic;
-      case 'conversations':
-      default:         return (conversation / recency) * network * topic;
+    if (!conversational) {
+      // Trending: popularity over time, still personalized.
+      return ((likes + replies - 1) / recency) * network * topic;
     }
+
+    // Conversations: replies dominate; reply-to-like ratio rewards genuine discussion
+    // over applause. Raw likes are intentionally de-emphasized.
+    const replyRatio = replies / Math.max(1, likes);
+    let conversation = (replies * 3 + likes * 0.4) * (1 + Math.min(replyRatio, 2));
+    const isReply = !!post.record?.reply;
+    const isRepost = !!item.reason;
+    if ((post.record?.text || '').includes('?') && !isReply) conversation *= 1.25;  // questions
+    if (isRepost) conversation *= 0.5;                                               // penalize re-sharing
+    else if (!isReply) conversation *= 1.15;                                         // reward originals
+    return (conversation / recency) * network * topic;
   }
 
   /** A short, honest reason this post is in Discover — shown as a chip. null = no chip. */
@@ -3837,10 +3865,7 @@
 
     if (!append) {
       feedCursor         = null;
-      feedCursorClassic  = null;
       feedCursorFriends  = null;
-      feedCursorBestOf   = null;
-      feedCursorForYou   = null;
       feedLoaded         = false;
       feedSeenBypass     = false;    // M40: reset bypass on fresh feed load
       feedDiscoverLooped = false;    // reset loop-back flag on fresh load / tab switch
@@ -3853,13 +3878,32 @@
     showLoading();
     try {
       let items;
-      if (feedMode === 'discover') {
-        // Rebuilt Discover: personalized + conversation-weighted, honoring the user's own
-        // moderation. Sources are whats-hot (trending) + with-friends (social graph).
-        // hot-classic (pure network-wide engagement) was REMOVED: it's identical for every
-        // account and was the main source of the generic, NSFW-heavy firehose. Ranking +
-        // filtering happen client-side via the DiscoverEngine helpers above.
-        if (!discoverContextReady) await buildDiscoverContext();
+
+      // The user's own moderation (muted words, label/adult prefs, labelers) + interest
+      // model is built once per session and applied to ALL feeds — including Following.
+      if (!discoverContextReady) await buildDiscoverContext();
+      const prefs = moderationPrefs;
+      const tags  = interestTags;
+
+      if (feedMode === 'following') {
+        // Following = your follows, chronological. Pure getTimeline (reverse-chron of the
+        // people you follow) — a clean "catch up on your people" feed, distinct from the
+        // ranked discovery feeds. Honors your moderation; does NOT re-rank.
+        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
+        const timeline = await API.getTimeline(40, apiCursor);
+        feedCursor = timeline.cursor || null;
+        const seen = new Set();
+        items = (timeline.feed || []).filter((i) => {
+          const u = i.post?.uri;
+          if (!u || seen.has(u) || !_isEnglishPost(i.post) || _discoverShouldHide(i, prefs)) return false;
+          seen.add(u);
+          return true;
+        });
+        // Keep the API's chronological order (do NOT re-rank).
+      } else {
+        // Personalized discovery (Conversations | Trending). Sources are whats-hot (trending)
+        // + with-friends (social graph). Conversations rewards discussion; Trending rewards
+        // popularity. Both apply the same network + topic personalization + moderation.
         const apiCursor = (append && feedCursor) ? feedCursor : undefined;
         const [primary, friends] = await Promise.all([
           API.getFeed(DISCOVER_FEED_URI, 40, apiCursor),
@@ -3867,9 +3911,7 @@
         ]);
         feedCursor        = primary.cursor || null;
         feedCursorFriends = friends?.cursor || null;
-        const prefs = moderationPrefs;
-        const tags  = interestTags;
-        const mode  = discoverRankMode;
+        const conversational = feedMode === 'conversations';
         const all = [...(primary.feed || []), ...(friends?.feed || [])];
         const seen = new Set();
         items = all.filter((i) => {
@@ -3878,24 +3920,9 @@
                   seen.add(u);
                   return true;
                 })
-                .sort((a, b) => _discoverScore(b, mode, tags) - _discoverScore(a, mode, tags));
+                .sort((a, b) => _discoverScore(b, conversational, tags) - _discoverScore(a, conversational, tags));
         // Compute the "why" chip reasons for the merged set.
         items.forEach((i) => { discoverWhy[i.post.uri] = _discoverWhy(i, tags); });
-      } else {
-        // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
-        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
-        const [timeline, bestOf, forYou] = await Promise.all([
-          API.getTimeline(30, apiCursor),
-          API.getFeed(BEST_OF_FOLLOWS_URI, 20, append ? feedCursorBestOf || undefined : undefined).catch(() => null),
-          API.getFeed(FOR_YOU_URI, 20, append ? feedCursorForYou || undefined : undefined).catch(() => null),
-        ]);
-        feedCursor       = timeline.cursor || null;
-        feedCursorBestOf = bestOf?.cursor || null;
-        feedCursorForYou = forYou?.cursor || null;
-        const all = [...(timeline.feed || []), ...(bestOf?.feed || []), ...(forYou?.feed || [])];
-        const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
-                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
       }
       feedLoaded   = true;
 
@@ -3914,9 +3941,9 @@
       });
 
       if (!displayItems.length && !append) {
-        const msg = feedMode === 'discover'
-          ? 'Nothing to discover right now. Try again in a moment.'
-          : 'No posts yet. Follow some people to see their posts here.';
+        const msg = feedMode === 'following'
+          ? 'No posts yet. Follow some people to see their posts here.'
+          : 'Nothing to discover right now. Try again in a moment.';
         feedResults.innerHTML = `<div class="feed-empty"><p>${msg}</p></div>`;
       } else {
         renderFeedItems(displayItems, feedResults, append);
@@ -3931,7 +3958,7 @@
       // hit the feedLoading guard and never re-fire (no intersection change → stuck scroll).
       if (feedCursor && feedDiscoverLooped) {
         feedDiscoverLooped = false; // got a fresh cursor — back to normal pagination
-      } else if (!feedCursor && append && feedMode === 'discover' && !feedDiscoverLooped && items.length > 0) {
+      } else if (!feedCursor && append && feedMode !== 'following' && !feedDiscoverLooped && items.length > 0) {
         feedDiscoverLooped = true;  // cursor exhausted — queue one loop-back to fresh page 1
         feedCursor = null;          // ensure apiCursor resolves to undefined on next call
       }
@@ -3945,7 +3972,7 @@
       // Set up or tear down the scroll observer AFTER feedLoading is cleared.
       // Doing it here also ensures the observer is restarted after API errors
       // (previously a failed append would leave the observer dead, requiring a PTR).
-      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedHasMore();
       if (hasMore) {
         setupFeedScrollObserver();
       } else if (feedScrollObserver) {
@@ -4044,12 +4071,9 @@
     });
   })();
 
-  feedTabFollowing.addEventListener('click', () => {
-    setFeedMode('following'); loadFeed(); // no guard: clicking active tab refreshes feed
-  });
-  feedTabDiscover.addEventListener('click', () => {
-    setFeedMode('discover'); loadFeed(); // no guard: clicking active tab refreshes feed
-  });
+  // Build the three feed tabs (Following · Conversations · Trending). Click handlers are
+  // wired per-tab inside renderFeedTabs() — no static listeners here.
+  renderFeedTabs();
 
   /* ---- M47: Pull-to-refresh on Search + Profile views ---- */
   (() => {
@@ -4144,7 +4168,7 @@
       (entries) => {
         // Fire when sentinel is visible AND there are more pages.
         // Also fire when Discovery has looped back (feedDiscoverLooped + null cursor = fresh fetch).
-        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedHasMore();
         if (entries[0]?.isIntersecting && hasMore) loadFeed(true);
       },
       { root: viewFeed, rootMargin: '0px 0px 400px 0px', threshold: 0 }
@@ -4170,8 +4194,9 @@
       wrapper.className = 'feed-item';
 
       // Discover "why" chip — an honest, transparent reason this post is shown,
-      // ABOVE the card. Only in Discover mode and only when a reason exists.
-      if (feedMode === 'discover') {
+      // ABOVE the card. Shown for the discovery feeds (Conversations + Trending), not
+      // Following, and only when a reason exists.
+      if (feedMode !== 'following') {
         const why = discoverWhy[post.uri];
         if (why) wrapper.appendChild(buildDiscoverWhyChip(why));
       }

@@ -18,7 +18,7 @@ final class AppStore {
     var unreadDMCount: Int = 0
 
     // Feed state
-    var feedMode: FeedMode = .discover
+    var feedMode: FeedMode = .conversations
     var feedItems: [FeedItem] = []
     var feedCursor: String?
     var feedIsLoading = false
@@ -90,14 +90,6 @@ final class AppStore {
     var interestTags: Set<String> = []
     /// True once preferences + interest model are loaded.
     var discoverContextReady = false
-    /// How Discover ranks: Conversations (default), In Network, or Trending.
-    var discoverRankMode: DiscoverRankMode =
-        DiscoverRankMode(rawValue: UserDefaults.standard.string(forKey: "nb_discover_rank") ?? "") ?? .conversations
-
-    func setDiscoverRankMode(_ mode: DiscoverRankMode) {
-        discoverRankMode = mode
-        UserDefaults.standard.set(mode.rawValue, forKey: "nb_discover_rank")
-    }
 
     /// Fetch the user's moderation preferences + build the interest model. Idempotent;
     /// safe to call on session start. Failures degrade gracefully (Discover still works,
@@ -289,9 +281,24 @@ final class AppStore {
         }
     }
 
+    /// The three top-level feeds. Following is your follows, chronological. Conversations
+    /// (default) and Trending are both personalized + moderated discovery — they differ
+    /// only in ranking. ("In Network" was removed as redundant: network-awareness is
+    /// always on in discovery ranking; a chronological Following already covers your graph.)
     enum FeedMode: String, CaseIterable {
-        case discover = "Discover"
         case following = "Following"
+        case conversations = "Conversations"
+        case trending = "Trending"
+
+        /// Conversations + Trending are discovery feeds (personalized, ranked, with why-chips).
+        var isDiscovery: Bool { self != .following }
+        var icon: String {
+            switch self {
+            case .following: "person.2"
+            case .conversations: "bubble.left.and.bubble.right"
+            case .trending: "flame"
+            }
+        }
     }
 
     enum SearchMode: String, CaseIterable {
@@ -440,20 +447,6 @@ struct ModerationPrefs {
     ]
 }
 
-/// How Discover ranks. The user can switch this; default is Conversations.
-enum DiscoverRankMode: String, CaseIterable {
-    case conversations = "Conversations"
-    case network = "In Network"
-    case trending = "Trending"
-    var icon: String {
-        switch self {
-        case .conversations: "bubble.left.and.bubble.right"
-        case .network: "person.2"
-        case .trending: "flame"
-        }
-    }
-}
-
 enum DiscoverEngine {
     private static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -507,8 +500,10 @@ enum DiscoverEngine {
         return false
     }
 
-    /// Conversation-weighted, personalized score. Higher = ranked higher.
-    static func score(_ item: FeedItem, mode: DiscoverRankMode, interestTags: Set<String>) -> Double {
+    /// Personalized score for a discovery post. `conversational` = the Conversations feed
+    /// (rewards discussion); otherwise the Trending feed (rewards popularity). Both apply
+    /// the same network + topic personalization — they differ only in the base signal.
+    static func score(_ item: FeedItem, conversational: Bool, interestTags: Set<String>) -> Double {
         let post = item.post
         let likes = Double(post.likeCount ?? 0)
         let replies = Double(post.replyCount ?? 0)
@@ -516,33 +511,32 @@ enum DiscoverEngine {
         let hours = max(0, Date().timeIntervalSince(date(post.indexedAt)) / 3600)
         let recency = pow(hours + 2, 1.6)
 
-        // Conversation: replies dominate; reply-to-like ratio rewards genuine discussion
-        // over applause. Raw likes are intentionally de-emphasized.
-        let replyRatio = replies / max(1, likes)
-        var conversation = (replies * 3 + likes * 0.4) * (1 + min(replyRatio, 2))
-
-        let isReply = post.record.reply != nil
-        let isRepost = item.reason != nil
-        if post.record.text.contains("?") && !isReply { conversation *= 1.25 }   // questions
-        if isRepost { conversation *= 0.5 }                                       // penalize re-sharing
-        else if !isReply { conversation *= 1.15 }                                 // reward originals
-
         // Network boost — your graph is the input, not a hidden model.
         var network = 1.0
         if post.author.viewer?.isFollowing == true { network += 1.2 }
         else if let kf = post.author.viewer?.knownFollowers?.count, kf > 0 {
             network += min(Double(kf) * 0.15, 0.9)
         }
-
         // Topic boost — overlap with the user's own hashtags.
         var topic = 1.0
         if !interestTags.isEmpty, !hashtags(in: post).isDisjoint(with: interestTags) { topic += 0.8 }
 
-        switch mode {
-        case .conversations: return (conversation / recency) * network * topic
-        case .network:       return (conversation / recency) * pow(network, 2.0) * topic
-        case .trending:      return ((likes + replies - 1) / recency) * topic
+        if !conversational {
+            // Trending: popularity over time, still personalized.
+            return ((likes + replies - 1) / recency) * network * topic
         }
+
+        // Conversations: replies dominate; reply-to-like ratio rewards genuine discussion
+        // over applause. Questions boosted, originals favored, reposts penalized, raw
+        // likes de-emphasized.
+        let replyRatio = replies / max(1, likes)
+        var conversation = (replies * 3 + likes * 0.4) * (1 + min(replyRatio, 2))
+        let isReply = post.record.reply != nil
+        let isRepost = item.reason != nil
+        if post.record.text.contains("?") && !isReply { conversation *= 1.25 }
+        if isRepost { conversation *= 0.5 }
+        else if !isReply { conversation *= 1.15 }
+        return (conversation / recency) * network * topic
     }
 
     /// A short, honest reason this post is in Discover — shown as a chip. nil = no chip.

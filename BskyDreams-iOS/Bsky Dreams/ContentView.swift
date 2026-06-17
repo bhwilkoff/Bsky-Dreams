@@ -721,16 +721,22 @@ struct SettingsView: View {
                 .foregroundStyle(Color.nbBlack)
             HStack(spacing: 0) {
                 ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
-                    let isSelected = (prefs?.defaultFeedTab ?? "discover") == mode.rawValue.lowercased()
+                    // Legacy default "discover" maps to the new Conversations feed.
+                    let stored = (prefs?.defaultFeedTab ?? "conversations")
+                    let normalized = stored == "discover" ? "conversations" : stored
+                    let isSelected = normalized == mode.rawValue.lowercased()
                     Button {
                         updateDefaultFeed(mode.rawValue.lowercased())
                         store.feedMode = mode
                     } label: {
                         Text(mode.rawValue.uppercased())
-                            .font(.syne(12, weight: .bold))
+                            .font(.syne(11, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .foregroundStyle(isSelected ? Color.white : Color.nbBlack)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
+                            .padding(.horizontal, 4)
                             .background(isSelected ? Color.nbAccent : Color.nbWhite)
                     }
                 }

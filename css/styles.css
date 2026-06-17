@@ -583,7 +583,7 @@ button {
 }
 
 /* ================================================================
-   FEED TABS (Following / Discover)
+   FEED TABS (Following / Conversations / Trending)
 ================================================================ */
 .feed-tabs {
   display: flex;
@@ -594,40 +594,30 @@ button {
   padding-bottom: var(--space-xs);
 }
 
-/* ---- Discover rank toggle (Conversations / In Network / Trending) ---- */
-.discover-rank-toggle {
-  display: flex;
-  flex-basis: 100%;       /* drop to its own row below the feed tabs */
-  gap: 8px;
-  margin-top: var(--space-xs);
+/* Three flat top-level tabs: let them flex to share the row, with the Filters
+   toggle keeping its intrinsic size. Tighter padding + scaled font so all three
+   uppercase Syne labels fit alongside Filters at 375px. */
+.feed-tabs--triple .feed-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.discover-rank-toggle[hidden] { display: none; }
+.feed-tabs--triple .feed-filter-toggle-btn { flex: 0 0 auto; }
 
-.discover-rank-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 10px;
-  background: var(--color-surface);
-  border: 1.5px solid var(--nb-black);
-  border-radius: 0;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s, background 0.12s, color 0.12s;
+@media (min-width: 768px) {
+  .feed-tabs--triple .feed-tab {
+    flex: 0 1 auto;
+    padding: 6px 18px;
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+  }
 }
-.discover-rank-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 2px 2px 0 var(--nb-black);
-}
-.discover-rank-active {
-  background: var(--color-accent);
-  border-width: 2px;
-  color: #fff;
-}
-.discover-rank-icon { font-size: 0.82rem; line-height: 1; }
 
 /* ---- Discover "why" chip — honest reason a post is shown ---- */
 .discover-why-chip {

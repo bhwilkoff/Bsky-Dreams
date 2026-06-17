@@ -11,17 +11,12 @@ struct FeedView: View {
     @Environment(NetworkMonitor.self) private var network
     @Environment(\.modelContext) private var modelContext
 
-    // Discover sources
+    // Discovery sources (Conversations + Trending). Following uses getTimeline only.
     private let discoverFeedURI  = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
-    private let hotClassicURI    = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic"
     private let withFriendsURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends"
-    // Following sources
-    private let bestOfFollowsURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows"
-    private let forYouURI        = "at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you"
 
     @State private var items: [FeedItem] = []
     @State private var cursor: String?
-    @State private var cursorHotClassic: String?
     @State private var cursorWithFriends: String?
     @State private var cursorBestOf: String?
     @State private var cursorForYou: String?
@@ -121,17 +116,10 @@ struct FeedView: View {
                     HintBanner(id: "feed.welcome", text: "Tap a post to open the conversation. Pull down to refresh.")
                         .padding(.top, 10)
 
-                    // NB Feed mode toggle
+                    // Feed selector: Following · Conversations · Trending
                     feedModeToggle
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-
-                    // Discover ranking control — lets the user steer how the feed is built.
-                    if store.feedMode == .discover {
-                        discoverRankToggle
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 8)
-                    }
 
                     if items.isEmpty && !isLoading && errorMessage == nil {
                         NBEmptyState(
@@ -144,7 +132,7 @@ struct FeedView: View {
                                     let descriptor = FetchDescriptor<SeenPost>()
                                     seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
                                     items = []
-                                    cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                                    cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                                     discoverLooped = false
                                     autoFetchCount = 0
                                     await loadFeed()
@@ -156,7 +144,7 @@ struct FeedView: View {
 
                     ForEach(items) { item in
                         VStack(alignment: .leading, spacing: 4) {
-                            if store.feedMode == .discover, let why = whyReasons[item.post.uri] {
+                            if store.feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
                                 DiscoverWhyChip(text: why)
                             }
                             PostCardView(
@@ -217,7 +205,7 @@ struct FeedView: View {
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
                 let previousURIs = Set(items.map { $0.post.uri })
                 items = []
-                cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                 discoverLooped = false
                 autoFetchCount = 0
                 await loadFeed()
@@ -236,25 +224,36 @@ struct FeedView: View {
     private var feedModeToggle: some View {
         HStack(spacing: 0) {
             ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
+                let selected = store.feedMode == mode
                 Button {
-                    if store.feedMode != mode {
+                    if !selected {
                         Haptics.selection()
                         store.feedMode = mode
                         items = []
-                        cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                        whyReasons.removeAll()
+                        cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                         discoverLooped = false
                         autoFetchCount = 0
                         Task { await loadFeed() }
                     }
                 } label: {
-                    Text(mode.rawValue.uppercased())
-                        .font(.syne(13, weight: .bold))
-                        .tracking(0.5)
-                        .foregroundStyle(store.feedMode == mode ? Color.white : Color.nbBlack)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(store.feedMode == mode ? Color.nbAccent : Color.nbWhite)
+                    HStack(spacing: 4) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(mode.rawValue.uppercased())
+                            .font(.syne(12, weight: .bold))
+                            .tracking(0.3)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(selected ? Color.white : Color.nbBlack)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 4)
+                    .background(selected ? Color.nbAccent : Color.nbWhite)
                 }
+                .accessibilityLabel(mode.rawValue)
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
             }
         }
         .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
@@ -262,39 +261,6 @@ struct FeedView: View {
             Color.nbBlack
                 .offset(x: 3, y: 3)
         )
-    }
-
-    /// Lets the user steer how Discover is ranked. Conversations (default) favors replies
-    /// and questions; In Network favors your graph; Trending favors raw popularity.
-    private var discoverRankToggle: some View {
-        HStack(spacing: 8) {
-            ForEach(DiscoverRankMode.allCases, id: \.self) { mode in
-                let selected = store.discoverRankMode == mode
-                Button {
-                    if !selected {
-                        Haptics.selection()
-                        store.setDiscoverRankMode(mode)
-                        Task { await loadFeed() }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 11, weight: .bold))
-                        Text(mode.rawValue)
-                            .font(.inter(12, weight: .semibold))
-                    }
-                    .foregroundStyle(selected ? Color.white : Color.nbTextSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(selected ? Color.nbAccent : Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: selected ? 2 : 1.5))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Rank by \(mode.rawValue)")
-                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-            }
-            Spacer(minLength: 0)
-        }
     }
 
     private var loadingState: some View {
@@ -367,40 +333,33 @@ struct FeedView: View {
             let mergedFeed: [FeedItem]
             let seenSnapshot: Set<String>? = store.feedSeenBypass ? nil : seenURISet
 
+            // The user's own moderation (muted words, label/adult prefs, labelers) is built
+            // once per session and applied to ALL feeds — including Following.
+            if !store.discoverContextReady, let did = auth.session?.did {
+                await store.buildDiscoverContext(did: did)
+            }
+            let prefs = store.moderationPrefs
+
             switch store.feedMode {
             case .following:
-                // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
+                // Following = your follows, chronological. Pure getTimeline (reverse-chron
+                // of the people you follow) — a clean "catch up on your people" feed,
+                // distinct from the ranked discovery feeds. Honors your moderation.
                 let fetchCursor = loadMore ? cursor : nil
-
-                async let timelineResult = ATProtocolClient.shared.getTimeline(limit: 30, cursor: fetchCursor)
-                async let bestOfResult = try? ATProtocolClient.shared.getFeed(uri: bestOfFollowsURI, limit: 20, cursor: loadMore ? cursorBestOf : nil)
-                async let forYouResult = try? ATProtocolClient.shared.getFeed(uri: forYouURI, limit: 20, cursor: loadMore ? cursorForYou : nil)
-
-                let timeline = try await timelineResult
-                let bestOf = await bestOfResult
-                let forYou = await forYouResult
-
+                let timeline = try await ATProtocolClient.shared.getTimeline(limit: 40, cursor: fetchCursor)
                 cursor = timeline.cursor
-                cursorBestOf = bestOf?.cursor
-                cursorForYou = forYou?.cursor
-
-                var all = timeline.feed
-                if let bestOf { all.append(contentsOf: bestOf.feed) }
-                if let forYou { all.append(contentsOf: forYou.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
-                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
-
-            case .discover:
-                // Rebuilt Discover: personalized + conversation-weighted, honoring the
-                // user's own moderation. Sources are whats-hot (trending) + with-friends
-                // (social graph). hot-classic (pure network-wide engagement) was REMOVED:
-                // it's identical for every account and was the main source of the generic,
-                // NSFW-heavy firehose. Ranking + filtering happen client-side via DiscoverEngine.
-                if !store.discoverContextReady, let did = auth.session?.did {
-                    await store.buildDiscoverContext(did: did)
+                mergedFeed = timeline.feed.filter {
+                    seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs)
                 }
+                // Keep the API's chronological order (do NOT re-rank).
+
+            case .conversations, .trending:
+                // Personalized discovery. Sources: whats-hot (trending) + with-friends
+                // (social graph). hot-classic was removed (identical for every account; the
+                // generic NSFW firehose). Conversations rewards discussion; Trending rewards
+                // popularity. Both apply the same network+topic personalization + moderation.
                 let fetchCursor: String?
                 if loadMore && discoverLooped { fetchCursor = nil }
                 else { fetchCursor = loadMore ? cursor : nil }
@@ -410,20 +369,18 @@ struct FeedView: View {
 
                 let p = try await primary
                 let f = await friends
-
                 cursor = p.cursor
                 cursorWithFriends = f?.cursor
 
                 var all = p.feed
                 if let f { all.append(contentsOf: f.feed) }
 
-                let prefs = store.moderationPrefs
                 let tags = store.interestTags
-                let mode = store.discoverRankMode
+                let conversational = store.feedMode == .conversations
                 var seen = Set<String>()
                 mergedFeed = all
                     .filter { seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs) }
-                    .sorted { DiscoverEngine.score($0, mode: mode, interestTags: tags) > DiscoverEngine.score($1, mode: mode, interestTags: tags) }
+                    .sorted { DiscoverEngine.score($0, conversational: conversational, interestTags: tags) > DiscoverEngine.score($1, conversational: conversational, interestTags: tags) }
             }
 
             if loadMore {
@@ -433,17 +390,17 @@ struct FeedView: View {
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
-                if store.feedMode == .discover {
+                if store.feedMode.isDiscovery {
                     for it in newItems { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
 
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
 
-                if store.feedMode == .discover && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
+                if store.feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
                     discoverLooped = true
                 }
-                let hasMore = cursor != nil || cursorHotClassic != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
+                let hasMore = cursor != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
                 if newItems.isEmpty && hasMore && autoFetchCount < 3 {
                     autoFetchCount += 1
                     await loadFeed(loadMore: true)
@@ -456,7 +413,7 @@ struct FeedView: View {
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
-                if store.feedMode == .discover {
+                if store.feedMode.isDiscovery {
                     whyReasons.removeAll()
                     for it in items { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
@@ -469,16 +426,6 @@ struct FeedView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    /// HN-style trending score: rewards posts that gain likes quickly.
-    private func trendingScore(_ post: PostView) -> Double {
-        let likes = Double(post.likeCount ?? 0)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let postDate = formatter.date(from: post.indexedAt) ?? Date()
-        let hours = max(0, Date().timeIntervalSince(postDate) / 3600)
-        return (likes - 1) / pow(hours + 2, 1.8)
     }
 }
 
