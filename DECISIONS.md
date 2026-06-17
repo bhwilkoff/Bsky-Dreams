@@ -598,3 +598,20 @@ ArticleReaderSheet share button presents `UIActivityViewController` via UIKit (w
 *2026-03-31*
 
 `<meta name="apple-itunes-app" content="app-id=6760909675">` in `<head>` renders Safari's native Smart App Banner. Auth screen footer and Settings modal link to the App Store listing. GitHub repository link removed from user-facing UI (repo remains public).
+
+---
+
+## [iOS] Xcode Cloud — Root Workspace + Workspace-Level Shared Scheme
+*2026-06-17*
+
+The Xcode project lives nested at `BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj` (the repo root is the web app). Xcode Cloud expects the project/workspace at the repository root and reverts a configured subdirectory path back to root, failing with `Bsky Dreams.xcodeproj does not exist at the root of the repository`.
+
+Fix, in three parts:
+
+1. **Root workspace.** `BskyDreams.xcworkspace` at the repo root references the nested project (`<FileRef location="group:BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj">`). The workflow targets this workspace, satisfying the "must be at root" check without moving the project or touching `project.pbxproj`. Rejected: relocating the whole project to the repo root — it would mix iOS source among the web-app files and is a large change to a live App Store project.
+
+2. **Workspace-level shared scheme.** Building the workspace, Xcode Cloud validates the scheme at the *workspace's* shared-data path, not the project's. With only a project-level shared scheme, onboarding fails with `The Scheme 'Bsky Dreams' may only exist locally. To use this workflow it must be pushed to your repository`. The fix is `BskyDreams.xcworkspace/xcshareddata/xcschemes/Bsky Dreams.xcscheme`, copied from the project scheme with `ReferencedContainer` / test-plan paths rewritten relative to the repo root (`container:BskyDreams-iOS/Bsky Dreams/...`). `xcodebuild -list` then shows two "Bsky Dreams" entries (project + workspace); harmless, same target — the GUI picker collapses them and prefers the workspace one.
+
+3. **ci_scripts at the repo root.** Xcode Cloud only runs `ci_scripts` located beside the project/workspace the workflow targets. Since the workflow targets the root workspace, `ci_scripts/` lives at the repo root (not beside the `.xcodeproj`). `ci_pre_xcodebuild.sh` stamps `CI_BUILD_NUMBER` into `CURRENT_PROJECT_VERSION` in `AppVersion.xcconfig` (resolved via `CI_PRIMARY_REPOSITORY_PATH`), leaving `MARKETING_VERSION` for manual release bumps. No-ops outside Xcode Cloud.
+
+Also removed 252 MB of committed Xcode derived data (`build/`, 612 files) and gitignored it — Xcode Cloud re-clones the full repo per build, so compiled artifacts in the source tree are dead weight. The workflow must be created from the open root workspace (not the `.xcodeproj`), or Xcode rebinds it to the nested project and the root error returns.
