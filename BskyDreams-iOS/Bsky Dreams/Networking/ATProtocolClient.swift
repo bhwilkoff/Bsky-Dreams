@@ -327,7 +327,28 @@ final class ATProtocolClient {
             throw APIError.serverError(httpResponse.statusCode, detail.isEmpty ? "Unknown error" : detail)
         }
 
-        return try decoder.decode(T.self, from: data)
+        // HTTP 200: the request SUCCEEDED. If we still can't decode the body, that's a
+        // client model mismatch, NOT a failed operation — throw a distinct error so the
+        // caller can decide (e.g. sendMessage keeps the optimistic bubble since the
+        // message was actually sent). Includes the missing key path for diagnosis.
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch let e as DecodingError {
+            throw APIError.responseUnreadable(Self.describeDecodingError(e))
+        }
+    }
+
+    private static func describeDecodingError(_ error: DecodingError) -> String {
+        func path(_ ctx: DecodingError.Context) -> String {
+            ctx.codingPath.map { $0.stringValue }.joined(separator: ".")
+        }
+        switch error {
+        case .keyNotFound(let key, let ctx):   return "missing key '\(key.stringValue)' at [\(path(ctx))]"
+        case .valueNotFound(let type, let ctx): return "null \(type) at [\(path(ctx))]"
+        case .typeMismatch(let type, let ctx):  return "type mismatch \(type) at [\(path(ctx))]"
+        case .dataCorrupted(let ctx):           return "corrupted at [\(path(ctx))]"
+        @unknown default:                       return "decode error"
+        }
     }
 
     private var decoder: JSONDecoder {
@@ -372,12 +393,16 @@ enum APIError: LocalizedError {
     case invalidResponse
     case serverError(Int, String)
     case decodingFailed
+    /// HTTP 200 but the response body didn't match our model. The operation SUCCEEDED;
+    /// only the echo couldn't be parsed. Carries the missing-key path for diagnosis.
+    case responseUnreadable(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "Invalid server response"
         case .serverError(let code, let msg): "Server error \(code): \(msg)"
         case .decodingFailed: "Failed to parse response"
+        case .responseUnreadable(let detail): "Response not readable (\(detail))"
         }
     }
 }

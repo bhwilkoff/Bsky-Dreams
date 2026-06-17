@@ -755,17 +755,29 @@ struct ChatView: View {
                 }
                 chatError = nil
                 Haptics.light()
+            } catch let apiErr as APIError {
+                if case .responseUnreadable = apiErr {
+                    // The server accepted the message (HTTP 200) but we couldn't parse the
+                    // echoed message. The send SUCCEEDED — keep the optimistic bubble (the
+                    // 30s poll reconciles it with the real message). Do NOT show a failure.
+                    chatError = nil
+                    Haptics.light()
+                } else {
+                    rollbackSend(tempId: tempId, text: text, error: apiErr)
+                }
             } catch {
-                // Roll back: remove placeholder and restore typed text
-                messages.removeAll { $0.id == tempId }
-                messageText = text
-                // Surface the real reason (e.g. a server "ConvoLocked"/"InvalidConvo") so
-                // failures are diagnosable instead of a generic "try again".
-                chatError = "Couldn't send: \(error.localizedDescription)"
-                Haptics.error()
+                rollbackSend(tempId: tempId, text: text, error: error)
             }
             isSending = false
         }
+    }
+
+    /// Remove the optimistic bubble, restore the typed text, and surface the real reason.
+    private func rollbackSend(tempId: String, text: String, error: Error) {
+        messages.removeAll { $0.id == tempId }
+        messageText = text
+        chatError = "Couldn't send: \(error.localizedDescription)"
+        Haptics.error()
     }
 
     private func deleteMessage(_ msg: ChatMessage) async {

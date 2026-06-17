@@ -290,3 +290,19 @@ struct RequestJoinResponse: Codable {
 struct ReactionMessageResponse: Codable {
     let message: ChatMessage
 }
+
+/// sendMessage's echoed message. Decodes BOTH shapes: `{ "message": <messageView> }`
+/// and a bare `<messageView>` at the top level — group vs 1:1 responses have differed,
+/// and either way the send already succeeded (HTTP 200) so we must not fail on the echo.
+struct SendMessageResponse: Decodable {
+    let message: ChatMessage
+    enum CodingKeys: String, CodingKey { case message }
+    init(from decoder: Decoder) throws {
+        if let c = try? decoder.container(keyedBy: CodingKeys.self),
+           let m = try? c.decode(ChatMessage.self, forKey: .message) {
+            message = m
+        } else {
+            message = try ChatMessage(from: decoder)   // bare messageView
+        }
+    }
+}

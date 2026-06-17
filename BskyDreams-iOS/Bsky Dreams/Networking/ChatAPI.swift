@@ -56,8 +56,7 @@ extension ATProtocolClient {
             enum CodingKeys: String, CodingKey { case type = "$type"; case text }
         }
         struct Body: Encodable { let convoId: String; let message: MessageInput }
-        struct Response: Codable { let message: ChatMessage }
-        let resp: Response = try await post(
+        let resp: SendMessageResponse = try await post(
             "chat.bsky.convo.sendMessage",
             body: Body(convoId: convoId, message: MessageInput(text: text)),
             useChat: true
