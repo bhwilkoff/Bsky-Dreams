@@ -2293,13 +2293,17 @@
         if (!post?.uri) continue;
         if (readerSeenUriSet.has(post.uri)) continue;
         if (_isAdultPost(post)) continue;
-        if (!_isEnglishPost(post)) continue;
         if (seenUris.has(post.uri)) continue;
-        seenUris.add(post.uri);
-        readerSeenUriSet.add(post.uri);
 
         const external = getArticleEmbed(post);
         if (!external) continue;
+
+        // Filter on the ARTICLE's language (card text), not just the post's lang tag —
+        // a missing tag must NOT default to English (that's how non-English leaked in).
+        if (!_articleIsEnglish(post, external)) continue;
+
+        seenUris.add(post.uri);
+        readerSeenUriSet.add(post.uri);
 
         // Skip articles already marked as read
         if (readerSeenSet.has(external.uri)) continue;
@@ -3669,6 +3673,40 @@
     const langs = post?.record?.langs;
     if (!langs || !langs.length) return true;
     return langs.some(l => l.startsWith('en'));
+  }
+
+  // Unicode ranges for clearly-non-English scripts (CJK, Hangul, Cyrillic, Greek,
+  // Arabic, Hebrew, Thai, Devanagari). Used to reject obviously non-English articles.
+  const _NON_LATIN_RE = /[぀-ヿ㐀-鿿가-힯Ѐ-ӿͰ-Ͽ؀-ۿ֐-׿฀-๿ऀ-ॿ]/g;
+  // Common English function words — English prose is dense with these; their near-absence
+  // in a Latin-script sentence is a strong "not English" signal.
+  const _EN_STOPWORDS = new Set(['the','and','of','to','in','is','for','on','with','that','this','as','are','was','at','by','an','be','it','from','or','you','your','we','our','has','have','will','not','but','they','their','more','about','how','what','when','who','can','all','new','has','his','her','its','than','out','up','one']);
+
+  /**
+   * Decide whether a Reader ARTICLE is English. The browser has no NLLanguageRecognizer,
+   * so we use: strict lang tags → reject obvious non-Latin scripts → an English-stopword
+   * density heuristic for Latin-script text. Errs toward ALLOWING when genuinely unsure.
+   */
+  function _articleIsEnglish(post, external) {
+    const langs = post?.record?.langs;
+    if (langs && langs.length) return langs.some(l => (l || '').toLowerCase().startsWith('en'));
+
+    const text = `${external?.title || ''}. ${external?.description || ''}. ${post?.record?.text || ''}`.trim();
+    if (text.length < 16) return true;  // too little to judge
+
+    // Non-Latin script → not English.
+    const letters = (text.match(/\p{L}/gu) || []).length;
+    const nonLatin = (text.match(_NON_LATIN_RE) || []).length;
+    if (letters > 0 && nonLatin / letters > 0.12) return false;
+
+    // Latin script → English function-word density. Only judge with enough words so we
+    // don't false-reject short headlines.
+    const words = (text.toLowerCase().match(/[a-z][a-z']+/g) || []);
+    if (words.length >= 8) {
+      const hits = words.filter(w => _EN_STOPWORDS.has(w)).length;
+      if (hits / words.length < 0.05) return false;  // almost no English function words
+    }
+    return true;
   }
 
   /** HN-style trending score: (likes - 1) / (hours + 2)^1.8 */

@@ -730,3 +730,10 @@ Bluesky shipped group chats (up to 50, June 2026) and message reactions. Both bu
 *2026-06-17*
 
 Bluesky announced **Communities** (Reddit-style topic spaces — handles-as-URLs like `name.bsky.social`, three privacy levels public/invite/private, custom home pages built on atproto apps) but as of June 2026 it is **not launched and has no published lexicon/API.** Decision: do NOT build speculative UI against an unannounced schema (it would be thrown away). When the lexicon ships, Communities warrants its **own top-level surface** (browse/join/post within topic spaces — distinct from feeds and DMs), not a fold-in. Tracked in SCRATCHPAD; re-check the atproto changelog + `lexicons/` periodically.
+
+---
+
+## [SHARED] Reader — Detect the ARTICLE's Language, Not the Post's Tag
+*2026-06-18*
+
+Non-English articles were leaking into the Reader because the filter used `isEnglish`, which checks the POST's `record.langs` and **treats a missing tag as English** — and most link-share/news/bot posts omit `langs`. It also judged the wrong thing: the Reader shows the linked *article*, whose language is independent of the post text. Fix: filter on the article's own card text (`title` + `description`). iOS uses Apple's on-device `NLLanguageRecognizer` (free, accurate for all languages; reject when the dominant language is non-English and English probability < 0.45). Web has no equivalent, so it uses a heuristic: honor explicit `langs` strictly, reject text that is >12% non-Latin-script letters (CJK/Cyrillic/Arabic/Hebrew/Thai/Devanagari/Greek), then an English function-word density check for Latin-script text (≥8 words, <5% stopwords → reject). Both err toward ALLOWING when genuinely ambiguous (don't over-filter English). The `langs`-only `isEnglish`/`_isEnglishPost` is still used by the feed views; only the Reader uses article-text detection.

@@ -1,6 +1,42 @@
 import SwiftUI
 import SwiftData
 import WebKit
+import NaturalLanguage
+
+// MARK: - Article language detection
+//
+// The Reader displays the linked ARTICLE, whose language is independent of the post's
+// `langs` tag (which is often absent entirely — and `PostView.isEnglish` treats absent
+// as English, so non-English articles leaked through). Detect the article's own language
+// from its card text using Apple's on-device NLLanguageRecognizer (free, no network).
+
+/// True unless `text` is confidently a non-English language. Empty/short/ambiguous → true
+/// (we don't over-filter when we genuinely can't tell).
+private func textLooksEnglish(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.count >= 16 else { return true }
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(trimmed)
+    guard let dominant = recognizer.dominantLanguage else { return true }
+    if dominant == .english { return true }
+    // Non-English is the best guess — only reject if English isn't a close runner-up
+    // (handles bilingual / English-with-loanwords cards).
+    let englishProbability = recognizer.languageHypotheses(withMaximum: 3)[.english] ?? 0
+    return englishProbability >= 0.45
+}
+
+/// Decide whether a Reader article is English. Prefers the article's OWN text (card
+/// title + description); falls back to explicit post `langs`, then the post text.
+func articleIsEnglish(post: PostView, card: ExternalCard) -> Bool {
+    let articleText = (card.title + ". " + card.description).trimmingCharacters(in: .whitespacesAndNewlines)
+    if articleText.count >= 16 { return textLooksEnglish(articleText) }
+    // Too little article text — honor an explicit language tag if present.
+    if let langs = post.record.langs, !langs.isEmpty {
+        return langs.contains { $0.hasPrefix("en") }
+    }
+    // Last resort: judge from the post body, else allow.
+    return textLooksEnglish(post.record.text)
+}
 
 struct ReaderView: View {
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
@@ -201,9 +237,10 @@ struct ReaderView: View {
             let allItems = home.feed + (discover?.feed ?? []) + (news?.feed ?? [])
             let filtered = allItems.compactMap { item -> PostView? in
                 guard !item.post.isAdultContent else { return nil }
-                guard item.post.isEnglish else { return nil }
                 guard let ext = item.post.embed?.external else { return nil }
                 guard isReadableArticle(ext) else { return nil }
+                // Filter on the ARTICLE's language (card text), not the post's lang tag.
+                guard articleIsEnglish(post: item.post, card: ext) else { return nil }
                 guard !seenURISet.contains(item.post.uri) else { return nil }
                 return item.post
             }
