@@ -184,7 +184,7 @@ No build step required. The app runs as a static file.
 - **Video:** AVPlayer + HLS (single shared instance per TV session)
 - **Reader:** `URLSession` fetch (no CORS on iOS) + off-screen `WKWebView` for DOM extraction
 - **Fonts:** Syne + Inter loaded from `Resources/Fonts/` (registered in Info.plist)
-- **Deployment:** Xcode build → App Store (live: https://apps.apple.com/us/app/bsky-dreams/id6760909675)
+- **Deployment:** **cloud build → App Store** (DEFAULT) — `gh workflow run appstore-build.yml -f platform=ios`; the dev Mac's beta macOS can't ship locally (ITMS-90301), so do NOT `xcodebuild archive` locally. See `docs/CLOUD-SUBMISSION.md`. Live: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Key Directories
 

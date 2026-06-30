@@ -70,3 +70,6 @@ claude-epic-status-line/
 *.log
 *.swp
 *.swo
+tools/asc-credentials.env
+AuthKey_*.p8
+*.p12
