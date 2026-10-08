@@ -21,7 +21,6 @@ struct SearchView: View {
     @State private var newChannelName = ""
     @State private var errorMessage: String?
 
-    @State private var scrollToTopTrigger = 0
 
     // Advanced filters
     @State private var filterAuthor = ""
@@ -323,9 +322,6 @@ struct SearchView: View {
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .refreshable { performSearch() }
-        .onChange(of: scrollToTopTrigger) { _, _ in
-            withAnimation { proxy.scrollTo("search-top", anchor: .top) }
-        }
         }
     }
 

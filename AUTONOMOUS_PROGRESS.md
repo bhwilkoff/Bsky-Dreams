@@ -93,8 +93,10 @@ P3
 - [ ] Notification permission prompt on login screen → after sign-in
 - [ ] VoiceOver: video buttons, retry button, gallery like/repost counts, MARK READ trait
 - [ ] Contrast: white on lime (channel badge, repost icon)
-- [ ] Dead code: SidebarHeaderTest.swift, PostButtonTest.swift, Bsky-Dreams-Info.plist, scrollToTopTrigger×4, Analytics test harness
+- [x] Dead code removed (-328 lines): test views, stale plist, scrollToTopTrigger ×4, Analytics harness
 - [ ] Share Extension PrivacyInfo.xcprivacy (App Group UserDefaults)
 - [ ] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
 
 ### Tick 4 — 2026-10-08 — iOS a11y: Dynamic Type for system-font text + dark-mode foregrounds
+
+### Tick 5 — 2026-10-08 — opt: -328 lines (dead test views, stale Info plist, unused triggers, preview harness)

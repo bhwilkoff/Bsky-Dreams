@@ -29,7 +29,6 @@ struct NotificationsView: View {
     @State private var groups: [NotificationGroup] = []
     @State private var cursor: String?
     @State private var isLoading = false
-    @State private var scrollToTopTrigger = 0
     @State private var errorMessage: String?
 
     var body: some View {
@@ -95,9 +94,6 @@ struct NotificationsView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await load() }
-        .onChange(of: scrollToTopTrigger) { _, _ in
-            withAnimation { proxy.scrollTo("notif-top", anchor: .top) }
-        }
         }
     }
 

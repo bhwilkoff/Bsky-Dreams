@@ -18,7 +18,6 @@ struct GalleryView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
-    @State private var scrollToTopTrigger = 0
 
     var body: some View {
         Group {
@@ -88,9 +87,6 @@ struct GalleryView: View {
             timelineCursor = nil
             discoverCursor = nil
             await load()
-        }
-        .onChange(of: scrollToTopTrigger) { _, _ in
-            withAnimation { proxy.scrollTo("gallery-top", anchor: .top) }
         }
         }
     }

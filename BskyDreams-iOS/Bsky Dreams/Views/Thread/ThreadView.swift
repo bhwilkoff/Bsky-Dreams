@@ -10,7 +10,6 @@ struct ThreadView: View {
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
     @State private var replyingToPost: PostView? = nil
-    @State private var scrollToTopTrigger = 0
 
     var body: some View {
         Group {
@@ -113,9 +112,6 @@ struct ThreadView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: replyingToURI)
             .refreshable { await loadThread() }
-            .onChange(of: scrollToTopTrigger) { _, _ in
-                withAnimation { proxy.scrollTo("thread-top", anchor: .top) }
-            }
         }
     }
 
