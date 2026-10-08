@@ -133,3 +133,30 @@ P3
   hardware only) in NBNavBar + FeedNavBar. ✅ device (dark mode).
 - Web: PR #120 merged → main → Pages built; live site verified serving new code (cache-busted).
   Ben: deploy web myself from now on.
+
+### Tick 12 — 2026-10-08 — second device review (7 screens) → all fixed + re-verified on iPhone 12 ✅
+- Conversation: quoted preview collapses newlines (blank 3rd line); root accent bar on card edge.
+- Constellation: forces rebalanced (repulsion was ~100× weaker than gravity → knot + label collisions);
+  Reset View uses NeubrutalistButtonStyle; duplicate counter dropped.
+- Analytics: LOAD stretches to field height (label lifted above row); "Pick an account" pre-load state.
+- NBTextField placeholder → nbTextSecondary (system placeholder ~1.7:1) — login too.
+- TV splash: black-bordered/shadowed chips, field, card; selected chip label via Color.nbLabel(on:);
+  Toggle no longer squeezes title; errors → NBErrorBanner.
+- Settings: duplicate SETTINGS heading → thin Memphis stripe band. Profile tiles captioned.
+- Timeline: "1d" in Inter (Syne 1 → ı); shadows on zoom/date controls.
+- NEW: repost attribution ("Reposted by X") on iOS Profile + Following (web parity — web had it).
+- Web: PWA icons 192/512 + maskable, orientation any — deployed (PR #121), live-verified.
+- Tooling: Xcode-beta was deleted by another session mid-run → device_smoke uses release Xcode 27.1,
+  which lists HARDWARE UDIDs (both id forms now supported).
+
+### Tick 13 — 2026-10-08 — iOS: error primitives, off-main compose work, paging stalls
+- Feed + Analytics first-load errors → NBErrorBanner + Haptics.error (last hand-rolled error screens).
+- resizeImageData nonisolated + run detached (Compose + inline reply); video size from file attributes,
+  read off-main (.mappedIfSafe); photo-load failures surfaced.
+- Gallery + Stream: a fully-filtered page no longer stalls paging (bounded auto-advance); Stream no
+  longer claims a connection failure for an all-seen page.
+- Compiles with release Xcode 27.1; Home + Gallery re-checked on iPhone 12.
+
+### Tick 14 — 2026-10-08 — web opt (-14 lines) + live site checked in iPhone Safari ✅
+- fetchOgEmbed() + uploadEmbedThumb() replace 3 copies each (compose/quote/inline reply), now with
+  AbortSignal timeouts on the third-party proxy + CDN fetches. Deployed.

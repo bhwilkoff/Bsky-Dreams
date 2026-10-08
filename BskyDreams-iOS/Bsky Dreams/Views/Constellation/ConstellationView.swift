@@ -562,10 +562,8 @@ struct ConstellationView: View {
     }
 
     private var graphControls: some View {
+        // (The node/edge count already sits in the header — no second counter here.)
         VStack(spacing: 8) {
-            Text("\(nodes.count) nodes · \(edges.count) edges")
-                .font(.inter(11))
-                .foregroundStyle(Color.nbTextSecondary)
             Button("Reset View") {
                 let reset = {
                     panOffset = .zero
@@ -577,12 +575,7 @@ struct ConstellationView: View {
                 if reduceMotion { reset() }
                 else { withAnimation(.spring(duration: 0.4), reset) }
             }
-            .font(.inter(12, weight: .semibold))
-            .foregroundStyle(Color.nbBlack)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.nbAccent.opacity(0.8))
-            .nbBorder()
+            .buttonStyle(NeubrutalistButtonStyle())   // Syne uppercase, legible label, shadow
         }
         .padding(12)
         .padding(.bottom, selectedNode != nil ? 140 : 20)
@@ -650,7 +643,10 @@ struct ConstellationView: View {
 
                 var fx: CGFloat = 0
                 var fy: CGFloat = 0
-                let repulsion: CGFloat = node.isSeed ? 400 : 180
+                // At 100pt apart, 180/d² = 0.018 vs gravity 0.02·100 = 2 — repulsion only
+                // acted at touching distance, so small graphs collapsed into a ~100pt knot
+                // with colliding labels (device review 2026-10-08). Rebalanced:
+                let repulsion: CGFloat = node.isSeed ? 6000 : 3000
 
                 // Repulsion (many-body charge)
                 for other in nodes where other.id != node.id {
@@ -677,8 +673,8 @@ struct ConstellationView: View {
                 }
 
                 // Gravity toward center
-                fx -= node.x * 0.02
-                fy -= node.y * 0.02
+                fx -= node.x * 0.01
+                fy -= node.y * 0.01
 
                 // Collision avoidance
                 let r = node.radius(maxDegree: md)

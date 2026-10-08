@@ -661,8 +661,13 @@ struct InlineReplyView: View {
     private func loadImages(from items: [PhotosPickerItem]) async {
         for item in items {
             if let data = try? await item.loadTransferable(type: Data.self) {
-                let resized = ComposeImage.resizeImageData(data)
+                let resized = await Task.detached(priority: .userInitiated) {
+                    ComposeImage.resizeImageData(data)
+                }.value
                 images.append(ComposeImage(imageData: resized))
+            } else {
+                Haptics.error()
+                errorMessage = "Couldn't load that photo — try another."
             }
         }
         selectedItems = []

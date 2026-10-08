@@ -148,10 +148,11 @@ struct NBTextField: View {
                     .foregroundStyle(Color.nbBlack)
             }
             Group {
+                // Explicit prompt color: the system placeholder (~#C7C7C7) is ~1.7:1 on white.
                 if isSecure {
-                    SecureField(placeholder, text: $text)
+                    SecureField("", text: $text, prompt: Text(placeholder).foregroundStyle(Color.nbTextSecondary))
                 } else {
-                    TextField(placeholder, text: $text)
+                    TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(Color.nbTextSecondary))
                 }
             }
             .font(.inter(15))

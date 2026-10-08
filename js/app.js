@@ -6293,22 +6293,49 @@
     quoteLinkWrap.querySelector('.compose-link-preview-dismiss').addEventListener('click', clearQuoteLinkPreview);
   }
 
+  /**
+   * Open Graph metadata for a link-preview card, via the allorigins CORS proxy.
+   * Returns { embed, hostname } or null. Shared by compose, quote and inline
+   * reply (three copies before). Times out — a hung third-party proxy must not
+   * leave a preview pending forever.
+   */
+  async function fetchOgEmbed(url) {
+    try {
+      const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+                               { signal: AbortSignal.timeout(10000) });
+      const data = await res.json();
+      if (!data.contents) return null;
+      const doc   = new DOMParser().parseFromString(data.contents, 'text/html');
+      const getOg = (name) => doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute('content') || '';
+      const title = (getOg('og:title') || doc.title || url).trim();
+      const desc  = (getOg('og:description') || getOg('description') || '').trim();
+      const thumb = getOg('og:image') || getOg('twitter:image') || '';
+      let hostname = url;
+      try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep url */ }
+      // _thumbUrl is uploaded as a blob at submit time (uploadEmbedThumb).
+      return { embed: { uri: url, title, description: desc, _thumbUrl: thumb }, hostname };
+    } catch {
+      return null;   // best-effort: no card is fine
+    }
+  }
+
+  /** Upload an embed's _thumbUrl as a blob so native Bluesky renders a card. Non-fatal. */
+  async function uploadEmbedThumb(embed) {
+    if (!embed?._thumbUrl) return;
+    try {
+      const thumbBlob = await (await fetch(embed._thumbUrl, { signal: AbortSignal.timeout(15000) })).blob();
+      embed.thumb = await API.uploadBlob(new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' }));
+    } catch { /* post without a thumbnail */ }
+  }
+
   async function fetchQuoteLinkPreview(url) {
     if (quoteLinkEmbed) return;
-    try {
-      const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-      const data = await res.json();
-      const html = data.contents || '';
-      const doc  = new DOMParser().parseFromString(html, 'text/html');
-      const getOg = (name) => doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute('content') || '';
-      const title    = (getOg('og:title') || getOg('title') || doc.title || url).trim();
-      const desc     = (getOg('og:description') || getOg('description') || '').trim();
-      const thumb    = getOg('og:image') || getOg('twitter:image') || '';
-      const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-      quoteLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
-      renderQuoteLinkPreviewCard(hostname);
-    } catch { /* silently ignore */ }
+    const og = await fetchOgEmbed(url);
+    if (!og || quoteLinkEmbed) return;
+    quoteLinkEmbed = og.embed;
+    renderQuoteLinkPreviewCard(og.hostname);
   }
+
 
   function quoteSelectGif(embed) {
     const { uri, gifUrl, thumbUrl, alt } = embed;
@@ -6456,13 +6483,8 @@
 
       // Upload thumbnail for GIF / link previews
       if (linkEmbed?._thumbUrl) {
-        try {
-          quoteModalSubmit.textContent = 'Uploading preview…';
-          const thumbRes  = await fetch(linkEmbed._thumbUrl);
-          const thumbBlob = await thumbRes.blob();
-          const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
-          linkEmbed.thumb = await API.uploadBlob(thumbFile);
-        } catch { /* non-fatal */ }
+        quoteModalSubmit.textContent = 'Uploading preview…';
+        await uploadEmbedThumb(linkEmbed);
       }
 
       quoteModalSubmit.textContent = 'Posting…';
@@ -7844,20 +7866,12 @@
 
     async function fetchReplyLinkPreview(url) {
       if (replyLinkEmbed || replyGifEmbed) return;
-      try {
-        const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-        const data = await res.json();
-        if (!data.contents) return;
-        const doc    = new DOMParser().parseFromString(data.contents, 'text/html');
-        const getOg  = (name) => doc.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute('content') || '';
-        const title    = (getOg('og:title') || doc.title || '').trim();
-        const desc     = (getOg('og:description') || getOg('description') || '').trim();
-        const thumb    = getOg('og:image') || getOg('twitter:image') || '';
-        const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-        replyLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
-        renderReplyLinkPreviewCard(hostname);
-      } catch { /* silently ignore */ }
+      const og = await fetchOgEmbed(url);
+      if (!og || replyLinkEmbed || replyGifEmbed) return;
+      replyLinkEmbed = og.embed;
+      renderReplyLinkPreviewCard(og.hostname);
     }
+
 
     function selectGifEmbed(embed) {
       const { uri, gifUrl, thumbUrl, alt } = embed;
@@ -8004,14 +8018,7 @@
         const embedSource = replyGifEmbed || (uploadedImages.length === 0 && !videoEmbed ? replyLinkEmbed : null);
         if (embedSource) {
           externalEmbed = { ...embedSource };
-          if (externalEmbed._thumbUrl) {
-            try {
-              const thumbRes  = await fetch(externalEmbed._thumbUrl);
-              const thumbBlob = await thumbRes.blob();
-              const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
-              externalEmbed.thumb = await API.uploadBlob(thumbFile);
-            } catch { /* non-fatal */ }
-          }
+          await uploadEmbedThumb(externalEmbed);
         }
 
         await API.createPost(replyText, replyRef, uploadedImages, null, externalEmbed, videoEmbed, buildFacets(replyText));
@@ -8619,26 +8626,12 @@
 
   async function fetchLinkPreview(url) {
     if (composeLinkEmbed) return;
-    try {
-      const res  = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-      const data = await res.json();
-      if (!data.contents) return;
-      const parser = new DOMParser();
-      const doc    = parser.parseFromString(data.contents, 'text/html');
-      const getOg  = (name) =>
-        doc.querySelector(`meta[property="${name}"]`)?.content ||
-        doc.querySelector(`meta[name="${name}"]`)?.content || '';
-      const title    = (getOg('og:title')       || doc.title || '').trim();
-      const desc     = (getOg('og:description') || getOg('description') || '').trim();
-      const thumb    = getOg('og:image')        || getOg('twitter:image') || '';
-      const hostname = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-      // Store thumb as _thumbUrl so the submit handler uploads it as a blob ref
-      composeLinkEmbed = { uri: url, title, description: desc, _thumbUrl: thumb };
-      renderLinkPreviewCard(hostname);
-    } catch {
-      // Silently ignore — link preview is best-effort
-    }
+    const og = await fetchOgEmbed(url);
+    if (!og || composeLinkEmbed) return;
+    composeLinkEmbed = og.embed;
+    renderLinkPreviewCard(og.hostname);
   }
+
 
   function renderLinkPreviewCard(hostname) {
     const { title, description, _thumbUrl } = composeLinkEmbed;
@@ -8751,15 +8744,8 @@
       // If the external embed is a GIF, upload the static xs.jpg thumbnail so
       // native Bluesky renders an image card rather than a bare text link.
       if (linkEmbed?._thumbUrl) {
-        try {
-          btn.textContent = 'Uploading GIF preview…';
-          const thumbRes  = await fetch(linkEmbed._thumbUrl);
-          const thumbBlob = await thumbRes.blob();
-          const thumbFile = new File([thumbBlob], 'thumb.jpg', { type: thumbBlob.type || 'image/jpeg' });
-          linkEmbed.thumb = await API.uploadBlob(thumbFile);
-        } catch {
-          // Non-fatal — post without thumbnail if the upload fails
-        }
+        btn.textContent = 'Uploading GIF preview…';
+        await uploadEmbedThumb(linkEmbed);
       }
 
       btn.textContent = 'Posting…';

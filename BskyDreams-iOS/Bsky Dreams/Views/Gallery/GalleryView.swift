@@ -102,7 +102,8 @@ struct GalleryView: View {
 
     // MARK: - Data Loading
 
-    private func load(loadMore: Bool = false) async {
+    /// `attempt` bounds the auto-advance below.
+    private func load(loadMore: Bool = false, attempt: Int = 0) async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
@@ -141,7 +142,15 @@ struct GalleryView: View {
 
             if loadMore {
                 let existingUris = Set(posts.map { $0.post.uri })
-                posts.append(contentsOf: all.filter { !existingUris.contains($0.post.uri) })
+                let fresh = all.filter { !existingUris.contains($0.post.uri) }
+                posts.append(contentsOf: fresh)
+                // A page that filters down to nothing leaves the same last card on screen,
+                // so its onAppear never fires again — paging stalled. Advance (bounded).
+                if fresh.isEmpty, timelineCursor != nil, attempt < 3 {
+                    isLoading = false
+                    await load(loadMore: true, attempt: attempt + 1)
+                    return
+                }
             } else {
                 var seen = Set<String>()
                 posts = all.filter { seen.insert($0.post.uri).inserted }

@@ -81,12 +81,13 @@ struct ThreadView: View {
                             }
                         }
                     )
-                    .padding(.horizontal, 8)
+                    // Bar on the card's own edge (it floated in the padding gutter, detached).
                     .overlay(alignment: .leading) {
                         Rectangle()
                             .fill(Color.nbAccent)
                             .frame(width: 4)
                     }
+                    .padding(.horizontal, 8)
 
                     // Replies
                     if let replies = threadPost.replies {

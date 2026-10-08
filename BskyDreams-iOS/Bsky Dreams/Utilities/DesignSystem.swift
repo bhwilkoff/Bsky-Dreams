@@ -228,7 +228,7 @@ struct NeubrutalistButtonStyle: ButtonStyle {
             return configuration.label
                 .font(.syne(14))
                 .textCase(.uppercase)   // §4.1: buttons are Syne, uppercase
-                .foregroundStyle(Self.labelColor(on: color))
+                .foregroundStyle(Color.nbLabel(on: color))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(color)
@@ -236,18 +236,6 @@ struct NeubrutalistButtonStyle: ButtonStyle {
                 .background(shadowColor.offset(x: shadowSize, y: shadowSize))
                 .offset(x: offset, y: offset)
                 .animation(.easeOut(duration: 0.08), value: isPressed)
-        }
-
-        /// Near-black OR white, whichever contrasts more with the fill. Near-black was
-        /// hard-coded for "bright" accents, but the iOS DEFAULT accent is #0047FF:
-        /// black on it is ~3.35:1 (fails AA); white is ~6.3:1. Lime/coral/teal keep black.
-        static func labelColor(on fill: Color) -> Color {
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            UIColor(fill).getRed(&r, green: &g, blue: &b, alpha: &a)
-            func lin(_ c: CGFloat) -> CGFloat { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
-            let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-            let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
-            return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
         }
     }
 }
@@ -750,4 +738,19 @@ private struct NBOfflineInset: ViewModifier {
 extension View {
     /// Shows the lime offline banner above this screen's content while offline.
     func nbOfflineBanner() -> some View { modifier(NBOfflineInset()) }
+}
+
+// MARK: - Legible label on a fill
+extension Color {
+    /// Near-black OR white, whichever contrasts more with `fill`. Black on the iOS
+    /// DEFAULT accent #0047FF is ~3.35:1 (fails AA); white is ~6.3:1. Lime/coral/teal
+    /// accents keep black. Use for any text/icon sitting on an accent-colored fill.
+    static func nbLabel(on fill: Color) -> Color {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(fill).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func lin(_ c: CGFloat) -> CGFloat { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+        let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
+        return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
+    }
 }

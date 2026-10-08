@@ -114,6 +114,12 @@ struct ProfileView: View {
                 profileHeader(profile)
 
                 ForEach(posts) { item in
+                    if let reposted = item.repostAttribution {
+                        DiscoverWhyChip(text: reposted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 6)
+                    }
                     PostCardView(
                         post: item.post,
                         onReply: { post in
@@ -232,13 +238,19 @@ struct ProfileView: View {
                         store.navigationPath = NavigationPath()
                         store.navigationPath.append(AnalyticsDestination(actor: profile.handle))
                     } label: {
-                        Image(systemName: "chart.bar")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 44, height: 44)
-                            .background(Color.nbWhite)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            .background(Color.nbBlack.offset(x: 2, y: 2))
+                        VStack(spacing: 6) {
+                            Image(systemName: "chart.bar")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.nbBlack)
+                                .frame(width: 44, height: 44)
+                                .background(Color.nbWhite)
+                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                                .background(Color.nbBlack.offset(x: 2, y: 2))
+                            Text("ANALYTICS")
+                                .font(.syne(9, weight: .bold))
+                                .tracking(0.5)
+                                .foregroundStyle(Color.nbTextSecondary)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View analytics")
@@ -249,13 +261,19 @@ struct ProfileView: View {
                         store.navigationPath = NavigationPath()
                         store.navigationPath.append(ConstellationDestination(actor: profile.handle))
                     } label: {
-                        Image(systemName: "network")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 44, height: 44)
-                            .background(Color.nbWhite)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            .background(Color.nbBlack.offset(x: 2, y: 2))
+                        VStack(spacing: 6) {
+                            Image(systemName: "network")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.nbBlack)
+                                .frame(width: 44, height: 44)
+                                .background(Color.nbWhite)
+                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                                .background(Color.nbBlack.offset(x: 2, y: 2))
+                            Text("NETWORK")
+                                .font(.syne(9, weight: .bold))
+                                .tracking(0.5)
+                                .foregroundStyle(Color.nbTextSecondary)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View network constellation")
@@ -266,13 +284,19 @@ struct ProfileView: View {
                         store.selectedTab = .timeline
                         store.pendingTimelineQuery = "@\(profile.handle)"
                     } label: {
-                        Image(systemName: "calendar.day.timeline.leading")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 44, height: 44)
-                            .background(Color.nbWhite)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            .background(Color.nbBlack.offset(x: 2, y: 2))
+                        VStack(spacing: 6) {
+                            Image(systemName: "calendar.day.timeline.leading")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.nbBlack)
+                                .frame(width: 44, height: 44)
+                                .background(Color.nbWhite)
+                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                                .background(Color.nbBlack.offset(x: 2, y: 2))
+                            Text("TIMELINE")
+                                .font(.syne(9, weight: .bold))
+                                .tracking(0.5)
+                                .foregroundStyle(Color.nbTextSecondary)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View timeline")

@@ -125,14 +125,12 @@ struct TVView: View {
                                         Text(topic.uppercased())
                                             .font(.syne(11, weight: .bold))
                                             .tracking(0.5)
-                                            .foregroundStyle(Color.nbBlack)
+                                            .foregroundStyle(selectedTopic == topic ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
                                             .padding(.vertical, 9)
                                             .frame(maxWidth: .infinity)
-                                            .background(selectedTopic == topic ? Color.nbAccent : Color.nbBlack.opacity(0.06))
-                                            .overlay(Rectangle().strokeBorder(
-                                                selectedTopic == topic ? Color.clear : Color.nbBorder,
-                                                lineWidth: 1
-                                            ))
+                                            .background(selectedTopic == topic ? Color.nbAccent : Color.nbWhite)
+                                            .nbBorder()
+                                            .nbShadow(size: 2)
                                     }
                                 }
                             }
@@ -174,11 +172,9 @@ struct TVView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .background(Color.nbBlack.opacity(0.05))
-                            .overlay(Rectangle().strokeBorder(
-                                customSearch.isEmpty ? Color.nbBorder : Color.nbAccent.opacity(0.7),
-                                lineWidth: 1
-                            ))
+                            .background(Color.nbWhite)
+                            .nbBorder(customSearch.isEmpty ? Color.nbBlack : Color.nbAccent)
+                            .nbShadow()
                         }
 
                         // Adult content toggle
@@ -193,22 +189,23 @@ struct TVView: View {
                                     .foregroundStyle(Color.nbTextTertiary)
                             }
                             Spacer()
-                            Toggle("", isOn: $hideAdult)
+                            // Empty-label Toggle stretches and squeezed the title onto 2 lines.
+                            Toggle("Hide adult content", isOn: $hideAdult)
+                                .labelsHidden()
+                                .fixedSize()
                                 .tint(Color.nbAccent)
                         }
                         .padding(12)
-                        .background(Color.nbBlack.opacity(0.05))
-                        .overlay(Rectangle().strokeBorder(Color.nbBorder, lineWidth: 1))
+                        .background(Color.nbWhite)
+                        .nbBorder()
+                        .nbShadow()
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)
                 }
 
                 if let err = errorMessage {
-                    Text(err)
-                        .font(.inter(12))
-                        .foregroundStyle(.red.opacity(0.85))
-                        .multilineTextAlignment(.center)
+                    NBErrorBanner(message: err, onDismiss: { errorMessage = nil })
                         .padding(.horizontal, 20)
                         .padding(.bottom, 8)
                 }

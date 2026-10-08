@@ -452,8 +452,13 @@ struct ComposeView: View {
                 break
             }
             if let data = try? await item.loadTransferable(type: Data.self) {
-                let resized = ComposeImage.resizeImageData(data)
+                let resized = await Task.detached(priority: .userInitiated) {
+                    ComposeImage.resizeImageData(data)
+                }.value
                 images.append(ComposeImage(imageData: resized))
+            } else {
+                Haptics.error()
+                errorMessage = "Couldn't load that photo — try another."
             }
         }
         selectedItems = []
@@ -467,8 +472,18 @@ struct ComposeView: View {
         }
         let url = transferable.url
         let maxVideoBytes = 50 * 1024 * 1024  // AT Protocol 50 MB limit
-        guard let data = try? Data(contentsOf: url), data.count <= maxVideoBytes else {
+        // Check the size from file attributes BEFORE reading, and read off the main
+        // actor — a synchronous 50 MB read on main froze the composer.
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        guard size > 0, size <= maxVideoBytes else {
             errorMessage = "Video must be under 50 MB"
+            selectedVideoItem = nil
+            return
+        }
+        guard let data = await Task.detached(priority: .userInitiated, operation: {
+            try? Data(contentsOf: url, options: .mappedIfSafe)
+        }).value else {
+            errorMessage = "Could not load video — try a different file"
             selectedVideoItem = nil
             return
         }
