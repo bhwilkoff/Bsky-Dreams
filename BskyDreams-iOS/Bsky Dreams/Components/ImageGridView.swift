@@ -805,7 +805,9 @@ struct QuotedPostView: View {
                     .foregroundStyle(Color.nbTextSecondary)
             }
             if !post.record.text.isEmpty {
-                Text(post.record.text)
+                // Collapse line breaks: in a 3-line preview a blank "\n\n" line ate a
+                // whole line and hid the ellipsis (device review, 2026-10-08).
+                Text(post.record.text.replacingOccurrences(of: "\\s*\n+\\s*", with: " ", options: .regularExpression))
                     .font(.inter(13))
                     .lineLimit(3)
             }

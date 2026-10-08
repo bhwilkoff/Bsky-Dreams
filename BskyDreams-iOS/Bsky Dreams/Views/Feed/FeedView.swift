@@ -149,6 +149,8 @@ struct FeedView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             if store.feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
                                 DiscoverWhyChip(text: why)
+                            } else if let reposted = item.repostAttribution {
+                                DiscoverWhyChip(text: reposted)
                             }
                             PostCardView(
                                 post: item.post,

@@ -3,7 +3,8 @@
 
     /usr/bin/python3 tools/device_smoke.py [iphone|ipad] [outdir] [view,view,…] [--no-build]
 
-Views are AppTab raw values (home, search, notifications, dms, gallery, reader, …).
+Views are AppTab raw values (home, search, notifications, dms, gallery, reader, …),
+or post=<at:// uri> / profile=<handle> to push a conversation or profile.
 Signs in with the test account from tools/test-account.env (gitignored — never
 commit it) via the DEBUG-only launch doors in AppStore.swift (DebugLaunchDoors).
 Credentials go through DEVICECTL_CHILD_* env, never argv (visible in `ps`).
@@ -19,14 +20,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "Archive-
 os.environ.setdefault("DEVICE_LEASE_OWNER", "bsky-dreams")
 import devlease  # noqa: E402
 
+# Each device has two ids: the CoreDevice identifier (Xcode 26/27 beta devicectl) and the
+# hardware UDID (release Xcode 27.1 devicectl lists these). Use whichever is listed.
 DEVICES = {
-    "iphone": "B4E756E2-CBFA-5F63-8CEE-21D226637AF7",   # iPhone 12
-    "ipad":   "AC5377E9-6053-51DE-8E65-D88A4E9345FA",   # iPad Pro 12.9" (5th gen)
+    "iphone": ["00008101-000339320188801E", "B4E756E2-CBFA-5F63-8CEE-21D226637AF7"],   # iPhone 12
+    "ipad":   ["00008103-0019388E3CF1001E", "AC5377E9-6053-51DE-8E65-D88A4E9345FA"],   # iPad Pro 12.9"
 }
 BUNDLE = "app.bskydreams.ios"
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DD = "/private/tmp/bsky-dreams-device-dd"
-ENV = dict(os.environ, DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer")
+# Prefer the release Xcode; fall back to a beta if that's all that's installed.
+_XCODE = next((d for d in ("/Applications/Xcode.app/Contents/Developer",
+                           "/Applications/Xcode-beta.app/Contents/Developer")
+               if os.path.exists(os.path.join(d, "usr/bin/devicectl"))), None)
+if not _XCODE:
+    sys.exit("no Xcode with devicectl found in /Applications")
+ENV = dict(os.environ, DEVELOPER_DIR=_XCODE)
 
 
 def run(cmd):
@@ -52,13 +61,18 @@ def test_account_env():
 
 def launch_and_shoot(udid, outdir, key, view, extra_env):
     env = dict(ENV, **extra_env)
-    if view:
+    name = view
+    if view.startswith("post="):
+        env["DEVICECTL_CHILD_BSKY_OPEN_POST"] = view[5:]; name = "conversation"
+    elif view.startswith("profile="):
+        env["DEVICECTL_CHILD_BSKY_OPEN_PROFILE"] = view[8:]; name = "profile"
+    elif view:
         env["DEVICECTL_CHILD_BSKY_START_VIEW"] = view
     r = subprocess.run(["xcrun", "devicectl", "device", "process", "launch", "--device", udid,
                         "--terminate-existing", BUNDLE], env=env, capture_output=True, text=True)
     print(f"launch {view or 'default'} → exit {r.returncode}")
     time.sleep(10)   # sign-in + first feed load on a real network
-    shot = os.path.join(outdir, f"{key}-{view or 'launch'}.png")
+    shot = os.path.join(outdir, f"{key}-{name or 'launch'}.png")
     run(["xcrun", "devicectl", "device", "capture", "screenshot", "--device", udid, "--destination", shot])
     print("screenshot:", shot)
 
@@ -69,11 +83,11 @@ def main():
     outdir = args[1] if len(args) > 1 else "/private/tmp/bsky-dreams-device"
     views = [v for v in (args[2].split(",") if len(args) > 2 else [""])]
     build = "--no-build" not in sys.argv
-    udid = DEVICES[key]
     os.makedirs(outdir, exist_ok=True)
 
     _, listing = run(["xcrun", "devicectl", "list", "devices"])
-    line = next((l for l in listing.splitlines() if udid in l), "")
+    line = next((l for l in listing.splitlines() if any(i in l for i in DEVICES[key])), "")
+    udid = next((i for i in DEVICES[key] if i in line), DEVICES[key][0])
     if "available" not in line or "unavailable" in line:
         sys.exit(f"{key} is not available (wake/unlock it, or check Wi-Fi/cable): {line.strip()}")
 

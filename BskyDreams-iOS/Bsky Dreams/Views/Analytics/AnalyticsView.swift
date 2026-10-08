@@ -104,11 +104,19 @@ struct AnalyticsView: View {
                             .nbButton()
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
+                } else if posts.isEmpty && lastActor.isEmpty {
+                    // Nothing requested yet: a prompt, not an empty RESULT (rule §2).
+                    NBEmptyState(
+                        icon: "chart.bar.xaxis",
+                        title: "Pick an account",
+                        message: "Enter a handle above and tap LOAD, or tap MY ANALYTICS for your own stats."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 200)
                 } else if posts.isEmpty {
                     NBEmptyState(
                         icon: "chart.bar.xaxis",
-                        title: "NO POSTS TO ANALYZE",
-                        message: "Enter a handle above and tap LOAD, or tap MY ANALYTICS for your own stats."
+                        title: "No posts to analyze",
+                        message: "This account hasn't posted anything original yet."
                     )
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
@@ -155,35 +163,37 @@ struct AnalyticsView: View {
 
     private var actorSelectorSection: some View {
         VStack(spacing: 8) {
-            // .bottom alignment so the LOAD button sits flush with the text input,
-            // not the label that sits above it.
-            HStack(alignment: .bottom, spacing: 8) {
-                NBTextField(
-                    placeholder: "handle.bsky.social",
-                    text: $searchActor,
-                    label: "Handle"
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            // Label above the row, so LOAD can stretch to EXACTLY the field's height
+            // (.fixedSize vertical + maxHeight .infinity) — padding-matching was ~3pt off.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("HANDLE")
+                    .font(.syne(11, weight: .bold))
+                    .tracking(1)
+                    .foregroundStyle(Color.nbBlack)
+                HStack(spacing: 8) {
+                    NBTextField(placeholder: "handle.bsky.social", text: $searchActor)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
 
-                // LOAD button — padding(.vertical, 11) matches NBTextField input field padding
-                // so the button height equals the input field height, not the full label+input height.
-                let canLoad = !searchActor.trimmingCharacters(in: .whitespaces).isEmpty
-                Text("LOAD")
-                    .font(.syne(12, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(canLoad ? Color.white : Color.nbTextTertiary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(canLoad ? Color.nbAccent : Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(
-                        Color.nbBlack.opacity(canLoad ? 1 : 0.25), lineWidth: 2))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard canLoad else { return }
-                        let handle = searchActor.trimmingCharacters(in: .whitespaces)
-                        Task { await load(actor: handle) }
-                    }
+                    let canLoad = !searchActor.trimmingCharacters(in: .whitespaces).isEmpty
+                    Text("LOAD")
+                        .font(.syne(12, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(canLoad ? Color.nbLabel(on: .nbAccent) : Color.nbTextSecondary)
+                        .padding(.horizontal, 14)
+                        .frame(maxHeight: .infinity)
+                        .background(canLoad ? Color.nbAccent : Color.nbWhite)
+                        .overlay(Rectangle().strokeBorder(canLoad ? Color.nbBlack : Color.nbTextSecondary, lineWidth: 2))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard canLoad else { return }
+                            let handle = searchActor.trimmingCharacters(in: .whitespaces)
+                            Task { await load(actor: handle) }
+                        }
+                        .accessibilityLabel("Load analytics")
+                        .accessibilityAddTraits(.isButton)
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             // Quick-load own profile

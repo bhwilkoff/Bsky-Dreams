@@ -220,14 +220,16 @@ struct TimelineScrubberView: View {
                 .accessibilityLabel("Zoom out")
 
                 // Zoom label
+                // Inter, not Syne: Syne's "1" reads as "ı" ("1d" looked like "ıd").
                 Text(currentZoom.label)
-                    .font(.syne(13, weight: .bold))
+                    .font(.inter(13, weight: .bold))
                     .foregroundStyle(Color.nbBlack)
                     .frame(minWidth: 40)
                     .padding(.horizontal, 8)
                     .frame(height: 32)
                     .background(Color.nbWhite)
                     .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .nbShadow(size: 2)
 
                 // Zoom in
                 zoomBtn("+") {
@@ -257,7 +259,8 @@ struct TimelineScrubberView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(showDatePickers ? Color.nbBlack.opacity(0.07) : Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 1.5))
+                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .nbShadow(size: 2)
                 }
                 .buttonStyle(.plain)
             }
@@ -310,6 +313,7 @@ struct TimelineScrubberView: View {
                 .frame(width: 32, height: 32)
                 .background(Color.nbWhite)
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbShadow(size: 2)
         }
         .buttonStyle(.plain)
     }

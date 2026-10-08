@@ -667,23 +667,14 @@ struct SettingsView: View {
         }
     }
 
+    /// The Memphis stripe as a thin band — the nav bar already says SETTINGS, so the old
+    /// 22pt duplicate title (≈52pt tall) is gone.
     private var settingsHeader: some View {
-        ZStack {
-            DiagonalStripeBackground()
-            HStack(spacing: 12) {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.nbAccentLegible)
-                Text("SETTINGS")
-                    .font(.syne(22, weight: .bold))
-                    .foregroundStyle(Color.nbBlack)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
-        }
-        .nbBorder()
-        .padding(.bottom, 16)
+        DiagonalStripeBackground()
+            .frame(height: 12)
+            .nbBorder()
+            .padding(.bottom, 16)
+            .accessibilityHidden(true)
     }
 
     private let accentColors: [(name: String, hex: String)] = [

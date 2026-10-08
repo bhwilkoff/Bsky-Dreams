@@ -629,6 +629,7 @@ enum DiscoverEngine {
 //   BSKY_TEST_HANDLE / BSKY_TEST_PASSWORD  sign in (test account, from tools/test-account.env)
 //   BSKY_START_VIEW                       an AppTab raw value: home, search, notifications, dms, …
 //   BSKY_OPEN_POST                        an at:// post URI to push as a conversation
+//   BSKY_OPEN_PROFILE                     a handle or DID to push as a profile
 #if DEBUG
 enum DebugLaunchDoors {
     @MainActor
@@ -643,6 +644,9 @@ enum DebugLaunchDoors {
         }
         if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
             store.navigationPath.append(PostDestination(uri: uri, post: nil))
+        }
+        if let actor = env["BSKY_OPEN_PROFILE"], !actor.isEmpty {
+            store.navigationPath.append(ProfileDestination(actor: actor))
         }
     }
 }

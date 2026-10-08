@@ -17,6 +17,14 @@ struct FeedItem: Codable, Identifiable {
         let by: ActorProfile?
         let indexedAt: String?
     }
+
+    /// "Reposted by X" when this item is in the feed because someone reposted it —
+    /// without it, a profile or the Following feed shows a stranger's post unexplained.
+    var repostAttribution: String? {
+        guard let by = reason?.by else { return nil }
+        let name = (by.displayName?.isEmpty == false) ? by.displayName! : "@\(by.handle)"
+        return "Reposted by \(name)"
+    }
 }
 
 struct PostSearchResponse: Codable {
