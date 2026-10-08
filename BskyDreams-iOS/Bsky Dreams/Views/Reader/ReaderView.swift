@@ -347,7 +347,7 @@ struct ArticleCardView: View {
             Button(action: onTap) {
                 VStack(alignment: .leading, spacing: 0) {
                     if let thumb = card.thumb, let url = URL(string: thumb) {
-                        AsyncImage(url: url) { phase in
+                        CachedImage(url: url, maxPixelSize: 500) { phase in
                             switch phase {
                             case .success(let img): img.resizable().scaledToFill()
                             default: Color.nbBorder.opacity(0.3)
@@ -406,14 +406,16 @@ struct ArticleCardView: View {
                         .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
                 .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                 Button { toggleLike() } label: {
                     Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                         .font(.inter(12))
-                        .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                        .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
+                    .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
                 .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                 Spacer()

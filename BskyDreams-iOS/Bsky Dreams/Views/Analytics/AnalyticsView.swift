@@ -123,6 +123,7 @@ struct AnalyticsView: View {
         .scrollIndicators(.hidden)
         // When pushed as a navigation destination (initialActor set), show a back button.
         // When shown as the sidebar tab (initialActor nil), show the hamburger.
+        .nbOfflineBanner()
         .nbNavBar(title: "ANALYTICS", leading: {
             if initialActor != nil { NBBackButton() } else { NBHamburger() }
         })

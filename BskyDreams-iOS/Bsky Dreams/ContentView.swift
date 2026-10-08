@@ -532,7 +532,7 @@ struct SidebarChannelButton: View {
                 if channel.unreadCount > 0 {
                     Text("\(channel.unreadCount)")
                         .font(.inter(10, weight: .bold))
-                        .foregroundStyle(Color.nbWhite)
+                        .foregroundStyle(Color(hex: "#0A0A0A"))   // white on lime failed contrast
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.nbLime)

@@ -521,7 +521,7 @@ struct TVVideoCell: View {
             } else {
                 // Inactive cells show a static thumbnail — no player, no audio
                 if let thumb = videoThumbnail, let url = URL(string: thumb) {
-                    AsyncImage(url: url) { phase in
+                    CachedImage(url: url, maxPixelSize: 900) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFit()
                         default: Color.black
@@ -690,7 +690,7 @@ struct TVOverlayView: View {
                         VStack(spacing: 4) {
                             Image(systemName: isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 28))
-                                .foregroundStyle(isLiked ? Color.nbAccent : .white)
+                                .foregroundStyle(isLiked ? Color.nbAccentLegible : .white)
                             Text("\(post.likeCount ?? 0)")
                                 .font(.inter(12))
                                 .foregroundStyle(.white)

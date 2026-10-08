@@ -80,9 +80,9 @@ P3
 ## Remaining iOS backlog (from 2026-10-08 audit)
 - [x] Dynamic Type: reading text → `.scaledSystemFont` (post body, names, bios, chat, actor rows); rule §4.3
 - [x] Dark mode: 41 foreground sites → nbLinkColor / nbAccentLegible (logo keeps raw accent)
-- [ ] Offline banner missing: DMs/Chat, Gallery, TV, Stream, Analytics, Constellation, Timeline
-- [ ] Hand-rolled error states → NBErrorBanner (Feed 285, Gallery 28, DMs 24, Analytics 91)
-- [ ] AsyncImage in churn lists: ImageGridView 57/849/934, Reader 346, TV 518, Stream ×4, Profile 165
+- [x] Offline banner: `.nbOfflineBanner()` on DMs list+chat, Gallery, Analytics, Constellation, Timeline (TV/Stream immersive — intentionally none)
+- [~] Hand-rolled error states → NBErrorBanner: Gallery + DMs done; Feed 285, Analytics 91 remain
+- [x] AsyncImage in churn lists → CachedImage (RetryAsyncImage = feed single image + video thumbs, quoted video, Reader, TV). Stream/Profile banner left (no churn)
 - [x] Background notif fetch never refreshes token; saveDeliveredIDs keeps random 500
 - [x] Notifications getPosts >25 URIs not chunked; loadMore w/o cursor refetches page 1 (also Profile)
 - [x] DMs: optimistic bubble + poll duplicate; poller not cancelled on re-appear
@@ -92,10 +92,10 @@ P3
 - [ ] Heavy main-thread work (MainActor default isolation): compose resize/video read/GIF decode
 - [x] Analytics Retry loads signed-in user instead of viewed account
 - [x] Notification permission prompt on login screen → after sign-in
-- [ ] VoiceOver: video buttons, retry button, gallery like/repost counts, MARK READ trait
-- [ ] Contrast: white on lime (channel badge, repost icon)
+- [x] VoiceOver: video play/fullscreen, retry, gallery+reader like/repost, MARK READ
+- [x] Contrast: white on lime → near-black
 - [x] Dead code removed (-328 lines): test views, stale plist, scrollToTopTrigger ×4, Analytics harness
-- [ ] Share Extension PrivacyInfo.xcprivacy (App Group UserDefaults)
+- [x] Share Extension PrivacyInfo.xcprivacy (verified bundled in .appex)
 - [ ] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
 
 ### Tick 4 — 2026-10-08 — iOS a11y: Dynamic Type for system-font text + dark-mode foregrounds
@@ -105,3 +105,5 @@ P3
 ### Tick 6 — 2026-10-08 — iOS logic bugs: paging, DM dupes, Stream moderation, background notif auth (Stream 1Hz timer kept: documented rotation fallback)
 
 ### Tick 7 — 2026-10-08 — web a11y + states: zoom, link token, contrast, dialog manager, offline banner, visible errors, theme boot (browser smoke ✅)
+
+### Tick 8 — 2026-10-08 — iOS: CachedImage in churn surfaces, offline modifier, error banners, VoiceOver, lime contrast, extension privacy manifest

@@ -66,6 +66,8 @@ struct NotificationsView: View {
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 .contentShape(Rectangle())
                 .onTapGesture { markAllRead() }
+                .accessibilityLabel("Mark all as read")
+                .accessibilityAddTraits(.isButton)
         })
         .task { await load() }
     }
@@ -305,7 +307,8 @@ struct NotificationGroupRowView: View {
 
             Image(systemName: notification.reason.icon)
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                // White on lime is ~1.6:1 — lime badges get fixed near-black.
+                .foregroundStyle(accentColor == .nbLime ? Color(hex: "#0A0A0A") : .white)
                 .padding(4)
                 .background(accentColor)
                 .clipShape(.circle)

@@ -29,18 +29,11 @@ struct GalleryView: View {
                 ProgressView("Loading gallery...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = errorMessage, posts.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Color.nbAccentLegible)
-                    Text(err)
-                        .font(.inter(14))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Button("Retry") { Task { await load() } }
-                        .nbButton()
+                VStack {
+                    NBErrorBanner(message: err, retry: { Task { await load() } })
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 8)
             } else if posts.isEmpty {
                 NBEmptyState(
                     icon: "photo.on.rectangle",
@@ -51,6 +44,7 @@ struct GalleryView: View {
                 cardFeed
             }
         }
+        .nbOfflineBanner()
         .nbNavBar(title: "GALLERY", leading: { NBHamburger() })
         .task {
             if seenURISet.isEmpty {
@@ -153,6 +147,7 @@ struct GalleryView: View {
                 posts = all.filter { seen.insert($0.post.uri).inserted }
             }
         } catch {
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }
@@ -218,15 +213,17 @@ struct GalleryCardView: View {
                             .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
                     .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                     // Like
                     Button { toggleLike() } label: {
                         Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                             .font(.inter(12))
-                            .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                            .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
                     .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                     Spacer()

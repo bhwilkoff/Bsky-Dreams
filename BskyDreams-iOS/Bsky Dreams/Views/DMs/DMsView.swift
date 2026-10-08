@@ -22,18 +22,11 @@ struct DMsView: View {
                 ProgressView("Loading messages...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError, conversations.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 36))
-                        .foregroundStyle(Color.nbAccentLegible)
-                    Text(err)
-                        .font(.inter(14))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Button("Retry") { Task { await loadConversations() } }
-                        .nbButton()
+                VStack {
+                    NBErrorBanner(message: err, retry: { Task { await loadConversations() } })
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 8)
             } else if conversations.isEmpty && requests.isEmpty {
                 emptyState
             } else {
@@ -46,6 +39,7 @@ struct DMsView: View {
                 }
             }
         }
+        .nbOfflineBanner()
         .nbNavBar(title: "MESSAGES", leading: { NBHamburger() }, trailing: {
             Image(systemName: "square.and.pencil")
                 .font(.system(size: 15, weight: .semibold))
@@ -187,6 +181,7 @@ struct DMsView: View {
             }
         } catch {
             if conversations.isEmpty {
+                Haptics.error()
                 loadError = error.localizedDescription
             }
         }
@@ -364,6 +359,7 @@ struct ChatView: View {
             }
             inputBar
         }
+        .nbOfflineBanner()
         .nbNavBar(
             title: isGroup ? (convo.groupName ?? "Group") : (other?.name ?? "Chat"),
             leading: { NBBackButton() },
@@ -539,7 +535,7 @@ struct ChatView: View {
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(canSend ? Color.nbAccent : Color.nbBorder)
+                    .foregroundStyle(canSend ? Color.nbAccentLegible : Color.nbBorder)
             }
             .disabled(!canSend)
             .accessibilityLabel("Send message")
@@ -1047,7 +1043,7 @@ struct NewConversationView: View {
                 Spacer(minLength: 8)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
                     .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? Color.nbAccent : Color.nbTextTertiary)
+                    .foregroundStyle(isSelected ? Color.nbAccentLegible : Color.nbTextTertiary)
             }
             .contentShape(Rectangle())
         }
@@ -1638,7 +1634,7 @@ struct AddPeopleView: View {
                 } else {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
                         .font(.system(size: 20))
-                        .foregroundStyle(isSelected ? Color.nbAccent : Color.nbTextTertiary)
+                        .foregroundStyle(isSelected ? Color.nbAccentLegible : Color.nbTextTertiary)
                 }
             }
             .contentShape(Rectangle())

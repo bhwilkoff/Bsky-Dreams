@@ -710,3 +710,22 @@ extension View {
         modifier(NBScaledSystemFont(size: size, weight: weight, relativeTo: style))
     }
 }
+
+// MARK: - Offline banner as a modifier
+//
+// One line per screen instead of hand-placing NBOfflineBanner in each layout branch
+// (loading/empty/error/content). Pinned under the nav bar as a top safe-area inset,
+// so scrolling content is never covered. Rule §2 (offline state) + §8.2.
+private struct NBOfflineInset: ViewModifier {
+    @Environment(NetworkMonitor.self) private var network
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+            if network.isOffline { NBOfflineBanner() }
+        }
+    }
+}
+
+extension View {
+    /// Shows the lime offline banner above this screen's content while offline.
+    func nbOfflineBanner() -> some View { modifier(NBOfflineInset()) }
+}

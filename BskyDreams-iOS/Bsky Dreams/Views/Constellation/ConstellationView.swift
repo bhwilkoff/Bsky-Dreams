@@ -332,6 +332,7 @@ struct ConstellationView: View {
                 graphCanvas
             }
         }
+        .nbOfflineBanner()
         .nbNavBar(title: "CONSTELLATION", leading: {
             if initialActor != nil { NBBackButton() } else { NBHamburger() }
         })

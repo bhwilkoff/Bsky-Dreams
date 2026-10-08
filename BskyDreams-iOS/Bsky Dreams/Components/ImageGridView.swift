@@ -851,7 +851,7 @@ struct QuotedPostView: View {
     private func quotedVideoThumbnail(_ vid: VideoEmbed) -> some View {
         ZStack {
             if let thumbURL = vid.thumbnail.flatMap({ URL(string: $0) }) {
-                AsyncImage(url: thumbURL) { phase in
+                CachedImage(url: thumbURL, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
                     default: Color.nbBorder.opacity(0.3)
@@ -932,6 +932,7 @@ struct VideoThumbnailView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Full screen")
                 .padding(10)
             } else {
                 // Thumbnail with play button overlay
@@ -962,6 +963,10 @@ struct VideoThumbnailView: View {
                 .onTapGesture {
                     if hasPlayableURL { startPlaying() }
                 }
+                // A tap-gesture ZStack is invisible to VoiceOver without this.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(hasPlayableURL ? "Play video" : "Video unavailable")
+                .accessibilityAddTraits(hasPlayableURL ? .isButton : [])
             }
         }
         // Prevent SwiftUI animation propagation into AVPlayerViewController.
@@ -1020,17 +1025,21 @@ struct VideoThumbnailView: View {
 
 // MARK: - Retry-capable Image loader
 
-/// AsyncImage wrapper with one automatic retry followed by a manual retry button.
+/// CachedImage wrapper with one automatic retry followed by a manual retry button.
 /// The single auto-retry fires after 1.5 s (not on scroll) to avoid Task stutter.
+/// Backs the single-image feed post — the highest-churn image in the app — so it uses
+/// CachedImage (off-main downsample, URL-bound) per design rule 7.1, not AsyncImage.
 struct RetryAsyncImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
+    /// Longest side in points; a feed image is at most ~screen width.
+    var maxPixelSize: CGFloat = 800
 
     @State private var retryCount = 0
     @State private var autoRetried = false
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
+        CachedImage(url: url, maxPixelSize: maxPixelSize) { phase in
             switch phase {
             case .success(let image):
                 if contentMode == .fill {
@@ -1049,6 +1058,7 @@ struct RetryAsyncImage: View {
                                 Image(systemName: "arrow.clockwise")
                                     .foregroundStyle(Color.nbTextTertiary)
                             }
+                            .accessibilityLabel("Retry loading image")
                         )
                 } else {
                     // First failure — auto-retry once after a short delay
@@ -1061,8 +1071,6 @@ struct RetryAsyncImage: View {
                 }
             case .empty:
                 Color.nbBorder.opacity(0.15)
-            @unknown default:
-                Color.nbBorder
             }
         }
         .id(retryCount)

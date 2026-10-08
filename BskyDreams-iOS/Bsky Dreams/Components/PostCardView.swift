@@ -223,7 +223,7 @@ struct PostCardView: View {
             Button { toggleLike() } label: {
                 Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                     .font(.inter(13))
-                    .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                    .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)

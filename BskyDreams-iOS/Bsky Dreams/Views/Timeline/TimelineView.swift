@@ -81,6 +81,7 @@ struct TimelineScrubberView: View {
                 contentArea
             }
         }
+        .nbOfflineBanner()
         .nbNavBar(title: "TIMELINE", leading: { NBHamburger() })
         .alert("Save as Channel", isPresented: $showSaveAlert) {
             TextField("Channel name", text: $channelName)
