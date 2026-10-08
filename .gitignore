@@ -15,6 +15,10 @@ DerivedData/
 *.ipa
 *.xcarchive
 
+# Local Xcode build output (was committed by accident; Xcode Cloud builds from
+# source, so compiled artifacts must never live in the repo).
+build/
+
 # ─── Swift Package Manager ────────────────────────────────────────────────────
 .build/
 .swiftpm/
@@ -66,3 +70,10 @@ claude-epic-status-line/
 *.log
 *.swp
 *.swo
+tools/asc-credentials.env
+AuthKey_*.p8
+*.p12
+__pycache__/
+
+# Local device-testing account (also App Review's) — never commit
+tools/test-account.env

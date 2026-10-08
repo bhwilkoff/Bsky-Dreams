@@ -1,0 +1,493 @@
+#!/usr/bin/env python3
+"""Ship the Apple apps to the App Store end to end — no App Store Connect UI.
+
+    python3 tools/asc_release.py status
+    python3 tools/asc_release.py ship --notes-file whats-new.txt --submit
+    python3 tools/asc_release.py ship --platform ios --dry-run
+
+The full ship is CLI: nobody opens App Store Connect to press Submit. Every trap
+below built and archived GREEN in a shipped app and failed only at submit — read
+them before changing anything here.
+
+WHAT THE UPLOAD DOES NOT DO
+  `appstore-build.yml` uploads a binary. A TestFlight build is NOT an App Store
+  version — they are separate records, and the absence of the second is why
+  submitting "the uploaded build" does nothing. `ship` opens the version.
+
+THE OBVIOUS SUBMIT ENDPOINT IS A TRAP
+  POST /v1/appStoreVersionSubmissions answers
+      403 The resource 'appStoreVersionSubmissions' does not allow 'CREATE'.
+          Allowed operation is: DELETE
+  Deprecated, not broken, and the message never says so. Submitting is three
+  calls: create a `reviewSubmissions`, add the version as a
+  `reviewSubmissionItems`, then PATCH `submitted: true`. Apple's model is a
+  submission CARRYING items, which is why a version cannot be sent alone.
+
+THREE PLATFORMS MEANS THREE SUBMISSIONS
+  tvOS, iOS and macOS ship from one universal target with ONE build number, but
+  Connect keeps a separate appStoreVersion AND a separate reviewSubmission per
+  platform. Hardcoding one platform (filter[platform]=IOS) silently ships one
+  app. Default here is every platform in APP_STORE_PLATFORMS (all three unless
+  the app skipped one).
+
+BUILDS MUST BE FILTERED BY PLATFORM
+  `platform=all` produces three builds sharing one number. Without
+  filter[preReleaseVersion.platform] the first match wins at random and Connect
+  rejects it with "The specified build has a different platform than the
+  version" — which reads like a build problem rather than a query problem.
+
+A WRONG VERSION STRING CANNOT BE DELETED — ONLY RENAMED
+  Connect ACCEPTS a versionString lower than the live one (creation does not
+  enforce ordering — the rejection comes later, at review), and DELETE answers
+      409 STATE_ERROR  Only the first version of any platform can be deleted.
+  So a mistyped version is permanent as a record. It IS renameable while in
+  PREPARE_FOR_SUBMISSION, which is the recovery: PATCH versionString rather
+  than trying to remove it. That is also why `ship` RECONCILES an existing
+  editable version's string to the target instead of leaving it alone.
+
+THE VERSION STRING COMES FROM AppVersion.xcconfig
+  So the App Store version always equals the binary's own
+  CFBundleShortVersionString and the two numbering schemes cannot drift apart.
+
+NO SUBMISSION WITHOUT WHAT'S NEW
+  Apple refuses review without whatsNew — AFTER the version is created and the
+  build attached, leaving half-made versions on every platform. `ship --submit`
+  refuses up front instead.
+
+CONFIG (env wins over tools/app_config.py):
+  ASC_KEY_ID, ASC_ISSUER_ID     the App Store Connect API key (the .p8 lives in
+                                ~/.appstoreconnect/private_keys or ASC_KEY_PATH)
+  APP_BUNDLE                    bundle id of the ONE app record all platforms share
+                                (default: app_config.APPLE_BUNDLE_ID)
+  APP_STORE_PLATFORMS           comma list of what `all` means, e.g. "ios,mac"
+                                (default: tvos,ios,mac)
+"""
+import argparse
+import json
+import os
+import pathlib
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+
+try:
+    import app_config as _cfg          # noqa: E402
+except Exception:                      # pragma: no cover - a template with no config yet
+    _cfg = None
+
+BASE = "https://api.appstoreconnect.apple.com"
+# Bsky Dreams: one iOS app record, no tools/app_config.py.
+BUNDLE = os.environ.get("APP_BUNDLE") or getattr(_cfg, "APPLE_BUNDLE_ID", "") or "app.bskydreams.ios"
+REPO = pathlib.Path(__file__).resolve().parent.parent
+
+ALL_PLATFORMS = {"tvos": "TV_OS", "ios": "IOS", "mac": "MAC_OS"}
+_wanted = [p.strip() for p in os.environ.get("APP_STORE_PLATFORMS", "ios").split(",") if p.strip()]
+_unknown = [p for p in _wanted if p not in ALL_PLATFORMS]
+if _unknown:
+    sys.exit(f"APP_STORE_PLATFORMS has unknown platform(s) {_unknown}; "
+             f"use {', '.join(ALL_PLATFORMS)}")
+PLATFORMS = {k: v for k, v in ALL_PLATFORMS.items() if not _wanted or k in _wanted}
+
+# States in which Connect will let us edit a version's content.
+EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
+            "METADATA_REJECTED", "INVALID_BINARY"}
+# States where the version is already on its way — editable only for release
+# logistics (releaseType), never for reviewable content.
+IN_FLIGHT = {"WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE"}
+
+
+def token():
+    """The ES256 JWT (asc_certs owns it). Imported lazily so --help and the
+    argument checks work on a machine without PyJWT."""
+    from asc_certs import token as _token
+    return _token()
+
+
+class ASCError(RuntimeError):
+    """Apple's REASON is in meta.associatedErrors, which a 400-character cut
+    of the raw JSON never reaches (a 409 that says only "is not in valid
+    state"). Summarize every error and associated error."""
+    def __init__(self, status, body):
+        super().__init__(f"{status}: {self.summarize(body)}")
+        self.status, self.body = status, body
+
+    @staticmethod
+    def summarize(body):
+        try:
+            errs = json.loads(body).get("errors") or []
+        except ValueError:
+            return body[:400]
+        lines = []
+        for e in errs:
+            lines.append(f"{e.get('code')}: {e.get('title')} {e.get('detail') or ''}".strip())
+            assoc = (e.get("meta") or {}).get("associatedErrors") or {}
+            for where, items in assoc.items():
+                for a in items:
+                    lines.append(f"  {where}: {a.get('code')} — {a.get('detail') or a.get('title')}")
+        return "\n".join(lines) or body[:400]
+
+
+def call(path, method="GET", body=None):
+    req = urllib.request.Request(
+        f"{BASE}/{path.lstrip('/')}", method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token()}",
+                 "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            raw = r.read().decode()
+            return json.loads(raw) if raw.strip() else {}
+    except urllib.error.HTTPError as e:
+        raise ASCError(e.code, e.read().decode()) from None
+
+
+def repo_version():
+    """(marketingVersion, buildNumber) from the ONE file that owns them."""
+    text = (REPO / "BskyDreams-iOS" / "Bsky Dreams" / "AppVersion.xcconfig").read_text()
+    mv = re.search(r"^MARKETING_VERSION\s*=\s*(\S+)", text, re.M).group(1)
+    bn = re.search(r"^CURRENT_PROJECT_VERSION\s*=\s*(\S+)", text, re.M).group(1)
+    return mv, bn
+
+
+def app_id():
+    if not BUNDLE or BUNDLE == "com.example.appname":
+        sys.exit("set APP_BUNDLE (or APPLE_BUNDLE_ID in tools/app_config.py) "
+                 "to the app's real bundle id")
+    d = call(f"v1/apps?filter[bundleId]={BUNDLE}")["data"]
+    if not d:
+        sys.exit(f"no app for bundle id {BUNDLE}")
+    return d[0]["id"]
+
+
+def versions(aid, platform):
+    return call(f"v1/apps/{aid}/appStoreVersions?limit=50"
+                f"&filter[platform]={platform}"
+                "&fields[appStoreVersions]=versionString,appStoreState,releaseType")["data"]
+
+
+def find_build(aid, number, platform):
+    """The build with this number ON THIS PLATFORM, or None."""
+    d = call(f"v1/builds?filter[app]={aid}&limit=50"
+             f"&filter[version]={number}"
+             f"&filter[preReleaseVersion.platform]={platform}"
+             "&fields[builds]=version,processingState,expired")["data"]
+    return next((b for b in d if not b["attributes"].get("expired")), None)
+
+
+def upload_state(aid, number, platform):
+    """What the UPLOAD record says about a build the builds list does not show.
+
+    `v1/builds` lists a build only once Apple has finished processing it, so a
+    build still processing — or one Apple failed after "Upload succeeded" —
+    reads as "NOT UPLOADED" there even when it sat in PROCESSING for an hour.
+    The upload record carries the state and Apple's errors."""
+    try:
+        d = call(f"v1/apps/{aid}/buildUploads?limit=50")["data"]
+    except ASCError:
+        return "NOT UPLOADED"
+    for u in d:
+        a = u["attributes"]
+        if a.get("platform") == platform and a.get("cfBundleVersion") == str(number):
+            st = a.get("state") or {}
+            errs = "; ".join(e.get("description") or e.get("code") or str(e)
+                             for e in st.get("errors") or [])
+            return f"{st.get('state', 'UNKNOWN')} (uploaded {a.get('uploadedDate')})" + (
+                f" — {errs}" if errs else "")
+    return "NOT UPLOADED"
+
+
+def attached_build(version_id):
+    try:
+        d = call(f"v1/appStoreVersions/{version_id}/build"
+                 "?fields[builds]=version").get("data")
+        return (d or {}).get("attributes", {}).get("version")
+    except ASCError:
+        return None
+
+
+# ----------------------------------------------------------------- status
+
+def status(aid, build=None):
+    mv, bn = repo_version()
+    # The build a release is SHIPPING, when named: a commit after the upload
+    # moves the repo's number past the build that is actually on Connect.
+    if build:
+        bn = str(build)
+    print(f"repo: {mv} ({bn})\n")
+    pending = []
+    for name, platform in PLATFORMS.items():
+        vs = versions(aid, platform)
+        live = next((v for v in vs if v["attributes"]["appStoreState"] == "READY_FOR_SALE"), None)
+        edit = next((v for v in vs if v["attributes"]["appStoreState"] in EDITABLE | IN_FLIGHT), None)
+        inflight = (edit["attributes"]["versionString"] + " "
+                    + edit["attributes"]["appStoreState"]) if edit else "-"
+        print(f"  {name:5} live={live['attributes']['versionString'] if live else '-':8}"
+              f" in-progress={inflight}")
+        attached = attached_build(edit["id"]) if edit else None
+        # A version already on its way is judged by the build it CARRIES, not
+        # the repo's number: a platform re-uploaded under a new number would
+        # otherwise report the others as missing a build they never needed.
+        if edit and attached and edit["attributes"]["appStoreState"] in IN_FLIGHT:
+            print(f"        submitted with build {attached}")
+            continue
+        b = find_build(aid, bn, platform)
+        bstate = b["attributes"]["processingState"] if b else upload_state(aid, bn, platform)
+        print(f"        build {bn}: {bstate}"
+              + (f"   attached to {attached}" if edit else ""))
+        if bstate != "VALID":
+            pending.append(f"{name} build {bn} {bstate}")
+    # A READ that read everything is a success (reporters never fail). "Not
+    # uploaded" before a build and "PROCESSING" just after one are the normal
+    # states of a release; exiting 1 on them turns a status check red and ends
+    # a `bash -e` summary step. Say it instead.
+    if pending:
+        print(f"\n::warning::not ready to attach yet: {'; '.join(pending)}")
+    return 0
+
+
+# ----------------------------------------------------------------- ship
+
+def editable_version(aid, platform, create, dry):
+    """The version being PREPARED — never the one already live."""
+    vs = versions(aid, platform)
+    for v in vs:
+        if v["attributes"]["appStoreState"] in EDITABLE:
+            have = v["attributes"]["versionString"]
+            print(f"    using existing {have} ({v['attributes']['appStoreState']})")
+            # RECONCILE the string. An editable version left at an older number
+            # would ship carrying a binary whose CFBundleShortVersionString says
+            # something else. Renaming is also the only way to correct a
+            # mistyped version, since it cannot be deleted.
+            if have != create and not dry:
+                call(f"v1/appStoreVersions/{v['id']}", method="PATCH", body={"data": {
+                    "type": "appStoreVersions", "id": v["id"],
+                    "attributes": {"versionString": create}}})
+                print(f"    renamed {have} -> {create}")
+                v["attributes"]["versionString"] = create
+            elif have != create:
+                print(f"    would rename {have} -> {create}")
+            return v
+    inflight = next((v for v in vs if v["attributes"]["appStoreState"] in IN_FLIGHT), None)
+    if inflight:
+        print(f"    already {inflight['attributes']['appStoreState']} at "
+              f"{inflight['attributes']['versionString']} — nothing to do")
+        return None
+    live = [v["attributes"]["versionString"] for v in vs
+            if v["attributes"]["appStoreState"] == "READY_FOR_SALE"]
+    if dry:
+        print(f"    would CREATE version {create} (live: {live[:3]})")
+        return None
+    # AFTER_APPROVAL by default: an approved-but-unreleased version waiting for
+    # someone to press a button is a silent stall.
+    made = call("v1/appStoreVersions", method="POST", body={"data": {
+        "type": "appStoreVersions",
+        "attributes": {"platform": platform, "versionString": create,
+                       "releaseType": "AFTER_APPROVAL"},
+        "relationships": {"app": {"data": {"type": "apps", "id": aid}}}}})
+    print(f"    created {create} (AFTER_APPROVAL)")
+    return made["data"]
+
+
+def set_notes(version_id, notes, locale, dry):
+    locs = call(f"v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=50")["data"]
+    loc = next((l for l in locs if l["attributes"]["locale"] == locale), None)
+    if loc is None:
+        print(f"    !! locale {locale} absent; have "
+              f"{[l['attributes']['locale'] for l in locs]}")
+        return False
+    if dry:
+        print(f"    would set What's New ({len(notes)} chars)")
+        return True
+    call(f"v1/appStoreVersionLocalizations/{loc['id']}", method="PATCH", body={"data": {
+        "type": "appStoreVersionLocalizations", "id": loc["id"],
+        "attributes": {"whatsNew": notes}}})
+    print("    set What's New")
+    return True
+
+
+def await_build(aid, number, platform, minutes):
+    """Block until Apple finishes processing `number`, or give up saying so.
+
+    Uploading and submitting are one act performed by one agent, but Apple
+    puts ten to thirty minutes of processing between them, and `attach`
+    refuses a build that is not VALID. Without this, every release ends with
+    a human re-running the submit later — the manual step this tool removes.
+    """
+    if minutes <= 0:
+        return
+    deadline = time.time() + minutes * 60
+    seen = None
+    while time.time() < deadline:
+        b = find_build(aid, number, platform)
+        state = b["attributes"]["processingState"] if b else "not uploaded yet"
+        if b and state == "VALID":
+            print(f"    build {number} is VALID")
+            return
+        if state != seen:
+            print(f"    waiting for build {number} on {platform}: {state}")
+            seen = state
+        time.sleep(60)
+    print(f"    !! build {number} still not VALID after {minutes} min")
+
+
+def attach(aid, version_id, number, platform, dry):
+    b = find_build(aid, number, platform)
+    if b is None:
+        print(f"    !! build {number} not uploaded for {platform}")
+        return False
+    state = b["attributes"]["processingState"]
+    if state != "VALID":
+        # Attaching a build Apple has not finished processing fails with a
+        # confusing relationship error rather than "still processing".
+        print(f"    !! build {number} is {state}, not VALID — wait and re-run")
+        return False
+    if dry:
+        print(f"    would attach build {number}")
+        return True
+    call(f"v1/appStoreVersions/{version_id}/relationships/build", method="PATCH",
+         body={"data": {"type": "builds", "id": b["id"]}})
+    print(f"    attached build {number}")
+    return True
+
+
+def submit(aid, version_id, platform, dry):
+    """The three-call flow. See the module docstring for why not the obvious one."""
+    open_states = {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW", "UNRESOLVED_ISSUES"}
+    existing = call(f"v1/reviewSubmissions?filter[app]={aid}"
+                    f"&filter[platform]={platform}&limit=50")["data"]
+    sub = next((r for r in existing if r["attributes"].get("state") in open_states), None)
+    if sub and sub["attributes"]["state"] != "READY_FOR_REVIEW":
+        print(f"    already {sub['attributes']['state']} — nothing to submit")
+        return True
+    if dry:
+        print("    would submit for review (create submission, add item, PATCH submitted)")
+        return True
+    if sub is None:
+        sub = call("v1/reviewSubmissions", method="POST", body={"data": {
+            "type": "reviewSubmissions",
+            "attributes": {"platform": platform},
+            "relationships": {"app": {"data": {"type": "apps", "id": aid}}}}})["data"]
+        print(f"    opened review submission {sub['id']}")
+    items = call(f"v1/reviewSubmissions/{sub['id']}/items?limit=50")["data"]
+    already = any((i.get("relationships", {}).get("appStoreVersion", {}).get("data") or {})
+                  .get("id") == version_id for i in items)
+    if not already:
+        call("v1/reviewSubmissionItems", method="POST", body={"data": {
+            "type": "reviewSubmissionItems",
+            "relationships": {
+                "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub["id"]}},
+                "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}}}})
+        print("    added the version as a submission item")
+    call(f"v1/reviewSubmissions/{sub['id']}", method="PATCH", body={"data": {
+        "type": "reviewSubmissions", "id": sub["id"],
+        "attributes": {"submitted": True}}})
+    print("    SUBMITTED FOR REVIEW")
+    return True
+
+
+def resolve_notes(args):
+    notes = args.notes
+    if args.notes_file:
+        notes = pathlib.Path(args.notes_file).read_text()
+    return (notes or "").strip()
+
+
+def ship(aid, args):
+    mv, bn = repo_version()
+    version = args.version or mv
+    number = args.build or bn
+    notes = resolve_notes(args)
+    targets = list(PLATFORMS) if args.platform == "all" else [args.platform]
+    print(f"shipping {version} (build {number}) to: {', '.join(targets)}"
+          + ("   [DRY RUN]" if args.dry_run else "") + "\n")
+
+    failed = []
+    skipped = []
+    for name in targets:
+        platform = ALL_PLATFORMS[name]
+        print(f"  {name}")
+        try:
+            ver = editable_version(aid, platform, version, args.dry_run)
+            if ver is None:
+                skipped.append(name)
+                continue
+            if not args.dry_run:
+                await_build(aid, number, platform, args.wait_build_minutes)
+            ok = attach(aid, ver["id"], number, platform, args.dry_run)
+            if notes:
+                ok = set_notes(ver["id"], notes, args.locale, args.dry_run) and ok
+            if args.release_type and not args.dry_run:
+                call(f"v1/appStoreVersions/{ver['id']}", method="PATCH", body={"data": {
+                    "type": "appStoreVersions", "id": ver["id"],
+                    "attributes": {"releaseType": args.release_type}}})
+                print(f"    release type -> {args.release_type}")
+            if not ok:
+                failed.append(name)
+                print("    stopping here for this platform — not submitting an "
+                      "incomplete version")
+                continue
+            if args.submit:
+                submit(aid, ver["id"], platform, args.dry_run)
+            else:
+                print("    prepared; pass --submit to send it for review")
+        except ASCError as e:
+            failed.append(name)
+            print(f"    !! {e}")
+    if failed:
+        print(f"\nFAILED: {', '.join(failed)}")
+        return 1
+    if skipped:
+        # A version already on its way is not a failure of THIS run (reporters
+        # never fail): the build it was asked for is uploaded, and the next
+        # version ships once Apple answers. A red X here reads as a broken
+        # release when it is doing exactly what it should.
+        print(f"\n::warning::nothing to submit for {', '.join(skipped)} — a version is "
+              f"already waiting for review; ship again once it is live or cancel it first")
+    print("\nall requested platforms done")
+    return 0
+
+
+def build_parser():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("mode", choices=["status", "ship"])
+    ap.add_argument("--platform", default="all", choices=["all", *PLATFORMS])
+    ap.add_argument("--version", help="App Store version string (default: MARKETING_VERSION)")
+    ap.add_argument("--build", help="build number to attach (default: CURRENT_PROJECT_VERSION)")
+    ap.add_argument("--notes", help="What's New text")
+    ap.add_argument("--notes-file", help="read What's New from a file")
+    ap.add_argument("--locale", default="en-US")
+    ap.add_argument("--release-type", choices=["AFTER_APPROVAL", "MANUAL", "SCHEDULED"])
+    ap.add_argument("--submit", action="store_true",
+                    help="actually send for review (without it the version is only prepared)")
+    ap.add_argument("--wait-build-minutes", type=int, default=0,
+                    help="poll until the build finishes processing before attaching "
+                         "(0 = do not wait)")
+    ap.add_argument("--dry-run", action="store_true")
+    return ap
+
+
+def main(argv=None):
+    a = build_parser().parse_args(argv)
+
+    # Checked BEFORE any network call: Apple refuses review without whatsNew
+    # only after the versions are created and the builds attached.
+    if a.mode == "ship" and a.submit and not resolve_notes(a):
+        print("refusing to submit without What's New (--notes / --notes-file)",
+              file=sys.stderr)
+        return 1
+
+    for var in ("ASC_KEY_ID", "ASC_ISSUER_ID"):
+        if not os.environ.get(var):
+            sys.exit(f"set {var} (see tools/asc-credentials.env)")
+
+    aid = app_id()
+    return status(aid, a.build) if a.mode == "status" else ship(aid, a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

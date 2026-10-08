@@ -9,6 +9,10 @@ struct GalleryView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @State private var seenURISet: Set<String> = []
+    /// URIs marked seen this session. A reference type on purpose: cards insert into
+    /// it without invalidating every card (the value-type snapshot never learned of
+    /// inserts, so a card scrolled back into view inserted a duplicate SeenPost).
+    @State private var markedSeen = SeenURIBox()
 
     @State private var posts: [FeedItem] = []
     @State private var timelineCursor: String?
@@ -18,7 +22,6 @@ struct GalleryView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
-    @State private var scrollToTopTrigger = 0
 
     var body: some View {
         Group {
@@ -26,28 +29,22 @@ struct GalleryView: View {
                 ProgressView("Loading gallery...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = errorMessage, posts.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Color.nbAccent)
-                    Text(err)
-                        .font(.inter(14))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Button("Retry") { Task { await load() } }
-                        .nbButton()
+                VStack {
+                    NBErrorBanner(message: err, retry: { Task { await load() } })
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 8)
             } else if posts.isEmpty {
-                ContentUnavailableView(
-                    "No Image Posts",
-                    systemImage: "photo.stack",
-                    description: Text("Pull to refresh or check back later.")
+                NBEmptyState(
+                    icon: "photo.on.rectangle",
+                    title: "No photos yet",
+                    message: "Image posts from your feeds will show up here."
                 )
             } else {
                 cardFeed
             }
         }
+        .nbOfflineBanner()
         .nbNavBar(title: "GALLERY", leading: { NBHamburger() })
         .task {
             if seenURISet.isEmpty {
@@ -66,7 +63,7 @@ struct GalleryView: View {
             LazyVStack(spacing: 0) {
                 Color.clear.frame(height: 0).id("gallery-top")
                 ForEach(posts) { item in
-                    GalleryCardView(post: item.post, seenURIs: seenURISet)
+                    GalleryCardView(post: item.post, seenURIs: seenURISet, markedSeen: markedSeen)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .onAppear {
@@ -88,9 +85,6 @@ struct GalleryView: View {
             timelineCursor = nil
             discoverCursor = nil
             await load()
-        }
-        .onChange(of: scrollToTopTrigger) { _, _ in
-            withAnimation { proxy.scrollTo("gallery-top", anchor: .top) }
         }
         }
     }
@@ -153,6 +147,7 @@ struct GalleryView: View {
                 posts = all.filter { seen.insert($0.post.uri).inserted }
             }
         } catch {
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }
@@ -160,14 +155,19 @@ struct GalleryView: View {
 
 // MARK: - Gallery Card
 
+final class SeenURIBox { var uris = Set<String>() }
+
 struct GalleryCardView: View {
     let post: PostView
     let seenURIs: Set<String>
+    let markedSeen: SeenURIBox
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @State private var isLiked: Bool = false
+    @State private var likeURI: String?
+    @State private var repostURI: String?
     @State private var likeCount: Int = 0
     @State private var isReposted: Bool = false
     @State private var repostCount: Int = 0
@@ -213,15 +213,17 @@ struct GalleryCardView: View {
                             .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
                     .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                     // Like
                     Button { toggleLike() } label: {
                         Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                             .font(.inter(12))
-                            .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                            .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
                     .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                     Spacer()
@@ -266,7 +268,7 @@ struct GalleryCardView: View {
             } else {
                 LazyVGrid(columns: [.init(.flexible(), spacing: 2), .init(.flexible(), spacing: 2)], spacing: 2) {
                     ForEach(Array(images.prefix(4).enumerated()), id: \.element.id) { index, img in
-                        AsyncImage(url: URL(string: img.fullsize)) { phase in
+                        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 200) { phase in
                             switch phase {
                             case .success(let i): i.resizable().scaledToFill()
                             default: Color.nbBorder.opacity(0.3)
@@ -288,7 +290,7 @@ struct GalleryCardView: View {
     }
 
     private func singleImage(_ img: EmbedImage, allImages: [EmbedImage]) -> some View {
-        AsyncImage(url: URL(string: img.fullsize)) { phase in
+        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 400) { phase in
             switch phase {
             case .success(let i):
                 i.resizable().scaledToFit()
@@ -297,6 +299,7 @@ struct GalleryCardView: View {
                     .frame(height: 200)
             }
         }
+        .accessibilityHidden(!img.alt.isEmpty)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .bottomLeading) {
             if !img.alt.isEmpty {
@@ -317,12 +320,14 @@ struct GalleryCardView: View {
     }
 
     private func markSeen() {
-        guard !seenURIs.contains(post.uri) else { return }
+        guard !seenURIs.contains(post.uri), markedSeen.uris.insert(post.uri).inserted else { return }
         modelContext.insert(SeenPost(uri: post.uri, likeCount: post.likeCount ?? 0, repostCount: post.repostCount ?? 0))
     }
 
     private func syncState() {
         isLiked = post.viewer?.like != nil
+        likeURI = post.viewer?.like
+        repostURI = post.viewer?.repost
         likeCount = post.likeCount ?? 0
         isReposted = post.viewer?.repost != nil
         repostCount = post.repostCount ?? 0
@@ -336,14 +341,10 @@ struct GalleryCardView: View {
         likeCount += isLiked ? 1 : -1
         Task {
             do {
-                if wasLiked, let likeUri = post.viewer?.like {
-                    try await ATProtocolClient.shared.unlikePost(likeUri: likeUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.likePost(uri: post.uri, cid: post.cid, did: did)
-                }
+                likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
             } catch {
-                isLiked = wasLiked
-                likeCount = prevCount
+                isLiked = wasLiked; likeCount = prevCount
+                store.showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.")
             }
         }
     }
@@ -356,14 +357,10 @@ struct GalleryCardView: View {
         repostCount += isReposted ? 1 : -1
         Task {
             do {
-                if wasReposted, let repostUri = post.viewer?.repost {
-                    try await ATProtocolClient.shared.unrepost(repostUri: repostUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.repost(uri: post.uri, cid: post.cid, did: did)
-                }
+                repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
             } catch {
-                isReposted = wasReposted
-                repostCount = prevCount
+                isReposted = wasReposted; repostCount = prevCount
+                store.showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.")
             }
         }
     }

@@ -15,8 +15,12 @@ Bsky Dreams is a custom client for the [BlueSky](https://bsky.app) social networ
 
 Both platforms share the same design language, the same AT Protocol integration, and the same core feature set — with platform-appropriate implementation choices.
 
-**Web app:** [https://bskydreams.com](https://bskydreams.com) — runs entirely in your browser, no install needed
-**iOS app:** Native SwiftUI app, currently in development / TestFlight
+| | |
+|---|---|
+| **Web app** | [bskydreams.com](https://bskydreams.com) — open in any browser, no install |
+| **iOS app** | [Download on the App Store](https://apps.apple.com/us/app/bsky-dreams/id6760909675) — native SwiftUI, iPhone |
+
+Both are free to use. Sign in with a [BlueSky App Password](https://bsky.app/settings/app-passwords) — your credentials never leave your device.
 
 ---
 
@@ -75,7 +79,9 @@ A zero-cost, zero-server, zero-dependency interface. Runs as a static file — n
 | Sync | AT Protocol user repo |
 | Hosting | GitHub Pages — free, automatic, no CI config |
 
-**Running locally:**
+**Just want to use it?** Visit [bskydreams.com](https://bskydreams.com) — no install, no account beyond your BlueSky credentials.
+
+**Running a local copy:**
 
 ```bash
 open index.html
@@ -85,7 +91,7 @@ python3 -m http.server 8080
 
 No installation required. The only third-party services called at runtime are `bsky.social`, `api.bsky.chat`, `api.klipy.com` (GIF picker), and `api.allorigins.win` (OG link preview only).
 
-**Deploying your own copy:**
+**Deploying your own fork:**
 
 1. Fork this repository
 2. Go to **Settings → Pages** — set source to branch `main`, folder `/`
@@ -123,7 +129,9 @@ BskyDreams-iOS/
 | Video | AVPlayer + HLS (single shared instance per TV session) |
 | Fonts | Syne + Inter (loaded from bundle, registered in Info.plist) |
 
-**Running locally:**
+**Just want to use it?** [Download on the App Store](https://apps.apple.com/us/app/bsky-dreams/id6760909675) — free, no account beyond your BlueSky credentials.
+
+**Building from source:**
 
 Open `BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj` in Xcode, select an iOS 17+ simulator or device, and press Run. No dependencies to install.
 
@@ -137,24 +145,28 @@ Both platforms implement the same core feature set. Platform-specific implementa
 |---|:---:|:---:|
 | Auth (app password, session persistence) | ✅ | ✅ |
 | Home feed — Following + Discover tabs | ✅ | ✅ |
+| Hybrid feeds — multi-source merging + trending score | ✅ | ✅ |
 | Seen-post deduplication with session bypass | ✅ | ✅ |
 | Cross-device seen-post sync (AT Protocol repo) | ✅ | ✅ |
+| NSFW content filtering | ✅ | ✅ |
 | Compose — rich text, images, video, GIF, link preview | ✅ | ✅ |
 | Post settings — threadgate / postgate | ✅ | ✅ |
 | @mention autocomplete | ✅ | ✅ |
 | Conversation view — depth-colored nesting | ✅ | ✅ |
 | Inline reply compose | ✅ | ✅ |
 | Quote post | ✅ | ✅ |
-| Profile view — feed, follow/unfollow, report | ✅ | ✅ |
+| Profile view — feed, follow/unfollow, mute/block, report | ✅ | ✅ |
 | Search — full-text, advanced filters | ✅ | ✅ |
 | Saved channels — persist and sync | ✅ | ✅ |
 | Notifications — type-coded, unread badge, tap navigation | ✅ | ✅ |
 | Direct messages + new conversation | ✅ | ✅ |
 | Gallery — image card feed, lightbox | ✅ | ✅ |
-| Lightbox — download image | ✅ | ✅ |
+| Lightbox — pinch-to-zoom, paging, download | ✅ | ✅ |
 | Dark mode | ✅ | ✅ |
 | TV — TikTok-style video feed, topic selector, 2× speed | ✅ | ✅ |
+| Inline video fullscreen | — | ✅ |
 | Reader — Direct / Readable / Archive modes | ✅ | ✅ |
+| Stream — full-screen post slideshow | ✅ | ✅ |
 | Network Constellation — force-graph visualization | ✅ | ✅ |
 | Timeline scrubber — horizontal time-offset view | ✅ | ✅ |
 | Settings — accent color, default feed, clear history | ✅ | ✅ |
@@ -168,7 +180,7 @@ Both platforms implement the same core feature set. Platform-specific implementa
 
 ### Reading & Discovery
 
-**Home Feed** — Following and Discover tabs, infinite scroll, pull-to-refresh. Seen-post deduplication ensures the same post doesn't appear across TV, Gallery, and the feed simultaneously. Content filters (Politics, Sports, Entertainment) with free-text keyword blocking sync to your AT Protocol repo.
+**Home Feed** — Following and Discover tabs, infinite scroll, pull-to-refresh. Each tab merges multiple AT Protocol feeds in parallel and ranks by a trending score, surfacing the best content from your network without bubbling the same posts repeatedly. Seen-post deduplication ensures the same post doesn't appear across TV, Gallery, and the feed simultaneously. Content filters (Politics, Sports, Entertainment) with free-text keyword blocking sync to your AT Protocol repo.
 
 **Conversations** — Root-first navigation; depth-colored left borders (8 cycling colors); "Continue this conversation →" at depth 4; inline reply compose that keeps context visible.
 
@@ -190,9 +202,11 @@ Both platforms implement the same core feature set. Platform-specific implementa
 
 **Lightbox** — Pinch-to-zoom anchored at your fingers (not screen center), single-finger pan when zoomed, swipe left/right to page through images in a set, swipe up/down to dismiss. Download button saves to camera roll (iOS) or browser download (web). Alt text overlay with scrollable content. Animated dot series indicator.
 
-**TV** — Fullscreen TikTok-style video browsing. Two-slot slide system for seamless transitions. 2× speed on hold. Adult content filter.
+**TV** — Fullscreen TikTok-style video browsing. Merges multiple video feeds including Bluesky's official trending video source. Two-slot slide system for seamless transitions. 2× speed on hold. Adult content filter.
 
-**Reader** — Article cards from links in your feed. Three modes: Direct (in-app browser), Readable (extracted article text), Archive (Wayback Machine). Seen tracking persists across sessions.
+**Reader** — Article cards from links in your feed, including a verified news feed source. Three modes: Direct (in-app browser), Readable (extracted article text), Archive (Wayback Machine). Seen tracking filters articles you've already viewed in the home feed.
+
+**Stream** — Full-screen post slideshow that auto-advances through your feed. Configurable duration, content filters, and background colors. Conversation overlay lets you read and reply without leaving the stream.
 
 ### Direct Messages
 

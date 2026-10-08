@@ -27,6 +27,7 @@ struct ComposeView: View {
     var quotePost: PostView? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var auth
+    @Environment(AppStore.self) private var store
 
     @State private var text: String
     @State private var images: [ComposeImage]
@@ -103,6 +104,7 @@ struct ComposeView: View {
                         HStack(alignment: .top) {
                             AnimatedGifView(url: gif.uri, contentMode: .scaleAspectFit)
                                 .frame(maxWidth: .infinity, maxHeight: 160)
+                                .clipped()
                                 .nbBorder()
 
                             Button {
@@ -113,6 +115,7 @@ struct ComposeView: View {
                                     .background(Color.nbBorder)
                                     .nbBorder()
                             }
+                            .accessibilityLabel("Remove GIF")
                         }
                     }
 
@@ -155,7 +158,11 @@ struct ComposeView: View {
             guard let item else { return }
             Task { await loadVideo(from: item) }
         }
-        .onChange(of: text) { _, newText in
+        .onChange(of: text) { oldText, newText in
+            // Warn (once) the moment the post crosses past the character limit.
+            if newText.count > maxLength && oldText.count <= maxLength {
+                Haptics.warning()
+            }
             // Auto-detect first URL in text and immediately fetch the link card
             if linkEmbed == nil, !showLinkInput {
                 if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue),
@@ -180,8 +187,16 @@ struct ComposeView: View {
             }
         }
         .sheet(isPresented: $showGifPicker) {
-            GifPickerView { gifUrl, thumbUrl in
-                gifEmbed = ExternalCard(uri: gifUrl, title: "GIF", description: "", thumb: thumbUrl.isEmpty ? nil : thumbUrl)
+            GifPickerView { gif in
+                // Build the Klipy embed the official Bluesky app parses for animation.
+                // The jpg still is set as `thumb`; the post() flow uploads it as a blob
+                // (mirroring the link-preview thumb upload) so non-GIF clients show a card.
+                gifEmbed = ExternalCard(
+                    uri: gif.blueskyEmbedURI,
+                    title: gif.title,
+                    description: "ALT: \(gif.title)",
+                    thumb: gif.jpgUrl.isEmpty ? nil : gif.jpgUrl
+                )
                 showGifPicker = false
             }
         }
@@ -259,6 +274,7 @@ struct ComposeView: View {
                     .foregroundStyle((images.count >= 4 || composeVideo != nil) ? Color.nbBorder : Color.nbBlue)
             }
             .disabled(images.count >= 4 || composeVideo != nil)
+            .accessibilityLabel("Attach image")
 
             // Video picker — disabled when images are attached
             PhotosPicker(
@@ -269,24 +285,27 @@ struct ComposeView: View {
                     .foregroundStyle((!images.isEmpty || composeVideo != nil) ? Color.nbBorder : Color.nbBlue)
             }
             .disabled(!images.isEmpty || composeVideo != nil)
+            .accessibilityLabel("Attach video")
 
             Button {
                 showLinkInput.toggle()
             } label: {
                 Image(systemName: "link")
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
             }
+            .accessibilityLabel("Attach link")
 
             Button {
                 showGifPicker = true
             } label: {
                 Text("GIF")
                     .font(.syne(11, weight: .bold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
+            .accessibilityLabel("Attach GIF")
 
             Spacer()
         }
@@ -315,6 +334,7 @@ struct ComposeView: View {
                                 .clipShape(.circle)
                         }
                         .offset(x: 4, y: -4)
+                        .accessibilityLabel("Remove image")
                     }
                 }
             }
@@ -357,6 +377,7 @@ struct ComposeView: View {
                     .background(Color.nbBorder)
                     .nbBorder()
             }
+            .accessibilityLabel("Remove link")
         }
     }
 
@@ -417,6 +438,7 @@ struct ComposeView: View {
                     .background(Color.nbBorder)
                     .nbBorder()
             }
+            .accessibilityLabel("Remove video")
         }
     }
 
@@ -424,6 +446,11 @@ struct ComposeView: View {
 
     private func loadImages(from items: [PhotosPickerItem]) async {
         for item in items {
+            guard images.count < 4 else {
+                // Hit the 4-image limit — warn and stop adding more.
+                Haptics.warning()
+                break
+            }
             if let data = try? await item.loadTransferable(type: Data.self) {
                 let resized = ComposeImage.resizeImageData(data)
                 images.append(ComposeImage(imageData: resized))
@@ -537,7 +564,6 @@ struct ComposeView: View {
         let capturedLinkEmbed = linkEmbed
         let capturedQuotePost = quotePost
 
-        let facets = buildFacets(from: capturedText)
         let replyRef: PostReplyRef? = replyTo.map { parent in
             let root = parent.record.reply?.root ?? StrongRef(uri: parent.uri, cid: parent.cid)
             return PostReplyRef(root: root, parent: StrongRef(uri: parent.uri, cid: parent.cid))
@@ -583,11 +609,17 @@ struct ComposeView: View {
                     videoAlt: videoAlt,
                     linkEmbed: effectiveLinkEmbed,
                     quoteUri: capturedQuotePost?.uri,
-                    quoteCid: capturedQuotePost?.cid,
-                    facets: facets
+                    quoteCid: capturedQuotePost?.cid
                 )
+                Haptics.success()
             } catch {
-                // Sheet is already dismissed — notify the user via a local notification
+                Haptics.error()
+                // The sheet is gone: keep the post so the in-app banner can reopen it.
+                store.failedPost = AppStore.FailedPost(text: capturedText, images: capturedImages,
+                                                       video: capturedVideo, quote: capturedQuotePost,
+                                                       reason: error.localizedDescription)
+                // Also notify if the user has already left the app.
+                guard UIApplication.shared.applicationState != .active else { return }
                 let content = UNMutableNotificationContent()
                 content.title = "Post failed"
                 content.body = error.localizedDescription
@@ -597,29 +629,6 @@ struct ComposeView: View {
             }
         }
     }
-
-    private func buildFacets(from text: String) -> [[String: Any]] {
-        var facets: [[String: Any]] = []
-
-        // Detect URLs
-        let types: NSTextCheckingResult.CheckingType = [.link]
-        if let detector = try? NSDataDetector(types: types.rawValue) {
-            let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
-            for match in matches {
-                guard let range = Range(match.range, in: text), let url = match.url else { continue }
-                let preSlice = String(text[text.startIndex..<range.lowerBound])
-                let byteStart = Array(preSlice.utf8).count
-                let matchSlice = String(text[range])
-                let byteEnd = byteStart + Array(matchSlice.utf8).count
-                facets.append([
-                    "index": ["byteStart": byteStart, "byteEnd": byteEnd],
-                    "features": [["$type": "app.bsky.richtext.facet#link", "uri": url.absoluteString]]
-                ])
-            }
-        }
-
-        return facets
-    }
 }
 
 // MARK: - GIF Picker (Klipy)
@@ -627,7 +636,7 @@ struct ComposeView: View {
 private let klipyKey = "g1rqkiKBPyzWEydf5K3syROxIGAFxusrnd6yD5Dj2TT8C8U3k9dtTD7qlClmHdNz"
 
 struct GifPickerView: View {
-    let onSelect: (String, String) -> Void  // (gifUrl, thumbUrl)
+    let onSelect: (KlipyGif) -> Void  // full GIF so callers can build the animated embed
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -675,7 +684,7 @@ struct GifPickerView: View {
                         LazyVGrid(columns: columns, spacing: 4) {
                             ForEach(gifs.isEmpty ? trendingGifs : gifs) { gif in
                                 GifThumbnailView(gif: gif) {
-                                    onSelect(gif.gifUrl, gif.thumbUrl)
+                                    onSelect(gif)
                                     dismiss()
                                 }
                             }
@@ -755,6 +764,9 @@ struct GifThumbnailView: View {
                         .padding(4)
                 }
                 .nbBorder()
+                // Make the whole cell tappable regardless of the embedded
+                // UIViewRepresentable's own measured size.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -776,12 +788,21 @@ struct AnimatedGifView: UIViewRepresentable {
         let iv = UIImageView()
         iv.contentMode = contentMode
         iv.clipsToBounds = true
+        // Let the SwiftUI frame win — without low priorities the UIImageView imposes the
+        // image's intrinsic size and a large GIF blows past .frame(maxHeight:).
+        iv.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        iv.setContentHuggingPriority(.defaultLow, for: .vertical)
+        iv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        iv.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return iv
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {
         uiView.contentMode = contentMode
-        guard let gifURL = URL(string: url) else { return }
+        // Strip the Bluesky GIF-parser query (?hh=&ww=&mp4=&webm=) so the CDN serves the
+        // raw .gif; those params are embed metadata, not part of the file.
+        let bare = url.components(separatedBy: "?").first ?? url
+        guard let gifURL = URL(string: bare) else { return }
         context.coordinator.load(gifURL, placeholderUrl: placeholderUrl, into: uiView)
     }
 
@@ -853,10 +874,20 @@ struct AnimatedGifView: UIViewRepresentable {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return ([], []) }
             let count = CGImageSourceGetCount(source)
             guard count > 1 else { return ([], []) }  // single frame = not animated
+            // Decode DOWNSAMPLED frames (cap the long side) instead of full-resolution.
+            // A multi-frame 498px GIF fully decoded is ~10s + heavy memory; thumbnailing
+            // through ImageIO is fast and a GIF preview never needs more than a few hundred px.
+            let thumbOpts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 400 * UIScreen.main.scale
+            ]
             var images: [UIImage] = []
             var delays: [Double] = []
             for i in 0..<count {
-                guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+                guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, i, thumbOpts as CFDictionary)
+                        ?? CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
                 images.append(UIImage(cgImage: cgImage))
                 let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any]
                 let gifProps = props?[kCGImagePropertyGIFDictionary as String] as? [String: Any]
@@ -872,28 +903,65 @@ struct AnimatedGifView: UIViewRepresentable {
 
 struct KlipyGif: Identifiable {
     let id: String       // slug — always a string, unlike the numeric id field
-    let title: String
-    let gifUrl: String   // sm.gif.url — posted as app.bsky.embed.external
-    let thumbUrl: String // xs.gif.url — small animated GIF for grid thumbnails
-    let thumbJpgUrl: String // xs.jpg.url — static JPEG placeholder while GIF loads
+    let title: String    // alt text used for the embed
+    let gifUrl: String   // embed-size gif.url — base file the post embed points at
+    let gifWidth: Int    // embed-size width  (ww= in the Bluesky embed URI)
+    let gifHeight: Int   // embed-size height (hh= in the Bluesky embed URI)
+    let mp4Url: String   // embed-size mp4.url — slug extracted for mp4= param
+    let webmUrl: String  // embed-size webm.url — slug extracted for webm= param
+    let jpgUrl: String   // embed-size jpg.url — uploaded as the thumb blob + shown on cards
+    let thumbUrl: String // xs.gif.url — small animated GIF for grid thumbnails in the picker
+    let thumbJpgUrl: String // xs.jpg.url — static JPEG placeholder while the grid GIF loads
 
     init?(item: KlipyItem) {
-        guard let slug = item.slug,
-              // Prefer sm GIF for the embed; fall back to md or xs
-              let gifUrl = item.file?.sm?.gif?.url
-                        ?? item.file?.md?.gif?.url
-                        ?? item.file?.xs?.gif?.url,
-              // xs GIF for animated thumbnails in the grid
-              let thumbUrl = item.file?.xs?.gif?.url
-                          ?? item.file?.sm?.gif?.url
+        guard let slug = item.slug else { return nil }
+        // Prefer the sm size (~220px) for the embed: GIFs are inherently low-res, sm
+        // is parser-valid for Bluesky (same static.klipy.com/ii path), and it keeps our
+        // own decode/render fast — md (498px) made the compose preview and feed hang for
+        // ~10s decoding full-res frames. Fall back to md then xs. All sub-format urls
+        // share the same size's path prefix — only the filename/extension differs.
+        let sizes: [KlipyFileSize?] = [item.file?.sm, item.file?.md, item.file?.xs]
+        guard let size = sizes.compactMap({ $0 }).first(where: { $0.gif?.url != nil }),
+              let gifUrl = size.gif?.url
         else { return nil }
         self.id = slug
         self.title = item.title ?? "GIF"
         self.gifUrl = gifUrl
-        self.thumbUrl = thumbUrl
+        self.gifWidth = size.gif?.width ?? 0
+        self.gifHeight = size.gif?.height ?? 0
+        self.mp4Url = size.mp4?.url ?? ""
+        self.webmUrl = size.webm?.url ?? ""
+        self.jpgUrl = size.jpg?.url ?? ""
+        // xs GIF for animated thumbnails in the grid
+        self.thumbUrl = item.file?.xs?.gif?.url
+                     ?? item.file?.sm?.gif?.url
+                     ?? gifUrl
         self.thumbJpgUrl = item.file?.xs?.jpg?.url
                         ?? item.file?.sm?.jpg?.url
                         ?? ""
+    }
+
+    /// The `app.bsky.embed.external.uri` the official Bluesky app parses to render
+    /// an animated GIF: `<gif.url>?hh=<H>&ww=<W>&mp4=<mp4 slug>&webm=<webm slug>`.
+    /// The mp4/webm "slugs" are each url's filename without directory or extension.
+    var blueskyEmbedURI: String {
+        var params = "hh=\(gifHeight)&ww=\(gifWidth)"
+        if let mp4Slug = Self.filenameSlug(from: mp4Url) {
+            params += "&mp4=\(mp4Slug)"
+        }
+        if let webmSlug = Self.filenameSlug(from: webmUrl) {
+            params += "&webm=\(webmSlug)"
+        }
+        return "\(gifUrl)?\(params)"
+    }
+
+    /// Extract the filename without directory or extension from a Klipy url.
+    /// e.g. `https://static.klipy.com/ii/.../YkUbgkNm.mp4` → `YkUbgkNm`.
+    private static func filenameSlug(from urlString: String) -> String? {
+        guard !urlString.isEmpty else { return nil }
+        let last = (urlString as NSString).lastPathComponent
+        let stem = (last as NSString).deletingPathExtension
+        return stem.isEmpty ? nil : stem
     }
 }
 
@@ -931,15 +999,19 @@ struct KlipyFile: Decodable {
     let xs: KlipyFileSize?
 }
 
-// Each size variant: { gif: { url, width, height, size }, jpg: { ... }, webp: { ... }, ... }
+// Each size variant: { gif: { url, width, height, size }, jpg, webp, mp4, webm: { ... } }
 struct KlipyFileSize: Decodable {
     let gif: KlipyFileDirect?
     let jpg: KlipyFileDirect?
     let webp: KlipyFileDirect?
+    let mp4: KlipyFileDirect?
+    let webm: KlipyFileDirect?
 }
 
 struct KlipyFileDirect: Decodable {
     let url: String?
+    let width: Int?
+    let height: Int?
 }
 
 // MARK: - HTML Entity Decoding

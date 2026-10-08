@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import SwiftUI
 import UIKit
+import Network
 
 // MARK: - Global App State
 
@@ -17,7 +18,7 @@ final class AppStore {
     var unreadDMCount: Int = 0
 
     // Feed state
-    var feedMode: FeedMode = .discover
+    var feedMode: FeedMode = .conversations
     var feedItems: [FeedItem] = []
     var feedCursor: String?
     var feedIsLoading = false
@@ -43,6 +44,42 @@ final class AppStore {
     var composeQuote: PostView?
     var composeIsPosting = false
     var showComposeSheet = false
+    /// A post whose background upload failed AFTER the sheet closed. Held so the
+    /// user can reopen it intact — the old local-notification-only path lost the
+    /// post silently whenever notifications were off.
+    var failedPost: FailedPost?
+
+    struct FailedPost {
+        let text: String
+        let images: [ComposeImage]
+        let video: ComposeVideo?
+        let quote: PostView?
+        let reason: String
+    }
+
+    /// A short-lived app-level error for actions taken in surfaces without their own
+    /// banner slot (gallery/reader cards). Shown by MainAppView; clears itself.
+    var actionError: String?
+
+    func showActionError(_ message: String) {
+        Haptics.error()
+        actionError = message
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if actionError == message { actionError = nil }
+        }
+    }
+
+    /// Reopen the composer with a failed post's content.
+    func retryFailedPost() {
+        guard let f = failedPost else { return }
+        composeText = f.text
+        composeImages = f.images
+        composeVideo = f.video
+        composeQuote = f.quote
+        failedPost = nil
+        showComposeSheet = true
+    }
 
     // Notifications
     var notifications: [BskyNotification] = []
@@ -79,6 +116,47 @@ final class AppStore {
     // Seen posts — bypass flag lets the user see already-seen posts for one session
     var feedSeenBypass = false
     private var seenSyncTask: Task<Void, Never>? = nil
+
+    // MARK: - Discover moderation + personalization context
+
+    /// The user's own Bluesky moderation settings (muted words, hidden labels, adult pref,
+    /// subscribed labelers) — fetched once per session so Discover honors them.
+    var moderationPrefs = ModerationPrefs()
+    /// Topic hashtags drawn from the user's own posts — their declared interests.
+    var interestTags: Set<String> = []
+    /// True once preferences + interest model are loaded.
+    var discoverContextReady = false
+
+    /// Fetch the user's moderation preferences + build the interest model. Idempotent;
+    /// safe to call on session start. Failures degrade gracefully (Discover still works,
+    /// just with weaker personalization/moderation).
+    func buildDiscoverContext(did: String) async {
+        if let prefs = try? await ATProtocolClient.shared.getPreferences() {
+            var m = ModerationPrefs()
+            for p in prefs.preferences {
+                switch p.type {
+                case "app.bsky.actor.defs#adultContentPref":
+                    m.adultEnabled = p.enabled ?? false
+                case "app.bsky.actor.defs#contentLabelPref":
+                    if p.visibility == "hide" || p.visibility == "warn", let l = p.label { m.hiddenLabels.insert(l) }
+                case "app.bsky.actor.defs#mutedWordsPref":
+                    m.mutedWords.append(contentsOf: (p.items ?? []).map { $0.value.lowercased() }.filter { !$0.isEmpty })
+                case "app.bsky.actor.defs#labelersPref":
+                    m.subscribedLabelers = (p.labelers ?? []).map { $0.did }
+                default: break
+                }
+            }
+            moderationPrefs = m
+            ATProtocolClient.shared.setAcceptLabelers(m.subscribedLabelers)
+        }
+        // Interest tags from the user's own recent posts (what THEY choose to post about).
+        if let mine = try? await ATProtocolClient.shared.getAuthorFeed(actor: did, limit: 60, filter: "posts_no_replies") {
+            var tags = Set<String>()
+            for item in mine.feed { tags.formUnion(DiscoverEngine.hashtags(in: item.post)) }
+            interestTags = tags
+        }
+        discoverContextReady = true
+    }
 
     // MARK: - Share Extension Handoff
 
@@ -190,12 +268,22 @@ final class AppStore {
 
     /// Read-merge-write: fetch cloud record, union with local URIs, write merged result.
     /// This prevents one platform from overwriting the other's seen posts.
+    /// The record holds bare URIs (no timestamps), so the 7-day window can't be
+    /// applied in the cloud — a pure union grew it forever until putRecord failed.
+    /// Local (recent) URIs go first and the list is capped, so old ones age out.
+    static let seenCloudCap = 5000
+
     func saveSeenToCloud(uris: [String], did: String) async {
-        do {
-            let cloudURIs = (try? await ATProtocolClient.shared.getSeenRecord(repo: did)) ?? []
-            let merged = Array(Set(uris).union(cloudURIs))
-            try await ATProtocolClient.shared.putSeenRecord(repo: did, uris: merged)
-        } catch {}
+        let cloudURIs = (try? await ATProtocolClient.shared.getSeenRecord(repo: did)) ?? []
+        var seen = Set<String>()
+        let merged = (uris + cloudURIs).filter { seen.insert($0).inserted }.prefix(Self.seenCloudCap)
+        // Background sync: a miss is retried on the next debounce/background flush.
+        try? await ATProtocolClient.shared.putSeenRecord(repo: did, uris: Array(merged))
+    }
+
+    /// "Clear seen posts" must clear the cloud copy too, or the next merge restores it.
+    func clearSeenInCloud(did: String) async {
+        try? await ATProtocolClient.shared.putSeenRecord(repo: did, uris: [])
     }
 
     /// Fetch the cloud seen-posts record and return the URI list for merging into SwiftData.
@@ -239,9 +327,24 @@ final class AppStore {
         }
     }
 
+    /// The three top-level feeds. Following is your follows, chronological. Conversations
+    /// (default) and Trending are both personalized + moderated discovery — they differ
+    /// only in ranking. ("In Network" was removed as redundant: network-awareness is
+    /// always on in discovery ranking; a chronological Following already covers your graph.)
     enum FeedMode: String, CaseIterable {
-        case discover = "Discover"
         case following = "Following"
+        case conversations = "Conversations"
+        case trending = "Trending"
+
+        /// Conversations + Trending are discovery feeds (personalized, ranked, with why-chips).
+        var isDiscovery: Bool { self != .following }
+        var icon: String {
+            switch self {
+            case .following: "person.2"
+            case .conversations: "bubble.left.and.bubble.right"
+            case .trending: "flame"
+            }
+        }
     }
 
     enum SearchMode: String, CaseIterable {
@@ -326,3 +429,221 @@ struct ComposeVideo: Identifiable {
     var mimeType: String = "video/mp4"
     var altText: String = ""
 }
+
+// MARK: - Network reachability
+//
+// NOTE: this type lives here (not a standalone NetworkMonitor.swift) because the
+// project uses Xcode file-system-synchronized groups, which intermittently fail to
+// pick up brand-new .swift files even after a clean build. Co-locating new types in
+// an already-compiled file is the reliable workaround (see DECISIONS.md).
+
+/// Observable network-reachability monitor. Inject via `.environment` and read
+/// `monitor.isOffline` to drive the offline banner and to distinguish a true
+/// "no network" condition from a server-side error. Degrade, don't block:
+/// cached content stays usable while offline.
+@Observable
+@MainActor
+final class NetworkMonitor {
+    /// True when the device has no usable network path. Starts `false` (optimistic)
+    /// so the UI never flashes an offline banner before the first path update.
+    private(set) var isOffline = false
+
+    /// True when the active path is expensive (cellular) or constrained (Low Data Mode).
+    private(set) var isConstrained = false
+
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "app.bskydreams.networkmonitor")
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let offline = path.status != .satisfied
+            let constrained = path.isConstrained || path.isExpensive
+            Task { @MainActor in
+                self?.isOffline = offline
+                self?.isConstrained = constrained
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    deinit { monitor.cancel() }
+}
+
+// MARK: - Discover engine (moderation + conversation-weighted personalization)
+//
+// Inlined here (not a standalone file) because Xcode file-system-synchronized groups
+// don't reliably pick up new .swift files (see DECISIONS.md). The Discover feed is
+// rebuilt around three principles aligned with the app's purpose:
+//   1. Honor the USER's own moderation (muted words, label visibility, blocks) — not a
+//      hardcoded list.
+//   2. Personalize from the user's OWN signals (their network + their topics), and tell
+//      them WHY each post is shown — no opaque "for you" box.
+//   3. Reward conversation (replies, questions) over raw virality; penalize reposts.
+
+/// The user's moderation settings, fetched from app.bsky.actor.getPreferences.
+struct ModerationPrefs {
+    var adultEnabled = false           // does the user allow adult content at all?
+    var hiddenLabels: Set<String> = [] // labels the user set to hide/warn
+    var mutedWords: [String] = []      // lowercased
+    var subscribedLabelers: [String] = []
+
+    /// Adult/violent labels always hidden when the user has adult content disabled.
+    static let adultLabels: Set<String> = [
+        "porn", "sexual", "nudity", "graphic-media", "adult", "gore", "nsfw", "sexual-figurative"
+    ]
+}
+
+/// AT Protocol timestamps, parsed once-cached. Bluesky timestamps usually carry
+/// fractional seconds, which a default ISO8601DateFormatter REJECTS (returns nil) —
+/// that silently blanked notification + DM-list times. Formatters are expensive;
+/// never build them per render.
+enum ATDate {
+    private static let frac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let plain = ISO8601DateFormatter()
+    private static let relativeFmt: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    static func parse(_ s: String) -> Date? { frac.date(from: s) ?? plain.date(from: s) }
+
+    /// "5 min. ago"-style relative label; empty when unparseable.
+    static func relative(_ s: String) -> String {
+        guard let d = parse(s) else { return "" }
+        return relativeFmt.localizedString(for: d, relativeTo: Date())
+    }
+}
+
+enum DiscoverEngine {
+
+    static func date(_ s: String) -> Date {
+        ATDate.parse(s) ?? Date()
+    }
+
+    /// Hashtags for a post — from the structured `tags` field plus any `#word` in the text.
+    static func hashtags(in post: PostView) -> Set<String> {
+        var out = Set((post.record.tags ?? []).map { $0.lowercased() })
+        let text = post.record.text
+        var idx = text.startIndex
+        while let hash = text[idx...].firstIndex(of: "#") {
+            var end = text.index(after: hash)
+            while end < text.endIndex, text[end].isLetter || text[end].isNumber || text[end] == "_" {
+                end = text.index(after: end)
+            }
+            let tag = text[text.index(after: hash)..<end]
+            if tag.count >= 2 { out.insert(tag.lowercased()) }
+            idx = end < text.endIndex ? text.index(after: end) : text.endIndex
+            if idx >= text.endIndex { break }
+        }
+        return out
+    }
+
+    /// Moderation gate: true = hide this post from Discover.
+    static func shouldHide(_ item: FeedItem, prefs: ModerationPrefs) -> Bool {
+        let post = item.post
+        // Author muted/blocked (by you or them).
+        if post.author.viewer?.isHidden == true { return true }
+        // Post + author labels.
+        let allLabels = (post.labels ?? []) + (post.author.labels ?? [])
+        for lbl in allLabels where !(lbl.neg ?? false) {
+            if prefs.hiddenLabels.contains(lbl.val) { return true }
+            if !prefs.adultEnabled && ModerationPrefs.adultLabels.contains(lbl.val) { return true }
+        }
+        // Muted words (content + tags).
+        if !prefs.mutedWords.isEmpty {
+            let hay = (post.record.text + " " + (post.record.tags ?? []).joined(separator: " ")).lowercased()
+            for w in prefs.mutedWords where hay.contains(w) { return true }
+        }
+        return false
+    }
+
+    /// Personalized score for a discovery post. `conversational` = the Conversations feed
+    /// (rewards discussion); otherwise the Trending feed (rewards popularity). Both apply
+    /// the same network + topic personalization — they differ only in the base signal.
+    static func score(_ item: FeedItem, conversational: Bool, interestTags: Set<String>) -> Double {
+        let post = item.post
+        let likes = Double(post.likeCount ?? 0)
+        let replies = Double(post.replyCount ?? 0)
+
+        let hours = max(0, Date().timeIntervalSince(date(post.indexedAt)) / 3600)
+        let recency = pow(hours + 2, 1.6)
+
+        // Network boost — your graph is the input, not a hidden model.
+        var network = 1.0
+        if post.author.viewer?.isFollowing == true { network += 1.2 }
+        else if let kf = post.author.viewer?.knownFollowers?.count, kf > 0 {
+            network += min(Double(kf) * 0.15, 0.9)
+        }
+        // Topic boost — overlap with the user's own hashtags.
+        var topic = 1.0
+        if !interestTags.isEmpty, !hashtags(in: post).isDisjoint(with: interestTags) { topic += 0.8 }
+
+        if !conversational {
+            // Trending: popularity over time, still personalized.
+            return ((likes + replies - 1) / recency) * network * topic
+        }
+
+        // Conversations: replies dominate; reply-to-like ratio rewards genuine discussion
+        // over applause. Questions boosted, originals favored, reposts penalized, raw
+        // likes de-emphasized.
+        let replyRatio = replies / max(1, likes)
+        var conversation = (replies * 3 + likes * 0.4) * (1 + min(replyRatio, 2))
+        let isReply = post.record.reply != nil
+        let isRepost = item.reason != nil
+        if post.record.text.contains("?") && !isReply { conversation *= 1.25 }
+        if isRepost { conversation *= 0.5 }
+        else if !isReply { conversation *= 1.15 }
+        return (conversation / recency) * network * topic
+    }
+
+    /// A short, honest reason this post is in Discover — shown as a chip. nil = no chip.
+    static func why(_ item: FeedItem, interestTags: Set<String>) -> String? {
+        let post = item.post
+        if let by = item.reason?.by?.name { return "Reposted by \(by)" }
+        if post.author.viewer?.isFollowing == true { return "From someone you follow" }
+        if let kf = post.author.viewer?.knownFollowers, kf.count > 0 {
+            if let first = kf.followers.first?.name {
+                return kf.count == 1 ? "Followed by \(first)" : "Followed by \(first) +\(kf.count - 1) you know"
+            }
+            return "Popular in your network"
+        }
+        if !interestTags.isEmpty, let m = hashtags(in: post).first(where: { interestTags.contains($0) }) {
+            return "Matches your interest in #\(m)"
+        }
+        if let r = post.replyCount, r >= 5 { return "Active conversation · \(r) replies" }
+        return nil
+    }
+}
+
+// MARK: - Debug launch doors (device testing)
+//
+// DEBUG builds only — compiled out of Release/App Store builds entirely. Lets an
+// agent reach any screen on a physical test device without tapping, by passing
+// environment variables to `devicectl device process launch --environment-variables`
+// (see tools/device_smoke.py). Same pattern as Archive Watch's AW_* doors.
+//   BSKY_TEST_HANDLE / BSKY_TEST_PASSWORD  sign in (test account, from tools/test-account.env)
+//   BSKY_START_VIEW                       an AppTab raw value: home, search, notifications, dms, …
+//   BSKY_OPEN_POST                        an at:// post URI to push as a conversation
+#if DEBUG
+enum DebugLaunchDoors {
+    @MainActor
+    static func apply(auth: AuthManager, store: AppStore) async {
+        let env = ProcessInfo.processInfo.environment
+        if !auth.isLoggedIn, let handle = env["BSKY_TEST_HANDLE"], let password = env["BSKY_TEST_PASSWORD"] {
+            await auth.login(handle: handle, appPassword: password)
+        }
+        guard auth.isLoggedIn else { return }
+        if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
+            store.selectedTab = tab
+        }
+        if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
+            store.navigationPath.append(PostDestination(uri: uri, post: nil))
+        }
+    }
+}
+#endif

@@ -5,7 +5,6 @@ import SwiftUI
 struct RichTextView: View {
     let text: String
     let facets: [RichTextFacet]?
-    var font: Font = .system(size: 15)
 
     @Environment(AppStore.self) private var store
     /// Link/mention/hashtag color — uses nbLinkColor token from DesignSystem,
@@ -17,7 +16,7 @@ struct RichTextView: View {
         // Default iOS line height ≈ 18pt → additional spacing ≈ 5pt.
         if let facets, !facets.isEmpty {
             Text(buildAttributedString())
-                .font(font)
+                .scaledSystemFont(15)
                 .lineSpacing(5)
                 .foregroundStyle(Color.nbBlack)
                 .environment(\.openURL, OpenURLAction { url in
@@ -25,7 +24,7 @@ struct RichTextView: View {
                 })
         } else {
             Text(text)
-                .font(font)
+                .scaledSystemFont(15)
                 .lineSpacing(5)
                 .foregroundStyle(Color.nbBlack)
         }
@@ -64,8 +63,11 @@ struct RichTextView: View {
         var pos = 0
 
         for facet in sorted {
+            // Facets come from any client, so their byte ranges are untrusted:
+            // past-the-end, inverted or overlapping ranges would trap on the slice.
             let start = facet.index.byteStart
             let end = min(facet.index.byteEnd, utf8.count)
+            guard start >= pos, start < end else { continue }
 
             // Plain text before this facet
             if pos < start {
@@ -88,7 +90,8 @@ struct RichTextView: View {
                     attrStr.link = URL(string: "bskydreams://profile?did=\(mention.did)")
                     attrStr.foregroundColor = linkColor
                 case .tag(let tag):
-                    attrStr.link = URL(string: "bskydreams://search?q=%23\(tag.tag)")
+                    let encoded = tag.tag.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                    attrStr.link = URL(string: "bskydreams://search?q=%23\(encoded)")
                     attrStr.foregroundColor = linkColor
                 case .unknown, nil:
                     break

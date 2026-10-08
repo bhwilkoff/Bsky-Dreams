@@ -265,12 +265,35 @@ final class ATProtocolClient {
 
     // MARK: - Private
 
+    /// Bluesky's official moderation labeler — always included so adult/violence
+    /// labels are attached. Additional labelers the user subscribed to are appended
+    /// from their preferences (set via `setAcceptLabelers`).
+    static let bskyModerationLabeler = "did:plc:ar7c4by46qjdydhdevvrndac"
+    private var subscribedLabelers: [String] = []
+
+    /// Update the labelers sent on every request (from the user's preferences).
+    func setAcceptLabelers(_ dids: [String]) {
+        subscribedLabelers = dids
+    }
+
     private func authorizedRequest(_ req: URLRequest) async throws -> URLRequest {
         guard let auth = authManager, let session = auth.session else {
             throw AuthError.notLoggedIn
         }
         var req = req
         req.setValue("Bearer \(session.accessJwt)", forHTTPHeaderField: "Authorization")
+        // Tell the AppView which labelers to apply. Without this header it only applies
+        // its built-in defaults; with it, the user's subscribed moderation labelers
+        // attach their labels (e.g. stricter adult-content labelers). Max 20.
+        //
+        // IMPORTANT: labelers are an AppView concept ONLY. Never send this header to the
+        // chat service (api.bsky.chat) — it's meaningless there and can cause the chat
+        // backend to reject the request (this regressed group/DM sends).
+        if req.url?.host?.contains("bsky.chat") != true {
+            var labelers = [Self.bskyModerationLabeler]
+            labelers.append(contentsOf: subscribedLabelers.filter { $0 != Self.bskyModerationLabeler })
+            req.setValue(labelers.prefix(20).joined(separator: ","), forHTTPHeaderField: "atproto-accept-labelers")
+        }
         return req
     }
 
@@ -280,7 +303,11 @@ final class ATProtocolClient {
             throw APIError.invalidResponse
         }
 
-        if httpResponse.statusCode == 401 {
+        // An expired access token is 401 — or 400 `ExpiredToken` from the PDS.
+        let tokenExpired = httpResponse.statusCode == 401
+            || (httpResponse.statusCode == 400
+                && (try? decoder.decode(ATError.self, from: data))?.error == "ExpiredToken")
+        if tokenExpired {
             // Refresh and retry once
             await authManager?.refreshSession()
             guard let auth = authManager, let newSession = auth.session else {
@@ -298,10 +325,34 @@ final class ATProtocolClient {
 
         guard httpResponse.statusCode == 200 else {
             let err = try? decoder.decode(ATError.self, from: data)
-            throw APIError.serverError(httpResponse.statusCode, err?.message ?? "Unknown error")
+            // Surface the XRPC error CODE (e.g. "ConvoLocked") plus message — the code is
+            // often the only useful detail and is sometimes the only field present.
+            let detail = [err?.error, err?.message].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
+            throw APIError.serverError(httpResponse.statusCode, detail.isEmpty ? "Unknown error" : detail)
         }
 
-        return try decoder.decode(T.self, from: data)
+        // HTTP 200: the request SUCCEEDED. If we still can't decode the body, that's a
+        // client model mismatch, NOT a failed operation — throw a distinct error so the
+        // caller can decide (e.g. sendMessage keeps the optimistic bubble since the
+        // message was actually sent). Includes the missing key path for diagnosis.
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch let e as DecodingError {
+            throw APIError.responseUnreadable(Self.describeDecodingError(e))
+        }
+    }
+
+    private static func describeDecodingError(_ error: DecodingError) -> String {
+        func path(_ ctx: DecodingError.Context) -> String {
+            ctx.codingPath.map { $0.stringValue }.joined(separator: ".")
+        }
+        switch error {
+        case .keyNotFound(let key, let ctx):   return "missing key '\(key.stringValue)' at [\(path(ctx))]"
+        case .valueNotFound(let type, let ctx): return "null \(type) at [\(path(ctx))]"
+        case .typeMismatch(let type, let ctx):  return "type mismatch \(type) at [\(path(ctx))]"
+        case .dataCorrupted(let ctx):           return "corrupted at [\(path(ctx))]"
+        @unknown default:                       return "decode error"
+        }
     }
 
     private var decoder: JSONDecoder {
@@ -346,12 +397,16 @@ enum APIError: LocalizedError {
     case invalidResponse
     case serverError(Int, String)
     case decodingFailed
+    /// HTTP 200 but the response body didn't match our model. The operation SUCCEEDED;
+    /// only the echo couldn't be parsed. Carries the missing-key path for diagnosis.
+    case responseUnreadable(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "Invalid server response"
         case .serverError(let code, let msg): "Server error \(code): \(msg)"
         case .decodingFailed: "Failed to parse response"
+        case .responseUnreadable(let detail): "Response not readable (\(detail))"
         }
     }
 }

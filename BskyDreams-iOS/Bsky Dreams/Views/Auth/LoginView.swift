@@ -24,6 +24,12 @@ struct LoginView: View {
                         .font(.syne(28, weight: .heavy))
                         .tracking(4)
                         .foregroundStyle(Color.nbBlack)
+                        // 28pt Syne Heavy + tracking is wider than a 390pt iPhone (and
+                        // grows with Dynamic Type) — it clipped at both edges. Shrink to fit.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .padding(.horizontal, 24)
+                        .accessibilityAddTraits(.isHeader)
                 }
                 .padding(.bottom, 48)
 
@@ -45,6 +51,7 @@ struct LoginView: View {
                             label: "Handle"
                         )
                         .focused($focusedField, equals: .handle)
+                        .textContentType(.username)   // Password AutoFill
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.emailAddress)
@@ -58,6 +65,7 @@ struct LoginView: View {
                             isSecure: true
                         )
                         .focused($focusedField, equals: .password)
+                        .textContentType(.password)
                         .submitLabel(.done)
                         .onSubmit { signIn() }
 
@@ -185,7 +193,7 @@ struct CloudLogoView: View {
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size * 0.675)
-            .foregroundStyle(Color.nbAccent)
+            .foregroundStyle(Color.nbAccentLegible)
             .overlay(
                 Image(systemName: "cloud")
                     .resizable()

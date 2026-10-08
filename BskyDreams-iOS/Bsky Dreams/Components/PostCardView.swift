@@ -14,6 +14,10 @@ struct PostCardView: View {
     @Environment(AppStore.self) private var store
 
     @State private var isLiked: Bool = false
+
+    @State private var likeURI: String?
+
+    @State private var repostURI: String?
     @State private var likeCount: Int = 0
     @State private var isReposted: Bool = false
     @State private var repostCount: Int = 0
@@ -26,8 +30,19 @@ struct PostCardView: View {
     @State private var showDeleteConfirm = false
     @State private var isMuted = false
     @State private var isBlocked = false
+    @State private var actionError: String?
 
     private var isOwnPost: Bool { post.author.did == auth.session?.did }
+
+    /// Surface a transient, user-visible failure message that auto-dismisses.
+    private func showActionError(_ message: String) {
+        Haptics.error()
+        withAnimation { actionError = message }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation { actionError = nil }
+        }
+    }
 
     // Depth colors — 8 cycling colors for nested thread replies
     private static let depthColors: [Color] = [
@@ -74,6 +89,13 @@ struct PostCardView: View {
                         .frame(width: 3)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if let actionError {
+                    NBErrorBanner(message: actionError)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
             .padding(.horizontal, CGFloat(depth) * 12)
         }
         .contentShape(Rectangle())
@@ -97,7 +119,12 @@ struct PostCardView: View {
                 title: "Report Post",
                 onReport: { reason in
                     Task {
-                        try? await ATProtocolClient.shared.reportPost(uri: post.uri, cid: post.cid, reason: reason)
+                        do {
+                            try await ATProtocolClient.shared.reportPost(uri: post.uri, cid: post.cid, reason: reason)
+                            Haptics.success()
+                        } catch {
+                            showActionError("Couldn't submit report.")
+                        }
                     }
                 }
             )
@@ -123,7 +150,7 @@ struct PostCardView: View {
         .onAppear {
             syncState()
             isMuted = post.author.viewer?.muted == true
-            isBlocked = post.author.viewer?.blocked == true
+            isBlocked = post.author.viewer?.blocking != nil
         }
     }
 
@@ -139,11 +166,11 @@ struct PostCardView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // System font for author names — ensures emoji + full Unicode coverage
                 Text(post.author.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .scaledSystemFont(14, weight: .semibold)
                     .foregroundStyle(Color.nbBlack)
                     .lineLimit(1)
                 Text("@\(post.author.handle)")
-                    .font(.system(size: 13))
+                    .scaledSystemFont(13)
                     .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(1)
             }
@@ -176,6 +203,9 @@ struct PostCardView: View {
                     .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
+            .accessibilityLabel("Reply")
+            .accessibilityValue("\(post.replyCount ?? 0)")
+            .accessibilityAddTraits(.isButton)
 
             // Repost
             Button { showRepostSheet = true } label: {
@@ -185,15 +215,21 @@ struct PostCardView: View {
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
+            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+            .accessibilityValue("\(repostCount)")
+            .accessibilityAddTraits(.isButton)
 
             // Like
             Button { toggleLike() } label: {
                 Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                     .font(.inter(13))
-                    .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                    .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
             .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
+            .accessibilityLabel(isLiked ? "Unlike" : "Like")
+            .accessibilityValue("\(likeCount)")
+            .accessibilityAddTraits(.isButton)
 
             Spacer()
 
@@ -227,11 +263,15 @@ struct PostCardView: View {
                     .foregroundStyle(Color.nbTextTertiary)
                     .padding(4)
             }
+            .accessibilityLabel("More actions")
+            .accessibilityAddTraits(.isButton)
         }
     }
 
     private func syncState() {
         isLiked = post.viewer?.like != nil
+        likeURI = post.viewer?.like
+        repostURI = post.viewer?.repost
         likeCount = post.likeCount ?? 0
         isReposted = post.viewer?.repost != nil
         repostCount = post.repostCount ?? 0
@@ -242,21 +282,19 @@ struct PostCardView: View {
         let wasLiked = isLiked
         let prevCount = likeCount
 
-        // Optimistic update
+        // Optimistic update — haptic at the user-tap moment
+        Haptics.light()
         isLiked.toggle()
         likeCount += isLiked ? 1 : -1
 
         Task {
             do {
-                if wasLiked, let likeUri = post.viewer?.like {
-                    try await ATProtocolClient.shared.unlikePost(likeUri: likeUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.likePost(uri: post.uri, cid: post.cid, did: did)
-                }
+                likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
             } catch {
                 // Rollback
                 isLiked = wasLiked
                 likeCount = prevCount
+                showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.")
             }
         }
     }
@@ -271,8 +309,10 @@ struct PostCardView: View {
                 } else {
                     try await ATProtocolClient.shared.muteActor(actor: post.author.did)
                 }
+                Haptics.success()
             } catch {
                 isMuted = wasMuted
+                showActionError(wasMuted ? "Couldn't unmute account." : "Couldn't mute account.")
             }
         }
     }
@@ -283,14 +323,22 @@ struct PostCardView: View {
             do {
                 _ = try await ATProtocolClient.shared.blockActor(did: post.author.did, myDid: myDid)
                 isBlocked = true
-            } catch {}
+                Haptics.success()
+            } catch {
+                showActionError("Couldn't block account.")
+            }
         }
     }
 
     private func deletePost() {
         guard let did = auth.session?.did else { return }
         Task {
-            try? await ATProtocolClient.shared.deletePost(uri: post.uri, did: did)
+            do {
+                try await ATProtocolClient.shared.deletePost(uri: post.uri, did: did)
+                Haptics.success()
+            } catch {
+                showActionError("Couldn't delete post.")
+            }
         }
     }
 
@@ -299,19 +347,18 @@ struct PostCardView: View {
         let wasReposted = isReposted
         let prevCount = repostCount
 
+        // Optimistic update — haptic at the user-tap moment
+        Haptics.light()
         isReposted.toggle()
         repostCount += isReposted ? 1 : -1
 
         Task {
             do {
-                if wasReposted, let repostUri = post.viewer?.repost {
-                    try await ATProtocolClient.shared.unrepost(repostUri: repostUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.repost(uri: post.uri, cid: post.cid, did: did)
-                }
+                repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
             } catch {
                 isReposted = wasReposted
                 repostCount = prevCount
+                showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.")
             }
         }
     }
@@ -332,7 +379,7 @@ struct ParentPreviewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("@\(post.author.handle)")
                     .font(.inter(12, weight: .semibold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                 Text(post.record.text)
                     .font(.inter(12))
                     .foregroundStyle(Color.nbTextSecondary)
@@ -469,8 +516,15 @@ struct InlineReplyView: View {
             Task { await loadImages(from: items) }
         }
         .sheet(isPresented: $showGifPicker) {
-            GifPickerView { gifUrl, _ in
-                gifEmbed = ExternalCard(uri: gifUrl, title: "GIF", description: "", thumb: nil)
+            GifPickerView { gif in
+                // Build the Klipy embed the official Bluesky app parses for animation.
+                // jpg still set as `thumb`; uploaded as a blob in submitReply().
+                gifEmbed = ExternalCard(
+                    uri: gif.blueskyEmbedURI,
+                    title: gif.title,
+                    description: "ALT: \(gif.title)",
+                    thumb: gif.jpgUrl.isEmpty ? nil : gif.jpgUrl
+                )
                 showGifPicker = false
             }
         }
@@ -586,7 +640,7 @@ struct InlineReplyView: View {
             Button { showGifPicker = true } label: {
                 Text("GIF")
                     .font(.syne(11, weight: .bold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
@@ -633,13 +687,27 @@ struct InlineReplyView: View {
                 root: root,
                 parent: StrongRef(uri: replyTo.uri, cid: replyTo.cid)
             )
+
+            // Upload the GIF's still JPEG as the embed thumb blob so non-GIF clients
+            // render a static card (mirrors the ComposeView post() thumb upload).
+            // Thumb upload is best-effort — if it fails, still post the GIF.
+            var effectiveEmbed: ExternalCard? = uploadedBlobs.isEmpty ? gifEmbed : nil
+            if var embed = effectiveEmbed, let thumbURLStr = embed.thumb,
+               let thumbURL = URL(string: thumbURLStr), embed.uploadedThumb == nil {
+                if let (thumbData, _) = try? await URLSession.shared.data(from: thumbURL) {
+                    let thumbResp = try? await ATProtocolClient.shared.uploadBlob(data: thumbData, mimeType: "image/jpeg")
+                    embed.uploadedThumb = thumbResp?.blob
+                }
+                effectiveEmbed = embed
+            }
+
             _ = try await ATProtocolClient.shared.createPost(
                 text: text,
                 did: did,
                 reply: replyRef,
                 images: uploadedBlobs,
                 imageAlts: altTexts,
-                linkEmbed: uploadedBlobs.isEmpty ? gifEmbed : nil
+                linkEmbed: effectiveEmbed
             )
             onDismiss()
         } catch {
@@ -717,7 +785,7 @@ struct ShareOptionsView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: 22))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                     .frame(width: 36)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)

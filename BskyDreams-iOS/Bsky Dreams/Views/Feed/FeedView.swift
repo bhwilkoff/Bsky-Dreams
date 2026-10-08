@@ -8,19 +8,15 @@ struct FeedView: View {
 
     @Environment(AppStore.self) private var store
     @Environment(AuthManager.self) private var auth
+    @Environment(NetworkMonitor.self) private var network
     @Environment(\.modelContext) private var modelContext
 
-    // Discover sources
+    // Discovery sources (Conversations + Trending). Following uses getTimeline only.
     private let discoverFeedURI  = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
-    private let hotClassicURI    = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic"
     private let withFriendsURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends"
-    // Following sources
-    private let bestOfFollowsURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows"
-    private let forYouURI        = "at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you"
 
     @State private var items: [FeedItem] = []
     @State private var cursor: String?
-    @State private var cursorHotClassic: String?
     @State private var cursorWithFriends: String?
     @State private var cursorBestOf: String?
     @State private var cursorForYou: String?
@@ -31,6 +27,11 @@ struct FeedView: View {
     @State private var scrollToTopTrigger = 0
     @State private var discoverLooped = false
     @State private var autoFetchCount = 0
+    /// Bumped on tab switch so an in-flight load for the OLD tab can't land its
+    /// results (or cursors) into the new one.
+    @State private var loadGeneration = 0
+    /// Per-post "why this is in Discover" reason chips (Discover mode only).
+    @State private var whyReasons: [String: String] = [:]
 
     // Seen post tracking — @State instead of @Query so SwiftData inserts don't
     // trigger ForEach re-renders of every visible card on each mark-seen event.
@@ -41,7 +42,7 @@ struct FeedView: View {
         Group {
             if isLoading && items.isEmpty {
                 loadingState
-            } else if let err = errorMessage, items.isEmpty {
+            } else if let err = errorMessage, items.isEmpty, !network.isOffline {
                 errorState(err)
             } else {
                 feedList
@@ -102,29 +103,71 @@ struct FeedView: View {
                 LazyVStack(spacing: 0) {
                     Color.clear.frame(height: 0).id("feed-top")
 
-                    // NB Feed mode toggle
+                    if network.isOffline {
+                        NBOfflineBanner()
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                    }
+
+                    if let err = errorMessage, !items.isEmpty {
+                        NBErrorBanner(message: err) {
+                            Task { await loadFeed() }
+                        }
+                        .padding(.top, 10)
+                    }
+
+                    HintBanner(id: "feed.welcome", text: "Tap a post to open the conversation. Pull down to refresh.")
+                        .padding(.top, 10)
+
+                    // Feed selector: Following · Conversations · Trending
                     feedModeToggle
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
 
-                    ForEach(items) { item in
-                        PostCardView(
-                            post: item.post,
-                            showParentPreview: item.reply != nil,
-                            onReply: { post in
-                                let isOpening = replyingToURI != post.uri
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    replyingToURI = isOpening ? post.uri : nil
-                                }
-                                if isOpening {
-                                    // Scroll the tapped post into view so it's visible above the reply box
-                                    Task {
-                                        try? await Task.sleep(for: .milliseconds(400))
-                                        withAnimation { proxy.scrollTo(post.uri, anchor: .center) }
-                                    }
+                    if items.isEmpty && !isLoading && errorMessage == nil {
+                        NBEmptyState(
+                            icon: "checkmark.circle",
+                            title: "You're all caught up",
+                            message: "No new posts right now",
+                            actionTitle: "Refresh",
+                            action: {
+                                Task {
+                                    let descriptor = FetchDescriptor<SeenPost>()
+                                    seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                                    items = []
+                                    cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                                    discoverLooped = false
+                                    autoFetchCount = 0
+                                    await loadFeed()
                                 }
                             }
                         )
+                        .padding(.top, 40)
+                    }
+
+                    ForEach(items) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            if store.feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
+                                DiscoverWhyChip(text: why)
+                            }
+                            PostCardView(
+                                post: item.post,
+                                showParentPreview: item.reply != nil,
+                                onReply: { post in
+                                    let isOpening = replyingToURI != post.uri
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        replyingToURI = isOpening ? post.uri : nil
+                                    }
+                                    if isOpening {
+                                        // Scroll the tapped post into view so it's visible above the reply box
+                                        Task {
+                                            try? await Task.sleep(for: .milliseconds(400))
+                                            withAnimation { proxy.scrollTo(post.uri, anchor: .center) }
+                                        }
+                                    }
+                                }
+                            )
+                        }
                         .id(item.post.uri)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 4)
@@ -163,11 +206,15 @@ struct FeedView: View {
                 // Re-sync seen set from SwiftData so cloud-merged posts are respected
                 let descriptor = FetchDescriptor<SeenPost>()
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                let previousURIs = Set(items.map { $0.post.uri })
                 items = []
-                cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                 discoverLooped = false
                 autoFetchCount = 0
                 await loadFeed()
+                if errorMessage == nil, items.contains(where: { !previousURIs.contains($0.post.uri) }) {
+                    Haptics.success()
+                }
             }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation { proxy.scrollTo("feed-top", anchor: .top) }
@@ -180,24 +227,38 @@ struct FeedView: View {
     private var feedModeToggle: some View {
         HStack(spacing: 0) {
             ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
+                let selected = store.feedMode == mode
                 Button {
-                    if store.feedMode != mode {
+                    if !selected {
+                        Haptics.selection()
                         store.feedMode = mode
                         items = []
-                        cursor = nil; cursorHotClassic = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                        whyReasons.removeAll()
+                        cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                         discoverLooped = false
                         autoFetchCount = 0
+                        loadGeneration += 1
+                        isLoading = false
                         Task { await loadFeed() }
                     }
                 } label: {
-                    Text(mode.rawValue.uppercased())
-                        .font(.syne(13, weight: .bold))
-                        .tracking(0.5)
-                        .foregroundStyle(store.feedMode == mode ? Color.white : Color.nbBlack)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(store.feedMode == mode ? Color.nbAccent : Color.nbWhite)
+                    HStack(spacing: 4) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(mode.rawValue.uppercased())
+                            .font(.syne(12, weight: .bold))
+                            .tracking(0.3)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(selected ? Color.white : Color.nbBlack)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 4)
+                    .background(selected ? Color.nbAccent : Color.nbWhite)
                 }
+                .accessibilityLabel(mode.rawValue)
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
             }
         }
         .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
@@ -208,12 +269,21 @@ struct FeedView: View {
     }
 
     private var loadingState: some View {
-        VStack(spacing: 16) {
-            ProgressView().scaleEffect(1.2)
-            Text("Loading feed...")
-                .font(.inter(14))
-                .foregroundStyle(Color.nbTextSecondary)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                }
+                ForEach(0..<5, id: \.self) { _ in
+                    NBSkeletonPostRow()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                }
+            }
         }
+        .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -221,7 +291,7 @@ struct FeedView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40))
-                .foregroundStyle(Color.nbAccent)
+                .foregroundStyle(Color.nbAccentLegible)
             Text(message)
                 .font(.inter(14))
                 .multilineTextAlignment(.center)
@@ -260,65 +330,65 @@ struct FeedView: View {
 
     private func loadFeed(loadMore: Bool = false) async {
         guard !isLoading else { return }
+        let generation = loadGeneration
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
 
         do {
             let mergedFeed: [FeedItem]
             let seenSnapshot: Set<String>? = store.feedSeenBypass ? nil : seenURISet
 
+            // The user's own moderation (muted words, label/adult prefs, labelers) is built
+            // once per session and applied to ALL feeds — including Following.
+            if !store.discoverContextReady, let did = auth.session?.did {
+                await store.buildDiscoverContext(did: did)
+            }
+            let prefs = store.moderationPrefs
+
             switch store.feedMode {
             case .following:
-                // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
+                // Following = your follows, chronological. Pure getTimeline (reverse-chron
+                // of the people you follow) — a clean "catch up on your people" feed,
+                // distinct from the ranked discovery feeds. Honors your moderation.
                 let fetchCursor = loadMore ? cursor : nil
-
-                async let timelineResult = ATProtocolClient.shared.getTimeline(limit: 30, cursor: fetchCursor)
-                async let bestOfResult = try? ATProtocolClient.shared.getFeed(uri: bestOfFollowsURI, limit: 20, cursor: loadMore ? cursorBestOf : nil)
-                async let forYouResult = try? ATProtocolClient.shared.getFeed(uri: forYouURI, limit: 20, cursor: loadMore ? cursorForYou : nil)
-
-                let timeline = try await timelineResult
-                let bestOf = await bestOfResult
-                let forYou = await forYouResult
-
+                let timeline = try await ATProtocolClient.shared.getTimeline(limit: 40, cursor: fetchCursor)
+                guard generation == loadGeneration else { return }
                 cursor = timeline.cursor
-                cursorBestOf = bestOf?.cursor
-                cursorForYou = forYou?.cursor
-
-                var all = timeline.feed
-                if let bestOf { all.append(contentsOf: bestOf.feed) }
-                if let forYou { all.append(contentsOf: forYou.feed) }
 
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
-                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
+                mergedFeed = timeline.feed.filter {
+                    seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs)
+                }
+                // Keep the API's chronological order (do NOT re-rank).
 
-            case .discover:
-                // Hybrid discover: 3 feeds in parallel — personalized trending, network-wide
-                // trending, and social-graph trending. Failures on secondary feeds are ignored.
+            case .conversations, .trending:
+                // Personalized discovery. Sources: whats-hot (trending) + with-friends
+                // (social graph). hot-classic was removed (identical for every account; the
+                // generic NSFW firehose). Conversations rewards discussion; Trending rewards
+                // popularity. Both apply the same network+topic personalization + moderation.
                 let fetchCursor: String?
                 if loadMore && discoverLooped { fetchCursor = nil }
                 else { fetchCursor = loadMore ? cursor : nil }
 
-                async let primary = ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 30, cursor: fetchCursor)
-                async let classic = try? ATProtocolClient.shared.getFeed(uri: hotClassicURI, limit: 20, cursor: loadMore ? cursorHotClassic : nil)
-                async let friends = try? ATProtocolClient.shared.getFeed(uri: withFriendsURI, limit: 20, cursor: loadMore ? cursorWithFriends : nil)
+                async let primary = ATProtocolClient.shared.getFeed(uri: discoverFeedURI, limit: 40, cursor: fetchCursor)
+                async let friends = try? ATProtocolClient.shared.getFeed(uri: withFriendsURI, limit: 30, cursor: loadMore ? cursorWithFriends : nil)
 
                 let p = try await primary
-                let c = await classic
                 let f = await friends
-
+                guard generation == loadGeneration else { return }
                 cursor = p.cursor
-                cursorHotClassic = c?.cursor
                 cursorWithFriends = f?.cursor
 
                 var all = p.feed
-                if let c { all.append(contentsOf: c.feed) }
                 if let f { all.append(contentsOf: f.feed) }
 
+                let tags = store.interestTags
+                let conversational = store.feedMode == .conversations
                 var seen = Set<String>()
-                mergedFeed = all.filter { seen.insert($0.post.uri).inserted && !$0.post.isAdultContent && $0.post.isEnglish }
-                    .sorted { trendingScore($0.post) > trendingScore($1.post) }
+                mergedFeed = all
+                    .filter { seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs) }
+                    .sorted { DiscoverEngine.score($0, conversational: conversational, interestTags: tags) > DiscoverEngine.score($1, conversational: conversational, interestTags: tags) }
             }
 
             if loadMore {
@@ -328,16 +398,20 @@ struct FeedView: View {
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
+                if store.feedMode.isDiscovery {
+                    for it in newItems { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
+                }
 
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
 
-                if store.feedMode == .discover && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
+                if store.feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
                     discoverLooped = true
                 }
-                let hasMore = cursor != nil || cursorHotClassic != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
+                let hasMore = cursor != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
                 if newItems.isEmpty && hasMore && autoFetchCount < 3 {
                     autoFetchCount += 1
+                    isLoading = false   // release our own guard, or the recursion is a no-op
                     await loadFeed(loadMore: true)
                 } else {
                     autoFetchCount = 0
@@ -348,6 +422,10 @@ struct FeedView: View {
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
+                if store.feedMode.isDiscovery {
+                    whyReasons.removeAll()
+                    for it in items { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
+                }
                 let urlsToWarm = items.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
                 cursor = mergedFeed.isEmpty ? nil : cursor
@@ -355,18 +433,9 @@ struct FeedView: View {
                 autoFetchCount = 0
             }
         } catch {
+            guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
-    }
-
-    /// HN-style trending score: rewards posts that gain likes quickly.
-    private func trendingScore(_ post: PostView) -> Double {
-        let likes = Double(post.likeCount ?? 0)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let postDate = formatter.date(from: post.indexedAt) ?? Date()
-        let hours = max(0, Date().timeIntervalSince(postDate) / 3600)
-        return (likes - 1) / pow(hours + 2, 1.8)
     }
 }
 
@@ -432,5 +501,37 @@ private struct FeedNavBar: View {
         .overlay(alignment: .bottom) {
             Color.nbBorder.frame(height: 1)
         }
+    }
+}
+
+// MARK: - "Why is this in Discover?" chip
+// A small, honest line of provenance above a Discover post. Transparency is the point:
+// the user should understand why a post reached them, not face an opaque "for you" box.
+
+struct DiscoverWhyChip: View {
+    let text: String
+
+    private var icon: String {
+        if text.hasPrefix("From someone you follow") || text.hasPrefix("Followed by") { return "person.2.fill" }
+        if text.hasPrefix("Reposted by") { return "arrow.2.squarepath" }
+        if text.hasPrefix("Matches your interest") { return "number" }
+        if text.hasPrefix("Active conversation") { return "bubble.left.and.bubble.right.fill" }
+        return "sparkles"
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .font(.inter(11, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(Color.nbTextSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .padding(.leading, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Why you're seeing this: \(text)")
     }
 }

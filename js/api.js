@@ -10,6 +10,26 @@
 const API = (() => {
   const BASE = 'https://bsky.social/xrpc';
 
+  // Bluesky's official moderation labeler — always sent so adult/violence labels are
+  // attached to posts. The user's subscribed labelers (from their preferences) are
+  // appended via setAcceptLabelers(). Without the `atproto-accept-labelers` header the
+  // AppView applies only its built-in defaults; with it, the user's chosen moderation
+  // labelers attach their labels so Bsky Dreams can honor the user's own moderation.
+  const BSKY_MODERATION_LABELER = 'did:plc:ar7c4by46qjdydhdevvrndac';
+  let subscribedLabelers = [];
+
+  /** Set the additional labelers (DIDs) to accept on feed requests, from prefs. */
+  function setAcceptLabelers(dids) {
+    subscribedLabelers = Array.isArray(dids) ? dids : [];
+  }
+
+  /** Comma-joined accept-labelers header value (default + subscribed, max 20). */
+  function acceptLabelersHeader() {
+    const all = [BSKY_MODERATION_LABELER]
+      .concat(subscribedLabelers.filter((d) => d && d !== BSKY_MODERATION_LABELER));
+    return all.slice(0, 20).join(',');
+  }
+
   /* ----------------------------------------------------------------
      Internal helpers
   ---------------------------------------------------------------- */
@@ -31,7 +51,21 @@ const API = (() => {
   }
 
   /**
-   * Wraps an API call with automatic token refresh on 401.
+   * Refresh tokens ROTATE: the hybrid feeds fire 3–4 requests at once, and if
+   * each refreshed with the same token every one but the first would fail.
+   * All expired callers share one in-flight refresh.
+   */
+  let refreshInFlight = null;
+  function refreshOnce(refreshJwt) {
+    if (!refreshInFlight) {
+      refreshInFlight = AUTH.refreshSession(refreshJwt).finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
+  }
+
+  /**
+   * Wraps an API call with automatic token refresh when the access token has
+   * expired — a 401, or the PDS's 400 `ExpiredToken`.
    */
   async function withAuth(apiFn) {
     const session = AUTH.getSession();
@@ -40,9 +74,14 @@ const API = (() => {
     try {
       return await apiFn(session.accessJwt);
     } catch (err) {
-      if (err.status === 401 && session.refreshJwt) {
-        const refreshed = await AUTH.refreshSession(session.refreshJwt);
-        return apiFn(refreshed.accessJwt);
+      const expired = err.status === 401 || (err.status === 400 && err.error === 'ExpiredToken');
+      if (expired && session.refreshJwt) {
+        // Another request may already have rotated the tokens while we waited.
+        const current = AUTH.getSession();
+        const token = current && current.accessJwt !== session.accessJwt
+          ? current.accessJwt
+          : (await refreshOnce(current?.refreshJwt || session.refreshJwt)).accessJwt;
+        return apiFn(token);
       }
       throw err;
     }
@@ -54,13 +93,18 @@ const API = (() => {
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     }
     const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      // Honor the user's own moderation: tell the AppView which labelers to apply.
+      headers['atproto-accept-labelers'] = acceptLabelersHeader();
+    }
 
     const res = await fetch(url.toString(), { headers });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `API error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     return res.json();
@@ -79,6 +123,7 @@ const API = (() => {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `API error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     // Some endpoints return 200 with no body
@@ -106,6 +151,7 @@ const API = (() => {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `Upload error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     return res.json();
@@ -339,6 +385,16 @@ const API = (() => {
    */
   async function getFeed(feed, limit = 50, cursor) {
     return authGet('app.bsky.feed.getFeed', { feed, limit, cursor });
+  }
+
+  /**
+   * Fetch the signed-in user's private Bluesky preferences. Carries the SAME
+   * moderation settings the official app uses — muted words, per-label visibility,
+   * adult-content toggle, and subscribed labelers — so Bsky Dreams can honor them.
+   * Returns { preferences: [...] } (heterogeneous array discriminated by $type).
+   */
+  async function getPreferences() {
+    return authGet('app.bsky.actor.getPreferences', {});
   }
 
   /**
@@ -616,11 +672,71 @@ const API = (() => {
     return chatPost('chat.bsky.convo.leaveConvo', { convoId });
   }
 
+  /* ---- Group chats + reactions (parity with iOS, June 2026 lexicons) ----
+     Same chat host/headers as the 1:1 convo calls above. A convo is a GROUP
+     when convo.kind?.$type ends with "#groupConvo". */
+
+  // Group conversations (chat.bsky.group.*)
+  async function createGroup(name, members) {
+    // `members` excludes the creator (max 49). Returns { convo }.
+    return chatPost('chat.bsky.group.createGroup', { name, members });
+  }
+
+  async function addGroupMembers(convoId, members) {
+    return chatPost('chat.bsky.group.addMembers', { convoId, members });
+  }
+
+  async function removeGroupMembers(convoId, members) {
+    return chatPost('chat.bsky.group.removeMembers', { convoId, members });
+  }
+
+  async function listJoinRequests(convoId, cursor) {
+    return chatGet('chat.bsky.group.listJoinRequests', { convoId, limit: 50, cursor });
+  }
+
+  async function approveJoinRequest(convoId, member) {
+    return chatPost('chat.bsky.group.approveJoinRequest', { convoId, member });
+  }
+
+  async function rejectJoinRequest(convoId, member) {
+    return chatPost('chat.bsky.group.rejectJoinRequest', { convoId, member });
+  }
+
+  // Join a group via an invite-link code. Returns { status: "joined"|"pending", convo? }.
+  async function requestJoinGroup(code) {
+    return chatPost('chat.bsky.group.requestJoin', { code });
+  }
+
+  async function createJoinLink(convoId, joinRule = 'anyone', requireApproval = false) {
+    return chatPost('chat.bsky.group.createJoinLink', { convoId, joinRule, requireApproval });
+  }
+
+  // Convo requests + reactions (chat.bsky.convo.*)
+  async function listConvoRequests(cursor) {
+    return chatGet('chat.bsky.convo.listConvoRequests', { limit: 50, cursor });
+  }
+
+  async function acceptConvo(convoId) {
+    return chatPost('chat.bsky.convo.acceptConvo', { convoId });
+  }
+
+  // `value` is a single emoji grapheme; returns { message } with the full
+  // updated reactions array — use it to refresh local state.
+  async function addReaction(convoId, messageId, value) {
+    return chatPost('chat.bsky.convo.addReaction', { convoId, messageId, value });
+  }
+
+  async function removeReaction(convoId, messageId, value) {
+    return chatPost('chat.bsky.convo.removeReaction', { convoId, messageId, value });
+  }
+
   return {
     searchPosts,
     searchActors,
     getTimeline,
     getFeed,
+    getPreferences,
+    setAcceptLabelers,
     getPostThread,
     getPost,
     uploadBlob,
@@ -658,5 +774,17 @@ const API = (() => {
     getConvoForMembers,
     updateRead,
     leaveConvo,
+    createGroup,
+    addGroupMembers,
+    removeGroupMembers,
+    listJoinRequests,
+    approveJoinRequest,
+    rejectJoinRequest,
+    requestJoinGroup,
+    createJoinLink,
+    listConvoRequests,
+    acceptConvo,
+    addReaction,
+    removeReaction,
   };
 })();

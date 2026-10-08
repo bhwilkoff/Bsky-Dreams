@@ -65,7 +65,13 @@ Relative-time display links to `https://bsky.app/profile/{handle}/post/{rkey}`. 
 ## [SHARED] GIF Provider — Klipy as External Embed
 *2026-02-25*
 
-GIFs posted as `app.bsky.embed.external` with the Klipy CDN URL; thumbnail uploaded as blob. BlueSky's AppView CDN transcodes blobs to JPEG, stripping animation — CDN URL reference is the only way to preserve animation (same approach as Tenor/Giphy in the native app). Trade-off: Klipy not yet on BlueSky's animated-GIF allowlist (issue #9728); native app shows thumbnail only. No code change needed when allowlist is updated.
+GIFs posted as `app.bsky.embed.external` with the Klipy CDN URL; thumbnail uploaded as blob. BlueSky's AppView CDN transcodes blobs to JPEG, stripping animation — CDN URL reference is the only way to preserve animation (same approach as Tenor/Giphy in the native app).
+
+**Update 2026-06-17 — Klipy is now Bluesky's official GIF provider (Tenor migration shipped), so GIFs render ANIMATED in the official app — but ONLY if the embed matches Bluesky's parser exactly.** The previous note ("not on the allowlist; native shows a thumbnail") was wrong — it's not an allowlist, it's a URL-format gate. To animate everywhere, the `app.bsky.embed.external.external` must be:
+- `uri` = `<gif.url>?hh=<height>&ww=<width>&mp4=<mp4Slug>&webm=<webmSlug>` — host MUST stay `static.klipy.com` with path starting `/ii/` (which Klipy's `api.klipy.com` returns natively — verified live); the mp4/webm slugs are the same-size mp4/webm filenames (the official app rewrites the host to `k.gifs.bsky.app` at render time).
+- `title` = alt text; `description` = `"ALT: " + alt` — the uppercase `ALT: ` prefix is **load-bearing** (Bluesky uses it to mark an auto vs user-authored caption).
+- `thumb` = uploaded blob of the same-size `.jpg` still (the static-client fallback card).
+Incoming GIFs are detected animated via host `static.klipy.com` + `/ii/` (plus the existing tenor/giphy/klipy hosts); the `?hh=…` query is stripped before loading the `.gif` for playback. Implemented on both platforms.
 
 ---
 
@@ -598,3 +604,136 @@ ArticleReaderSheet share button presents `UIActivityViewController` via UIKit (w
 *2026-03-31*
 
 `<meta name="apple-itunes-app" content="app-id=6760909675">` in `<head>` renders Safari's native Smart App Banner. Auth screen footer and Settings modal link to the App Store listing. GitHub repository link removed from user-facing UI (repo remains public).
+
+---
+
+## [iOS] Xcode Cloud — Root Workspace + Workspace-Level Shared Scheme
+*2026-06-17*
+
+The Xcode project lives nested at `BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj` (the repo root is the web app). Xcode Cloud expects the project/workspace at the repository root and reverts a configured subdirectory path back to root, failing with `Bsky Dreams.xcodeproj does not exist at the root of the repository`.
+
+Fix, in three parts:
+
+1. **Root workspace.** `BskyDreams.xcworkspace` at the repo root references the nested project (`<FileRef location="group:BskyDreams-iOS/Bsky Dreams/Bsky Dreams.xcodeproj">`). The workflow targets this workspace, satisfying the "must be at root" check without moving the project or touching `project.pbxproj`. Rejected: relocating the whole project to the repo root — it would mix iOS source among the web-app files and is a large change to a live App Store project.
+
+2. **Workspace-level shared scheme.** Building the workspace, Xcode Cloud validates the scheme at the *workspace's* shared-data path, not the project's. With only a project-level shared scheme, onboarding fails with `The Scheme 'Bsky Dreams' may only exist locally. To use this workflow it must be pushed to your repository`. The fix is `BskyDreams.xcworkspace/xcshareddata/xcschemes/Bsky Dreams.xcscheme`, copied from the project scheme with `ReferencedContainer` / test-plan paths rewritten relative to the repo root (`container:BskyDreams-iOS/Bsky Dreams/...`). `xcodebuild -list` then shows two "Bsky Dreams" entries (project + workspace); harmless, same target — the GUI picker collapses them and prefers the workspace one.
+
+3. **ci_scripts at the repo root.** Xcode Cloud only runs `ci_scripts` located beside the project/workspace the workflow targets. Since the workflow targets the root workspace, `ci_scripts/` lives at the repo root (not beside the `.xcodeproj`). `ci_pre_xcodebuild.sh` stamps `CI_BUILD_NUMBER` into `CURRENT_PROJECT_VERSION` in `AppVersion.xcconfig` (resolved via `CI_PRIMARY_REPOSITORY_PATH`), leaving `MARKETING_VERSION` for manual release bumps. No-ops outside Xcode Cloud.
+
+Also removed 252 MB of committed Xcode derived data (`build/`, 612 files) and gitignored it — Xcode Cloud re-clones the full repo per build, so compiled artifacts in the source tree are dead weight. The workflow must be created from the open root workspace (not the `.xcodeproj`), or Xcode rebinds it to the nested project and the root error returns.
+
+---
+
+## [iOS] Dynamic Type via `relativeTo:` on Custom Fonts
+*2026-06-17*
+
+The `.syne()` and `.inter()` font helpers build their fonts with `.custom(_, size:, relativeTo: .body)` instead of a fixed `.custom(_, size:)`. Without `relativeTo:`, a custom (non-system) font renders at a literal point size and ignores the user's Dynamic Type setting entirely — the app reads at one size regardless of the accessibility text-size slider, which fails Apple's accessibility expectations and makes the app unusable for low-vision users. Tying each custom font to a `TextStyle` lets the type-size system scale it proportionally. Post body text uses the system font (see the emoji-fallback decision) — but `.system(size:)` does NOT scale; that was wrong here until 2026-10-08. System-font reading text now goes through `.scaledSystemFont(_:)` (a `@ScaledMetric` modifier in `DesignSystem.swift`). Trade-off: very large accessibility sizes can force layout reflow in dense rows — acceptable, and far better than ignoring the setting.
+
+---
+
+## [iOS] Universal Feature-State Primitives + the Four-States Rule
+*2026-06-17*
+
+Every content surface (list, grid, search, sheet) must explicitly handle four states beyond the happy path: **loading**, **empty**, **error**, and **offline**. Shared primitives enforce this: `NBEmptyState` (structural "nothing here" message), `NBErrorBanner` (coral, with retry/dismiss — for transient failures that just occurred), `NBOfflineBanner` (lime — network unreachable), and `NBSkeleton` / `NBSkeletonPostRow` (shimmer placeholder during first load, reduce-motion aware). Previously each view either showed a spinner forever, a blank screen, or silently swallowed errors in a bare `catch {}` — the user could not tell "loading" from "broken" from "genuinely empty." Standardizing the primitives makes every feature legible in failure and keeps the neubrutalist styling consistent. The four states are a checklist, not a suggestion: a surface that doesn't define all four is incomplete.
+
+---
+
+## [iOS] Haptics Taxonomy — Semantic, Not Ad-Hoc
+*2026-06-17*
+
+The `Haptics` enum defines a fixed semantic vocabulary: `selection` (paging, toggles, tab/segment changes), `light`/`medium`/`heavy` (discrete user actions by weight), and `success`/`warning`/`error` (operation outcomes). Calls pick the meaning, not a specific generator. Ad-hoc `UIImpactFeedbackGenerator(style:)` calls scattered through views drift into inconsistency — the same conceptual event (e.g. a failed post) fires different feedback in different places, and feedback gets sprinkled where it adds noise. A central taxonomy makes haptics mean something: `error` always accompanies a surfaced `NBErrorBanner`, `selection` always accompanies a page/toggle change. Trade-off: a small indirection layer over UIKit's generators — worth it for a coherent feel.
+
+---
+
+## [iOS] CachedImage — URL-Bound Cached Async Image with Off-Main Downsample
+*2026-06-17*
+
+`CachedImage` (backed by `NBImageLoader`) replaces `AsyncImage` in high-churn media surfaces (feed/gallery image grids). It mirrors `AsyncImage`'s phase API but adds: a shared `NSCache` (600 items / 60 MB), off-main ImageIO downsampling to the display size (not full-resolution decode), and — critically — a re-check of the bound URL *after* the async load completes, discarding the result if the cell has been recycled to a different post. Plain `AsyncImage` in a `LazyVStack`/`LazyVGrid` shows the wrong image in a recycled cell (the in-flight load lands after the cell was reassigned) and decodes images at full resolution on the main thread, causing scroll hitches and memory spikes. The URL re-check kills the wrong-image bug; off-main downsample kills the hitch. `clearCache()` is exposed for the Settings "Clear Image Cache" action. This complements `URLCache` (transport layer) rather than replacing it. Existing grid cells still constrain both width and height before `.clipped()`.
+
+---
+
+## [iOS] NetworkMonitor — Reachability-Driven Graceful Degrade
+*2026-06-17*
+
+`NetworkMonitor` (`@Observable`, wrapping `NWPathMonitor`) is injected via `@Environment` and exposes connectivity state. Views observe it to show `NBOfflineBanner` and to keep cached content visible instead of replacing it with a confusing error. Without an explicit reachability signal, an offline launch produced a generic request failure indistinguishable from a server error — the user saw "something went wrong" rather than "you're offline," and a retry button that could not possibly succeed. The monitor lets the app degrade honestly: tell the user it's offline, keep showing what's cached, and re-enable actions when the path returns. Single shared instance; one `NWPathMonitor` on a background queue.
+
+---
+
+## [iOS] SwiftData Container — Graceful On-Disk → In-Memory Fallback
+*2026-06-17*
+
+The `ModelContainer` is created inside a `do/catch`: on failure to open the on-disk store, the app falls back to an in-memory container rather than trapping. A corrupt or migration-incompatible store (e.g. a botched lightweight migration, or a store written by a future schema) previously crashed the app on launch with no recovery path — the user was permanently locked out and could only fix it by deleting and reinstalling. The fallback guarantees the app always launches: cross-session persistence is lost for that session (seen-posts, saved channels), but the app is usable and the next clean launch can rebuild the store. Launch-blocking persistence is never worth a hard crash.
+
+---
+
+## [iOS] Synchronized-Group New-File Gotcha — Inline New Types into Existing Files
+*2026-06-17*
+
+The Xcode project uses file-system-synchronized groups (`PBXFileSystemSynchronizedRootGroup`). Brand-new standalone `.swift` files dropped into a synchronized group are **intermittently not picked up by the build** — confirmed via `xcodebuild` CLI even after a clean build and a DerivedData wipe; the type "cannot be found in scope" despite the file existing on disk. Mitigation: new Swift types added in this update (`NetworkMonitor`, `NBImageLoader` / `CachedImage`, and other primitives) were **inlined into already-compiled files** (`AppStore.swift`, `DesignSystem.swift`) rather than created as new standalone files. New **asset-catalog** entries (colorsets, imagesets) inside the existing `.xcassets` are picked up by `actool` regardless of the synchronized-group issue — which is why the branded launch assets work as new files. Rule for future work: prefer extending an existing compiled file over adding a new `.swift` file; if a new file is unavoidable, verify it compiles into the target before building on top of it.
+
+---
+
+## [iOS] Branded Launch Screen — `UILaunchScreen` Dict, Blue (Never Coral)
+*2026-06-17*
+
+The launch screen is defined via an Info.plist `UILaunchScreen` dictionary (not a storyboard): asset-catalog `LaunchBackground` colorset (brand blue `#0047FF`) plus a `LaunchCloud` imageset (white cloud with a thin black outline, generated from the same `cloud.fill` SF Symbol source as the app icons). The previous setup referenced a `UILaunchStoryboardName` storyboard that no longer existed, yielding a blank/default launch. The `UILaunchScreen` dict avoids the storyboard entirely and renders the brand instantly. The launch background is **blue**, matching the iOS default accent — never coral. (See the per-platform default-accent decision: iOS default is `#0047FF`, web default is `#FF5C35`.) Launch assets are new asset-catalog entries, which `actool` compiles reliably despite the synchronized-group new-file gotcha above.
+
+---
+
+## [iOS] Dark-Mode Accent Legibility — `Color.nbAccentLegible`
+*2026-06-17*
+
+`Color.nbAccentLegible` returns a lightened variant of the user's accent color in dark mode, used for foreground elements (links, mentions, icon tints) — while the raw accent is retained for fills (buttons, active backgrounds). The default blue accent `#0047FF` is too dark to read as text/icon color against a dark background; using the same accent for both fills and foregrounds made links and tinted glyphs nearly invisible in dark mode. Splitting fill-accent from foreground-accent keeps both legible across appearances without changing the brand. Same lesson carried from the sibling Archive-Watch app, where `#0047FF`-on-dark was the original offender.
+
+---
+
+## [iOS] First-Run Hints — `HintsManager` + `HintBanner`
+*2026-06-17*
+
+Contextual first-run tips are delivered by `HintsManager` (`@Observable`) + `HintBanner` (cyan/blue, visually distinct from the coral error banner and lime offline banner). Each hint is dismissible permanently per-device; dismissals are kept in a stored `Set` reassigned on mutation so `@Observable` fires and dependent views update. A `HintBanner` is a transient, dismissable, one-time teaching tip — categorically different from `NBEmptyState` (structural), `NBErrorBanner` (attention/failure), and a multi-step walkthrough (not used here). The distinction matters: conflating "here's a tip" with "something is wrong" trains users to ignore both. Hints are governed by a master "Show Tips" toggle and a "Reset All Tips" action in Settings, so a user who dismissed everything can bring them back.
+
+---
+
+## [SHARED] Discover Feed — Personalized, Conversation-Weighted, User-Moderated
+*2026-06-17*
+
+Discover was rebuilt away from a global virality firehose. The old design merged three feed generators (`whats-hot` + `hot-classic` + `with-friends`) and sorted by raw likes-per-hour `(likes-1)/(hours+2)^1.8`. Two-thirds of those sources are network-wide identical for every account (`hot-classic` is pure global engagement; `whats-hot` is only lightly viewer-aware), so two different accounts saw the same posts — the feed was generic, not personal. Engagement-ranking a global pool also surfaced whatever is viral network-wide (large high-engagement NSFW/furry communities dominate), which no amount of per-account blocking can outrun. And the score optimized for exactly the rage-bait/repost dynamic the app's "build for human engagement" ethos rejects.
+
+The rebuild (`DiscoverEngine` in `AppStore.swift`; mirrored in `js/app.js`):
+- **Sources:** `whats-hot` + `with-friends` only. `hot-classic` removed — it was the generic, NSFW-heavy firehose.
+- **Honor the user's OWN moderation** via `app.bsky.actor.getPreferences` (never fetched before): muted words, per-label visibility (`contentLabelPref` hide/warn), adult-content toggle. Send the `atproto-accept-labelers` header (Bluesky's default labeler `did:plc:ar7c4by46qjdydhdevvrndac` + the user's subscribed labelers) so labels actually arrive. Filter author `viewer.muted`/`blocking`/`blockedBy` client-side. (Fixed `ActorViewer`: the model had `blocked` which never matched the API's `blocking`/`blockedBy`.)
+- **Personalize from the user's own signals** — their network (`author.viewer.following` + `knownFollowers`) and their topics (hashtags from their own recent posts). No opaque model.
+- **Conversation-weighted ranking:** replies dominate, reply-to-like ratio rewards discussion, questions boosted, originals favored, **reposts penalized (×0.5)**, raw likes de-emphasized.
+- **Transparency:** every discovery post carries a "why you're seeing this" chip ("From someone you follow", "Followed by N you know", "Matches your interest in #X", "Active conversation · N replies"). No opaque "for you" box.
+
+**Feed IA (simplified 2026-06-17):** the home feed is **three flat top-level tabs — Following · Conversations · Trending** — no nested sub-toggle. **Following** = your follows, chronological (`getTimeline` only, no re-rank); a clean "catch up on your people" feed, distinct from discovery, and it honors your moderation too. **Conversations** (default) and **Trending** are both the personalized discovery pipeline above — they differ only in the base signal (discussion vs popularity). An earlier design had two top tabs (Following/Discover) plus a Conversations/In Network/Trending sub-toggle; "In Network" was dropped as redundant (network-awareness is always-on in discovery ranking, and a chronological Following already represents your graph), and the two levels were flattened to remove the nesting.
+
+Rationale: this is the feed run through the project's four-question values check — it deepens understanding (you see *why*), invites participation (your graph + topics + the tab choice are the inputs), supports agency (your own moderation is honored, not a hardcoded list), and rewards conversation over virality. Trade-off: a per-session `getPreferences` + author-feed fetch to build the context, and a smaller candidate pool than the old firehose (mitigated by pagination).
+
+---
+
+## [SHARED] Group DMs + Message Reactions — `chat.bsky.group.*`
+*2026-06-17*
+
+Bluesky shipped group chats (up to 50, June 2026) and message reactions. Both build on the EXISTING DM infrastructure rather than a new surface — our `Conversation` model already carried `members: [ActorProfile]`, so groups are an enhancement of the Messages tab, not a new tab. Key implementation facts (lexicons flagged "unstable" upstream — re-verify field names before each release):
+
+- **Transport:** group endpoints (`chat.bsky.group.*`) use the same chat transport as `chat.bsky.convo.*` (same access token, same host) — no new client base URL.
+- **Group detection:** a convo is a group when `convoView.kind` is the `#groupConvo` union arm; the group **name / memberCount / joinLink live inside `kind`**, not on the convo directly. iOS decodes `kind` as a custom Codable union; web reads `convo.kind.$type`.
+- **Messages are a 3-way union now:** `#messageView | #deletedMessageView | #systemMessageView`. The existing decoder (text/sender optional → "deleted") had to gain a third arm: system messages carry a `data` union (`systemMessageDataAddMember/MemberJoin/RemoveMember/MemberLeave/EditGroup/…`) whose referred users are bare DIDs — render as centered pills ("X added Y", "Y joined") hydrating names from `convo.members`. iOS uses a custom `init(from:)` on `ChatMessage`; a memberwise init is kept for optimistic sends.
+- **Reactions:** `chat.bsky.convo.addReaction`/`removeReaction` take `{convoId, messageId, value}` (one emoji grapheme) and **echo back the full updated `messageView`** — refresh local state from the response rather than mutating a partial. `messageView.reactions = [{value, sender:{did}, createdAt}]`.
+- **Endpoints wired:** createGroup, addMembers, removeMembers, listConvoRequests + acceptConvo (requests inbox), requestJoin (invite-link join, takes a `code` not a convoId), createJoinLink, listJoinRequests/approve/rejectJoinRequest (owner approval, API present). Heterogeneous union arrays (`listConvoRequests`) are decoded with an always-succeeds failable wrapper so the array advances reliably and non-convo arms resolve to nil.
+- **No media in group chats yet** (Bluesky hasn't shipped it — text-only).
+
+---
+
+## [SHARED] Communities — Watch, Don't Build (no lexicon yet)
+*2026-06-17*
+
+Bluesky announced **Communities** (Reddit-style topic spaces — handles-as-URLs like `name.bsky.social`, three privacy levels public/invite/private, custom home pages built on atproto apps) but as of June 2026 it is **not launched and has no published lexicon/API.** Decision: do NOT build speculative UI against an unannounced schema (it would be thrown away). When the lexicon ships, Communities warrants its **own top-level surface** (browse/join/post within topic spaces — distinct from feeds and DMs), not a fold-in. Tracked in SCRATCHPAD; re-check the atproto changelog + `lexicons/` periodically.
+
+---
+
+## [SHARED] Reader — Detect the ARTICLE's Language, Not the Post's Tag
+*2026-06-18*
+
+Non-English articles were leaking into the Reader because the filter used `isEnglish`, which checks the POST's `record.langs` and **treats a missing tag as English** — and most link-share/news/bot posts omit `langs`. It also judged the wrong thing: the Reader shows the linked *article*, whose language is independent of the post text. Fix: filter on the article's own card text (`title` + `description`). iOS uses Apple's on-device `NLLanguageRecognizer` (free, accurate for all languages; reject when the dominant language is non-English and English probability < 0.45). Web has no equivalent, so it uses a heuristic: honor explicit `langs` strictly, reject text that is >12% non-Latin-script letters (CJK/Cyrillic/Arabic/Hebrew/Thai/Devanagari/Greek), then an English function-word density check for Latin-script text (≥8 words, <5% stopwords → reject). Both err toward ALLOWING when genuinely ambiguous (don't over-filter English). The `langs`-only `isEnglish`/`_isEnglishPost` is still used by the feed views; only the Reader uses article-text detection.

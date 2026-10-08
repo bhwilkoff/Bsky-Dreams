@@ -1,2 +1,0 @@
-Target dependency graph (1 target)
-Target 'Bsky Dreams' in project 'Bsky Dreams' (no dependencies)

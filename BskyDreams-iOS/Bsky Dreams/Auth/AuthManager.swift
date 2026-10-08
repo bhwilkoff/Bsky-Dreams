@@ -64,16 +64,34 @@ final class AuthManager {
         }
     }
 
+    /// One refresh at a time: refresh tokens ROTATE, so parallel 401s each
+    /// refreshing with the same token make every caller but the first fail.
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+
     func refreshSession() async {
-        guard let s = session else { return }
+        if let inFlight = refreshTask { return await inFlight.value }
+        let task = Task { await performRefreshFlow() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    private func performRefreshFlow() async {
+        // Start from the NEWEST tokens in the Keychain: the background notification
+        // check refreshes with its own AuthManager, which rotates the refresh token
+        // out from under this instance's in-memory copy.
+        guard let s = keychain.loadSession(key: sessionKey) ?? session else { return }
         do {
             let refreshed = try await performRefresh(refreshJwt: s.refreshJwt)
             session = refreshed
             keychain.saveSession(refreshed, key: sessionKey)
-        } catch {
-            // Refresh token expired — try silent re-auth with saved credentials.
-            // Keep existing session alive during the attempt so the app stays usable.
+        } catch AuthError.refreshFailed {
+            // The server REJECTED the refresh token — try silent re-auth with saved
+            // credentials. Keep the existing session alive during the attempt.
             await trySilentReauth()
+        } catch {
+            // Offline / timeout / 5xx: transient. Keep the session; the next
+            // foreground or 401 retries. Never log anyone out for a dead network.
         }
     }
 
@@ -92,11 +110,13 @@ final class AuthManager {
             let result = try await createSession(handle: creds.handle, password: creds.appPassword)
             session = result
             keychain.saveSession(result, key: sessionKey)
-        } catch {
-            // Credentials invalid — clear everything, force re-login
+        } catch AuthError.loginFailed {
+            // The server rejected the saved app password (revoked) — clear everything.
             session = nil
             keychain.deleteSession(key: sessionKey)
             keychain.deleteSession(key: credentialsKey)
+        } catch {
+            // Transient (offline, rate-limited, 5xx) — keep credentials for the next try.
         }
     }
 
@@ -110,9 +130,14 @@ final class AuthManager {
         req.httpBody = try JSONEncoder().encode(["identifier": handle, "password": password])
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard httpResponse.statusCode == 200 else {
             let err = try? JSONDecoder().decode(ATError.self, from: data)
-            throw AuthError.loginFailed(err?.message ?? "Invalid credentials")
+            // Only 400/401 mean "these credentials are wrong"; 429/5xx are transient.
+            if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
+                throw AuthError.loginFailed(err?.message ?? "Invalid credentials")
+            }
+            throw APIError.serverError(httpResponse.statusCode, err?.message ?? "Bluesky is unavailable — try again shortly")
         }
         return try JSONDecoder().decode(BskySession.self, from: data)
     }
@@ -124,8 +149,12 @@ final class AuthManager {
         req.setValue("Bearer \(refreshJwt)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw AuthError.refreshFailed
+        guard let httpResponse = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
+                throw AuthError.refreshFailed
+            }
+            throw APIError.serverError(httpResponse.statusCode, "refreshSession")
         }
         return try JSONDecoder().decode(BskySession.self, from: data)
     }

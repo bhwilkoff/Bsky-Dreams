@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-04-01
+## Current Date: 2026-06-17
 
 ---
 
@@ -31,6 +31,9 @@
 | Notification tap → navigate to relevant post/profile | ✅ | ✅ | |
 | Direct messages (conversation list, chat) | ✅ | ✅ | |
 | DMs: new conversation (handle search) | ✅ | ✅ | |
+| Group DMs (create, members, requests, invite links) | ✅ | ✅ | 2026-06-17; `chat.bsky.group.*`; up to 50; text-only (Bluesky limit) |
+| Message reactions (emoji, add/remove) | ✅ | ✅ | 2026-06-17; `chat.bsky.convo.addReaction/removeReaction` |
+| Communities (Reddit-style topic spaces) | ⏳ | ⏳ | Announced, NO lexicon yet — watch atproto changelog (own top-level surface when it ships) |
 | Gallery (image posts, card layout, like/repost, lightbox) | ✅ | ✅ | iOS: tap image → lightbox; tap metadata → conversation |
 | Lightbox: image download button | ✅ | ✅ | Web: added 2026-03-23 (fetch→blob→anchor download) |
 | Dark mode (color scheme toggle) | ✅ | ✅ | Web: added 2026-03-23 (html[data-theme="dark"], localStorage persistence, Settings toggle) |
@@ -136,14 +139,25 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 - Reader improvements (2026-04-01): seen-post filtering with auto-pagination (up to 5 extra pages); `articlesWithCards` computed property prevents invisible rows; share sheet via UIKit with custom OpenInSafariActivity
 - Image resize shared (2026-04-01): `ComposeImage.resizeImageData` static method used by both ComposeView and InlineReplyView
 - Feed scroll smoothness (2026-03-31): in-memory seenURISet cache in ReaderView (same as FeedView); image pre-warming; earlier pagination trigger (last 5 not last 1)
+- World-class polish update (2026-06-17): foundation + per-view sweep porting learnings from sibling apps (BOBA-Playbook, Archive-Watch). See @docs/iOS-DESIGN.md (binding design contract) and DECISIONS.md 2026-06-17 entries. Foundation: Dynamic Type via `relativeTo:` custom fonts (`.syne`/`.inter`); `Color.nbAccentLegible` (dark-mode-lightened accent for foregrounds); `Haptics` semantic taxonomy (selection / light-medium-heavy / success-warning-error); universal feature-state primitives `NBEmptyState` / `NBErrorBanner` (coral, retry/dismiss) / `NBOfflineBanner` (lime) / `NBSkeleton`+`NBSkeletonPostRow` (reduce-motion aware); first-run hints `HintsManager` + `HintBanner` (cyan/blue, dismiss-permanent per-device); `NBImageLoader`+`CachedImage` (URL-bound cached async image, shared NSCache 600/60MB, off-main ImageIO downsample, post-await URL re-check kills recycled-cell wrong-image, `clearCache()`); `NetworkMonitor` (`NWPathMonitor`, `@Observable`, `@Environment`-injected) driving offline banners; SwiftData container graceful on-disk → in-memory fallback (corrupt store can't crash launch); fixed latent background notification check using camelCase `likeViaRepost`/`repostViaRepost` (never matched kebab-case API) — same class as the documented foreground fix; branded `UILaunchScreen` Info.plist dict using asset-catalog `LaunchBackground` (blue #0047FF) + `LaunchCloud` imageset (never coral). BUILD LESSON: synchronized-group new-file gotcha — brand-new `.swift` files intermittently not picked up; mitigation: inline new types into already-compiled files (`AppStore.swift`, `DesignSystem.swift`); new `.xcassets` entries are picked up by `actool` regardless. Per-view: surfaced every previously-swallowed `catch {}` (Profile ×6, Notifications, Search, Stream, Constellation, DMs/Chat, Compose) via `NBErrorBanner` + `Haptics.error`; `NBEmptyState` across Profile/Search/Notifications/Gallery/Thread/Timeline/Analytics; intentional haptics; Reduce Motion honored in Constellation/Stream/TV decorative animations (NOT physics sim or gesture infra); `CachedImage` adopted in ImageGridView + GalleryView cells; offline banner + first-load skeleton + first-run HintBanners in Feed/Reader; VoiceOver labels on icon-only buttons throughout. Settings: "Clear Image Cache", "Notification Settings" (deep-links to system Settings), and a "TIPS & HINTS" section (master Show-Tips toggle + Reset All Tips).
 
 ### Next for iOS
 
-- **Analytics view**: implement Canvas-equivalent charts using Swift Charts or Canvas
+- **Analytics view**: implement Canvas-equivalent charts using Swift Charts or Canvas (now has `NBEmptyState` for the no-data path; charts still TBD)
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions
 - **Cross-device channel/prefs sync**: read/write `app.bsky-dreams.prefs` via AT Protocol repo
 - **Scroll position on back navigation**: investigate `.scrollPosition(id:)` (iOS 17) to save/restore feed position
+
+### Done in the 2026-06-17 world-class polish update (was here)
+
+- ~~Dynamic Type~~ — DONE: custom fonts scale via `relativeTo:` in `.syne()`/`.inter()`
+- ~~Accessibility (VoiceOver labels on icon-only buttons)~~ — DONE: applied throughout
+- ~~Offline handling~~ — DONE: `NetworkMonitor` + `NBOfflineBanner` (graceful degrade, keep cached content)
+- ~~Consistent loading/empty/error states~~ — DONE: `NBSkeleton` / `NBEmptyState` / `NBErrorBanner` four-states rule
+- ~~Reduce Motion for decorative animations~~ — DONE: honored in Constellation/Stream/TV (not physics/gesture infra)
+- ~~Dark-mode link/icon legibility~~ — DONE: `Color.nbAccentLegible`
+- ~~Branded launch screen~~ — DONE: `UILaunchScreen` dict (blue, never coral)
 
 ---
 
@@ -152,7 +166,7 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 ### Web
 1. Blob limit 1 MB — `resizeImageFile()` handles it but loses GIF animation
 2. Notifications: no polling; stale until user navigates to view
-3. Klipy not yet on Bluesky animated-GIF allowlist (issue #9728) — no code change needed when added
+3. ~~Klipy not yet on Bluesky animated-GIF allowlist (issue #9728)~~ **RESOLVED 2026-06-17**: Klipy is now Bluesky's official GIF provider; GIFs render animated when the embed matches Bluesky's parser (`static.klipy.com/ii/…?hh=&ww=&mp4=&webm=` + `ALT:` description + thumb blob). Implemented on both platforms.
 
 ### iOS
 1. Reader `readURLs` (`@State`) is separate from SwiftData `SeenPost` — needs reconciliation for persistent read-state display

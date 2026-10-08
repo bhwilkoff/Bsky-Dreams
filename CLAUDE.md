@@ -177,14 +177,14 @@ No build step required. The app runs as a static file.
 
 ### Tech Stack
 
-- **Language / UI:** Swift 6, SwiftUI (`@Observable`, iOS 17+)
+- **Language / UI:** Swift 6, SwiftUI (`@Observable`, iOS 18.6+ deployment target)
 - **Local persistence:** SwiftData (SeenPost, SavedSearch, CachedPreferences)
 - **Auth storage:** Keychain via Security framework (`kSecAttrAccessibleAfterFirstUnlock`)
 - **API:** AT Protocol HTTP API via `URLSession` async/await — no SDK
 - **Video:** AVPlayer + HLS (single shared instance per TV session)
 - **Reader:** `URLSession` fetch (no CORS on iOS) + off-screen `WKWebView` for DOM extraction
 - **Fonts:** Syne + Inter loaded from `Resources/Fonts/` (registered in Info.plist)
-- **Deployment:** Xcode build → App Store (live: https://apps.apple.com/us/app/bsky-dreams/id6760909675)
+- **Deployment:** **cloud build → App Store** (DEFAULT) — `gh workflow run appstore-build.yml -f platform=ios`; the dev Mac's beta macOS can't ship locally (ITMS-90301), so do NOT `xcodebuild archive` locally. See `docs/CLOUD-SUBMISSION.md`. Live: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Key Directories
 
@@ -212,12 +212,13 @@ No build step required. The app runs as a static file.
 
 ### How to Run Locally
 
-Open `BskyDreams-iOS/BskyDreams.xcodeproj` in Xcode, select an iOS 17+
-simulator or device, and press Run. No build scripts or dependencies to
+Open the repo-root `BskyDreams.xcworkspace` in Xcode, select an iOS 18.6+ physical
+device (no local simulators), and press Run. No build scripts or dependencies to
 install — all third-party code is absent (pure Apple frameworks only).
 
 ### iOS Conventions
 
+- **Binding design contract**: `docs/iOS-DESIGN.md` governs all iOS UI/IA — navigation, the four required feature states (loading/empty/error/offline), brand-vs-semantic color, Dynamic Type, haptics taxonomy, accessibility, and image loading. Quote a rule before adding any new view/sheet/picker/nav level; if no rule fits, add the rule there first. **Build gotcha**: the Xcode project uses file-system-synchronized groups that intermittently fail to pick up brand-new `.swift` files — inline new types into an already-compiled file (`AppStore.swift`, `DesignSystem.swift`) instead of creating new files; new `.xcassets` entries are picked up by `actool` regardless.
 - All AT Protocol API calls go through `ATProtocolClient.shared` — never call `URLSession` directly from views
 - Auth state is owned exclusively by `AuthManager` — views read via `@Environment(AuthManager.self)`
 - Global navigation state lives in `AppStore.navigationPath: NavigationPath` — push `PostDestination`, `ProfileDestination`, or `HashtagDestination`
@@ -248,7 +249,7 @@ install — all third-party code is absent (pure Apple frameworks only).
 
 ### iOS Constraints
 
-- iOS 17+ minimum deployment target
+- iOS 18.6 minimum deployment target — the app AND the Share Extension must match (an extension above the app floor silently fails to load on older iOS)
 - No third-party Swift packages — use only Apple frameworks
 - Keychain for all credential storage — never UserDefaults for secrets
 - AT Protocol base URL: `https://bsky.social/xrpc/`

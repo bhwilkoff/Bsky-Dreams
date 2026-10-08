@@ -20,6 +20,7 @@ struct TVView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(\.toggleSidebar) private var toggleSidebar
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query private var seenPosts: [SeenPost]
 
     private var seenURIs: Set<String> { Set(seenPosts.map { $0.uri }) }
@@ -90,7 +91,7 @@ struct TVView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "play.tv.fill")
                         .font(.system(size: 44))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text("BSKY TV")
                         .font(.syne(28, weight: .bold))
                         .foregroundStyle(Color.nbBlack)
@@ -269,7 +270,7 @@ struct TVView: View {
                     Button("← Back to Topics") { goToSelector() }
                         .font(.syne(13, weight: .bold))
                         .tracking(0.5)
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
                         .overlay(Rectangle().strokeBorder(Color.nbAccent, lineWidth: 2))
@@ -302,8 +303,10 @@ struct TVView: View {
                 .scrollPosition(id: $scrollPositionID)
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea()
-                .onChange(of: scrollPositionID) { _, id in
+                .onChange(of: scrollPositionID) { old, id in
                     let idx = id ?? 0
+                    // Haptic when advancing to a new video (swipe or auto-advance)
+                    if let oldID = old, oldID != id { Haptics.selection() }
                     playVideo(at: idx)
                     if idx < videos.count {
                         markVideoSeen(videos[idx])
@@ -329,6 +332,7 @@ struct TVView: View {
                     .background(Color.nbBlack.offset(x: 2, y: 2))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Back to topics")
                 .padding(.leading, 16)
                 .padding(.top, backButtonTopPadding)
                 Spacer()
@@ -336,12 +340,23 @@ struct TVView: View {
         }
         .ignoresSafeArea()
         .onAppear { playVideo(at: currentIndex) }
-        .onDisappear { player.pause() }
-        .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)) { _ in
+        .onDisappear {
+            player.pause()
+            // Hand audio back: otherwise music/podcasts the TV interrupted stay paused.
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+        // Only OUR item finishing advances TV — inline feed videos post the same notification.
+        .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)) { note in
+            guard let item = note.object as? AVPlayerItem, item === player.currentItem else { return }
             // Auto-advance to the next video when the current one finishes
             let next = currentIndex + 1
             if next < videos.count {
-                withAnimation { scrollPositionID = next }
+                // Haptic is emitted by the scrollPositionID onChange handler below
+                if reduceMotion {
+                    scrollPositionID = next
+                } else {
+                    withAnimation { scrollPositionID = next }
+                }
             }
         }
     }
@@ -506,7 +521,7 @@ struct TVVideoCell: View {
             } else {
                 // Inactive cells show a static thumbnail — no player, no audio
                 if let thumb = videoThumbnail, let url = URL(string: thumb) {
-                    AsyncImage(url: url) { phase in
+                    CachedImage(url: url, maxPixelSize: 900) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFit()
                         default: Color.black
@@ -547,6 +562,7 @@ struct TVVideoCell: View {
         // Long press activates 2x speed for as long as the finger is held
         .onLongPressGesture(minimumDuration: 0.3, maximumDistance: 20, pressing: { pressing in
             guard isActive else { return }
+            if pressing && !is2xSpeed { Haptics.light() }  // engage 2x hold
             is2xSpeed = pressing
             player.rate = pressing ? 2.0 : 1.0
         }, perform: {})
@@ -654,6 +670,7 @@ struct TVOverlayView: View {
                             .font(.system(size: 24))
                             .foregroundStyle(.white)
                     }
+                    .accessibilityLabel("Open conversation")
 
                     // Mute — controls the shared player directly
                     Button {
@@ -664,6 +681,7 @@ struct TVOverlayView: View {
                             .font(.system(size: 24))
                             .foregroundStyle(.white)
                     }
+                    .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
                     // Like
                     Button {
@@ -672,7 +690,7 @@ struct TVOverlayView: View {
                         VStack(spacing: 4) {
                             Image(systemName: isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 28))
-                                .foregroundStyle(isLiked ? Color.nbAccent : .white)
+                                .foregroundStyle(isLiked ? Color.nbAccentLegible : .white)
                             Text("\(post.likeCount ?? 0)")
                                 .font(.inter(12))
                                 .foregroundStyle(.white)

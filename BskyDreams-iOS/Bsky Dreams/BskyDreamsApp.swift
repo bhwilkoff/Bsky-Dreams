@@ -60,8 +60,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        AppDelegate.streamingActive ? .landscape : .portrait
+        // On iPad the (iPhone-only) app runs in compatibility mode, where the idiom
+        // reports .phone — so test the HARDWARE. A portrait lock there made iPadOS
+        // draw the whole app rotated 90° whenever the iPad was held landscape.
+        if AppDelegate.isIPadHardware { return .all }
+        return AppDelegate.streamingActive ? .landscape : .portrait
     }
+
+    static let isIPadHardware = UIDevice.current.model.hasPrefix("iPad")
 }
 
 // MARK: - App
@@ -71,8 +77,29 @@ struct BskyDreamsApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authManager = AuthManager()
     @State private var appStore = AppStore()
+    @State private var networkMonitor = NetworkMonitor()
 
     private static let bgTaskID = "com.bskydreams.app.notificationRefresh"
+
+    /// Build the SwiftData container with graceful fallback so a corrupt or
+    /// migration-failed store can never hard-crash the app at launch: try the
+    /// on-disk store, then fall back to an in-memory store (the app still runs;
+    /// local seen/saved data just won't persist this session).
+    /// Built ONCE. `body` re-runs on every color-scheme change, so constructing the
+    /// container there opened a fresh store (and dropped @Query contexts) each time.
+    private static let sharedModelContainer = makeModelContainer()
+
+    private static func makeModelContainer() -> ModelContainer {
+        let schema = Schema([SeenPost.self, SavedSearch.self, CachedPreferences.self])
+        do {
+            return try ModelContainer(for: schema,
+                                      configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: false))
+        } catch {
+            // Last resort: in-memory so the app always launches.
+            return try! ModelContainer(for: schema,
+                                       configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        }
+    }
 
     init() {
         // Large disk cache so AsyncImage and URLSession responses persist across sessions
@@ -123,18 +150,22 @@ struct BskyDreamsApp: App {
         return Set(arr)
     }
 
-    /// Persists a set of delivered IDs, keeping only the newest 500.
+    /// Persists delivered IDs, keeping the NEWEST 500. (Trimming `Array(Set)` kept a
+    /// random 500, so recent IDs were dropped and their notifications re-delivered.)
     private static func saveDeliveredIDs(_ ids: Set<String>) {
-        let trimmed = Array(ids).suffix(500)
-        UserDefaults.standard.set(Array(trimmed), forKey: deliveredIDsKey)
+        let existing = UserDefaults.standard.stringArray(forKey: deliveredIDsKey) ?? []
+        let added = ids.subtracting(existing)
+        UserDefaults.standard.set(Array((existing + added).suffix(500)), forKey: deliveredIDsKey)
     }
 
     // MARK: - Background notification check
 
     static func performNotificationCheck() async {
-        // Retrieve session from Keychain for background use
-        let keychain = KeychainManager()
-        guard let session = keychain.loadSession(key: "bsky_session") else { return }
+        // Refresh first: the stored access token expires ~2h after the app was last
+        // opened, after which every background check silently 401'd.
+        let auth = await MainActor.run { AuthManager() }
+        await auth.refreshIfNeeded()
+        guard let session = await MainActor.run(body: { auth.session }) else { return }
         let accessJwt = session.accessJwt
 
         let center = UNUserNotificationCenter.current()
@@ -175,8 +206,8 @@ struct BskyDreamsApp: App {
                 case "reply":           (title, body) = ("New reply", "@\(author) replied to your post")
                 case "mention":         (title, body) = ("New mention", "@\(author) mentioned you")
                 case "quote":           (title, body) = ("New quote", "@\(author) quoted your post")
-                case "likeViaRepost":   (title, body) = ("New like", "@\(author) liked a post you reposted")
-                case "repostViaRepost": (title, body) = ("New repost", "@\(author) reposted a post you reposted")
+                case "like-via-repost":   (title, body) = ("New like", "@\(author) liked a post you reposted")
+                case "repost-via-repost": (title, body) = ("New repost", "@\(author) reposted a post you reposted")
                 default: continue
                 }
 
@@ -247,6 +278,7 @@ struct BskyDreamsApp: App {
             RootView()
                 .environment(authManager)
                 .environment(appStore)
+                .environment(networkMonitor)
                 .preferredColorScheme(appStore.preferredColorScheme)
                 .onOpenURL { url in
                     if url.scheme == "bskydreams", url.host == "share" {
@@ -257,16 +289,8 @@ struct BskyDreamsApp: App {
                 }
                 .onAppear {
                     BskyDreamsApp.scheduleBackgroundRefresh()
-                    // Request notification permission on first launch
-                    Task {
-                        let center = UNUserNotificationCenter.current()
-                        let settings = await center.notificationSettings()
-                        if settings.authorizationStatus == .notDetermined {
-                            _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
-                        }
-                    }
                 }
         }
-        .modelContainer(for: [SeenPost.self, SavedSearch.self, CachedPreferences.self])
+        .modelContainer(BskyDreamsApp.sharedModelContainer)
     }
 }

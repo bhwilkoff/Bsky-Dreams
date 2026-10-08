@@ -6,20 +6,35 @@ struct ThreadView: View {
 
     @State private var thread: ThreadViewPost?
     @State private var isLoading = true
+    @Environment(NetworkMonitor.self) private var network
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
     @State private var replyingToPost: PostView? = nil
-    @State private var scrollToTopTrigger = 0
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("Loading conversation...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Full-screen loading only on FIRST load — pull-to-refresh keeps content.
+            if isLoading && thread == nil {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        if network.isOffline { NBOfflineBanner() }
+                        ForEach(0..<3, id: \.self) { _ in NBSkeletonPostRow() }
+                    }
+                    .padding(12)
+                }
+                .accessibilityLabel("Loading conversation")
             } else if let thread {
                 threadContent(thread)
-            } else if let error = errorMessage {
-                ContentUnavailableView(error, systemImage: "bubble.left.and.exclamationmark.bubble.right")
+            } else if errorMessage != nil {
+                VStack(spacing: 12) {
+                    if network.isOffline { NBOfflineBanner() }
+                    NBErrorBanner(message: network.isOffline
+                                    ? "You're offline — this conversation will load when you reconnect."
+                                    : "Couldn't load this conversation.",
+                                  retry: network.isOffline ? nil : { Task { await loadThread() } })
+                    Spacer()
+                }
+                .padding(12)
             }
         }
         .nbNavBar(title: "CONVERSATION", leading: { NBBackButton() })
@@ -29,7 +44,22 @@ struct ThreadView: View {
     @ViewBuilder
     private func threadContent(_ thread: ThreadViewPost) -> some View {
         if let threadPost = thread.post {
-            ScrollViewReader { proxy in
+            threadScroll(threadPost)
+        } else {
+            // Thread resolved but the root post is unavailable (deleted, blocked, or
+            // not found). Show an explicit empty state rather than a blank screen.
+            NBEmptyState(
+                icon: "bubble.left.and.exclamationmark.bubble.right",
+                title: "POST UNAVAILABLE",
+                message: "This post may have been deleted, or you don't have access to it."
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func threadScroll(_ threadPost: ThreadPost) -> some View {
+        ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 4) {
                     Color.clear.frame(height: 0).id("thread-top")
@@ -82,10 +112,6 @@ struct ThreadView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: replyingToURI)
             .refreshable { await loadThread() }
-            .onChange(of: scrollToTopTrigger) { _, _ in
-                withAnimation { proxy.scrollTo("thread-top", anchor: .top) }
-            }
-            }
         }
     }
 
@@ -138,7 +164,7 @@ struct ThreadView: View {
                     HStack {
                         Text("Continue this conversation →")
                             .font(.inter(13, weight: .semibold))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                         Spacer()
                     }
                     .padding(.horizontal, 20)
@@ -155,6 +181,7 @@ struct ThreadView: View {
         do {
             thread = try await ATProtocolClient.shared.getPostThread(uri: uri, depth: 6).thread
         } catch {
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }

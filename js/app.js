@@ -5,11 +5,6 @@
  * All API calls go through api.js. All auth operations go through auth.js.
  */
 
-// Apply saved theme immediately on load (before DOM ready, prevent flash)
-(function() {
-  const saved = localStorage.getItem('bsky_theme');
-  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-})();
 
 (function () {
   'use strict';
@@ -161,18 +156,33 @@
   let hideAdultContent   = true;
   let lastSearchResults  = [];   // cached for toggle re-renders
   let lastSearchType     = null; // 'posts' | 'actors'
+  // Discovery sources (Conversations + Trending). Following uses getTimeline only.
   const DISCOVER_FEED_URI  = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
-  const HOT_CLASSIC_URI    = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic';
   const WITH_FRIENDS_URI   = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends';
-  // Following sources
-  const BEST_OF_FOLLOWS_URI = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/best-of-follows';
-  const FOR_YOU_URI         = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
-  let feedMode           = 'discover';  // 'following' | 'discover'
-  let feedCursor         = null; // pagination cursor for home feed
-  let feedCursorClassic  = null;
-  let feedCursorFriends  = null;
-  let feedCursorBestOf   = null;
-  let feedCursorForYou   = null;
+
+  // Three flat top-level feeds: 'following' | 'conversations' | 'trending'.
+  // Following = your follows, chronological (getTimeline only). Conversations (default) +
+  // Trending are both personalized + moderated discovery — they differ only in ranking.
+  // ("In Network" / 'network' was removed as redundant: network-awareness is always on in
+  // discovery ranking, and a chronological Following already covers your graph.) Persisted
+  // to localStorage; old 'discover'/'network' values migrate to 'conversations'.
+  let feedMode           = localStorage.getItem('nb_feed_mode') || 'conversations';
+  if (feedMode === 'discover' || feedMode === 'network') feedMode = 'conversations';
+  if (!['following', 'conversations', 'trending'].includes(feedMode)) feedMode = 'conversations';
+
+  // ---- Rebuilt Discover: personalized + conversation-weighted (ports iOS DiscoverEngine) ----
+  // The user's own Bluesky moderation settings, fetched once per session so Discover
+  // honors them: { adultEnabled, hiddenLabels:Set, mutedWords:[lowercased] }.
+  let moderationPrefs    = { adultEnabled: false, hiddenLabels: new Set(), mutedWords: [] };
+  // Topic hashtags drawn from the user's OWN recent posts — their declared interests.
+  let interestTags       = new Set();
+  // True once preferences + interest model are loaded (idempotent build guard).
+  let discoverContextReady = false;
+  // why-chip reasons keyed by post URI, computed at merge time.
+  let discoverWhy        = {};
+
+  let feedCursor         = null; // pagination cursor for home feed (timeline / whats-hot)
+  let feedCursorFriends  = null; // pagination cursor for with-friends (discovery secondary)
   let feedLoaded         = false; // true after first load
   let profileActor       = null; // handle/DID currently shown in profile view
   let profileCursor      = null; // pagination cursor for profile feed
@@ -540,19 +550,24 @@
     }
   });
 
-  sidebarSignOutBtn.addEventListener('click', () => {
+  /**
+   * Sign out = forget this account entirely, then reload. Per-account state
+   * (seen posts, channels, the 30s seen-sync timer, DM polling, players) lives
+   * in dozens of closures; a reload is the only reset that can't miss one —
+   * otherwise account A's seen URIs could sync into account B's repo.
+   */
+  function signOut() {
+    clearTimeout(seenSyncTimer);
     AUTH.clearSession();
     AUTH.clearCredentials();
-    appScreen.hidden  = true;
-    authScreen.hidden = false;
-    scrollToTopBtn.hidden = true;
-    sidebarOwnProfile.hidden = true;
-    ownProfile = null;
-    feedLoaded = false;
-    notifLoaded = false;
-    notifBadge.hidden = true;
-    closeSidebar();
-  });
+    ['bsky_feed_seen', 'bsky_reader_seen', 'bsky_tv_seen', 'bsky_channels',
+     'bsky_channels_synced_at', 'bsky_video_daily'].forEach((k) => {
+      try { localStorage.removeItem(k); } catch { /* storage unavailable */ }
+    });
+    location.replace(location.pathname);
+  }
+
+  sidebarSignOutBtn.addEventListener('click', signOut);
 
   /* ================================================================
      SETTINGS MODAL (M52)
@@ -573,6 +588,12 @@
   const moonSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   const sunSVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 
+  /** Saved choice wins; otherwise follow the OS (mirrors js/theme-boot.js). */
+  function prefersDark() {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
   function applyTheme(isDark) {
     if (isDark) {
       document.documentElement.setAttribute('data-theme', 'dark');
@@ -586,7 +607,7 @@
   }
 
   // Apply saved theme on page load
-  applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+  applyTheme(prefersDark());
 
   /* --- Accent color --- */
   function applyAccentColor(accent, accentDark, accentLight) {
@@ -638,7 +659,17 @@
       settingsForgetBtn.disabled     = true;
     }
 
-    const storedTab = localStorage.getItem('bsky_default_tab') || 'discover';
+    // Rebuild the default-tab options to match the three flat feed modes (the static HTML
+    // only ships Discover/Following). Migrate any legacy stored value to 'conversations'.
+    if (settingsDefaultTab.dataset.triple !== '1') {
+      settingsDefaultTab.innerHTML =
+        '<option value="following">Following</option>' +
+        '<option value="conversations">Conversations</option>' +
+        '<option value="trending">Trending</option>';
+      settingsDefaultTab.dataset.triple = '1';
+    }
+    let storedTab = localStorage.getItem('bsky_default_tab') || 'conversations';
+    if (storedTab === 'discover' || storedTab === 'network') storedTab = 'conversations';
     settingsDefaultTab.value = storedTab;
 
     pruneFeedSeen();
@@ -653,7 +684,7 @@
     }
 
     syncAccentSwatches();
-    applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+    applyTheme(prefersDark());
 
     settingsModal.hidden = false;
     closeSidebar();
@@ -760,6 +791,87 @@
   /* ================================================================
      BANNER HELPER
   ================================================================ */
+  /*
+   * Broken-avatar fallback. Inline onerror= attributes are blocked by the CSP
+   * (script-src 'self'), so they never ran — one capturing listener instead
+   * (image `error` events don't bubble, but they do reach capture listeners).
+   */
+  const AVATAR_IMG = '.post-avatar, .timeline-card-avatar, .dms-stack-avatar, .dms-convo-avatar';
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.matches('.cnf-avatar')) { img.style.display = 'none'; return; }
+    const fb = window._bskyAvatarFallback;
+    if (fb && img.matches(AVATAR_IMG) && img.getAttribute('src') !== fb) img.src = fb;
+  }, true);
+
+  /*
+   * Modal dialogs (keyboard + screen reader): on open, focus moves inside; Tab is
+   * trapped; Escape closes the ones without their own handler; on close, focus
+   * returns to whatever opened it. Watching `hidden` covers every open/close path.
+   */
+  (function manageDialogs() {
+    const ESCAPE_CLOSE = { 'settings-modal': 'settings-modal-close', 'quote-modal': 'quote-modal-close', 'engagers-overlay': 'engagers-back' };
+    const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const dialogs = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')];
+    const opener = new Map();
+    const observer = new MutationObserver((records) => {
+      for (const { target: d } of records) {
+        if (d.hidden) {
+          const back = opener.get(d);
+          opener.delete(d);
+          if (back && back.isConnected) back.focus();
+        } else if (!opener.has(d)) {
+          opener.set(d, document.activeElement);
+          requestAnimationFrame(() => { if (!d.contains(document.activeElement)) d.querySelector(FOCUSABLE)?.focus(); });
+        }
+      }
+    });
+    dialogs.forEach((d) => observer.observe(d, { attributes: true, attributeFilter: ['hidden'] }));
+    document.addEventListener('keydown', (e) => {
+      const top = dialogs.filter((d) => !d.hidden).pop();
+      if (!top) return;
+      if (e.key === 'Escape' && ESCAPE_CLOSE[top.id]) {
+        $(ESCAPE_CLOSE[top.id])?.click();
+      } else if (e.key === 'Tab') {
+        const items = [...top.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+  })();
+
+  /*
+   * Offline state (lime, matching iOS NBOfflineBanner): a fetch made offline used
+   * to surface only as a generic "Failed to fetch".
+   */
+  (function offlineBanner() {
+    const bar = document.createElement('div');
+    bar.className = 'offline-banner';
+    bar.setAttribute('role', 'status');
+    bar.textContent = 'You\'re offline — showing what\'s already loaded.';
+    bar.hidden = navigator.onLine;
+    document.body.appendChild(bar);
+    window.addEventListener('offline', () => { bar.hidden = false; });
+    window.addEventListener('online',  () => { bar.hidden = true; });
+  })();
+
+  /**
+   * Cards open a conversation/profile on click; without this they were
+   * unreachable by keyboard. Enter or Space on the focused card (not on a
+   * button/link inside it) activates it.
+   */
+  function makeActivatable(el) {
+    el.tabIndex = 0;
+    el.addEventListener('keydown', (e) => {
+      if (e.target !== el || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      el.click();
+    });
+  }
+
   function showBanner(text, isError = false) {
     const banner = document.createElement('div');
     banner.className = 'report-success-banner' + (isError ? ' banner-error' : '');
@@ -1734,12 +1846,29 @@
     card.appendChild(strip);
 
     // Clicking the card (not on an image or button) opens the thread
+    makeActivatable(card);
     card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
 
     // Mark seen immediately at render time — unified cross-interface registry
     markFeedPostSeen(post.uri);
 
     return card;
+  }
+
+  /**
+   * Advance one source of a multi-feed merge. A REJECTED request keeps its
+   * cursor so the next scroll retries it; only a real end-of-feed (a response
+   * with no cursor) marks the source 'done'. Skipped sources stay as they were.
+   */
+  function advanceCursor(res, prev) {
+    if (res.status === 'rejected' || !res.value) return prev;
+    return res.value.cursor || 'done';
+  }
+
+  /** True when every source that was actually requested failed (offline, 5xx). */
+  function allSourcesFailed(results) {
+    const tried = results.filter((r) => r.status === 'rejected' || r.value);
+    return tried.length > 0 && tried.every((r) => r.status === 'rejected');
   }
 
   /**
@@ -1759,16 +1888,17 @@
         galleryCursorArt !== 'done' ? API.getFeed(ART_TREND_URI, 15, galleryCursorArt || undefined) : Promise.resolve(null),
       ]);
 
+      if (allSourcesFailed([timelineRes, discoverRes, picsRes, artRes])) throw timelineRes.reason || discoverRes.reason;
+
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
       const picsData     = picsRes.status === 'fulfilled' ? picsRes.value : null;
       const artData      = artRes.status === 'fulfilled' ? artRes.value : null;
 
-      // Update cursors
-      galleryCursorTimeline  = timelineData?.cursor || 'done';
-      galleryCursorDiscover  = discoverData?.cursor || 'done';
-      galleryCursorFollowPic = picsData?.cursor || 'done';
-      galleryCursorArt       = artData?.cursor || 'done';
+      galleryCursorTimeline  = advanceCursor(timelineRes, galleryCursorTimeline);
+      galleryCursorDiscover  = advanceCursor(discoverRes, galleryCursorDiscover);
+      galleryCursorFollowPic = advanceCursor(picsRes, galleryCursorFollowPic);
+      galleryCursorArt       = advanceCursor(artRes, galleryCursorArt);
 
       if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done'
           && galleryCursorFollowPic === 'done' && galleryCursorArt === 'done') {
@@ -1818,8 +1948,8 @@
         if (galleryScrollObserver) galleryScrollObserver.disconnect();
       }
     } catch (err) {
-      // silently log — gallery is non-critical
       console.warn('Gallery load error:', err);
+      showBanner(navigator.onLine ? 'Couldn\'t load more images — scroll to retry.' : 'You\'re offline — images will load when you reconnect.', true);
     } finally {
       galleryLoading_flag = false;
       galleryLoading.hidden = true;
@@ -2210,6 +2340,7 @@
     card.appendChild(strip);
 
     // Clicking the card (body, not strip buttons) opens the article
+    makeActivatable(card);
     card.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       // Mark as seen on open
@@ -2241,13 +2372,15 @@
         readerCursorNews !== 'done' ? API.getFeed(NEWS_FEED_URI, 20, readerCursorNews || undefined) : Promise.resolve(null),
       ]);
 
+      if (allSourcesFailed([timelineRes, discoverRes, newsRes])) throw timelineRes.reason || discoverRes.reason;
+
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
       const newsData     = newsRes.status === 'fulfilled' ? newsRes.value : null;
 
-      readerCursorTimeline = timelineData?.cursor || 'done';
-      readerCursorDiscover = discoverData?.cursor || 'done';
-      readerCursorNews     = newsData?.cursor || 'done';
+      readerCursorTimeline = advanceCursor(timelineRes, readerCursorTimeline);
+      readerCursorDiscover = advanceCursor(discoverRes, readerCursorDiscover);
+      readerCursorNews     = advanceCursor(newsRes, readerCursorNews);
 
       if (readerCursorTimeline === 'done' && readerCursorDiscover === 'done' && readerCursorNews === 'done') {
         readerAllDone = true;
@@ -2268,13 +2401,17 @@
         if (!post?.uri) continue;
         if (readerSeenUriSet.has(post.uri)) continue;
         if (_isAdultPost(post)) continue;
-        if (!_isEnglishPost(post)) continue;
         if (seenUris.has(post.uri)) continue;
-        seenUris.add(post.uri);
-        readerSeenUriSet.add(post.uri);
 
         const external = getArticleEmbed(post);
         if (!external) continue;
+
+        // Filter on the ARTICLE's language (card text), not just the post's lang tag —
+        // a missing tag must NOT default to English (that's how non-English leaked in).
+        if (!_articleIsEnglish(post, external)) continue;
+
+        seenUris.add(post.uri);
+        readerSeenUriSet.add(post.uri);
 
         // Skip articles already marked as read
         if (readerSeenSet.has(external.uri)) continue;
@@ -2309,6 +2446,7 @@
       }
     } catch (err) {
       console.warn('Reader load error:', err);
+      showBanner(navigator.onLine ? 'Couldn\'t load more articles — scroll to retry.' : 'You\'re offline — articles will load when you reconnect.', true);
     } finally {
       readerLoading_flag = false;
       readerLoadingEl.hidden = true;
@@ -2478,7 +2616,7 @@
 
     const archiveLink = $('inapp-reader-archive');
     if (archiveLink) archiveLink.href = `https://archive.ph/?url=${encodeURIComponent(url)}`;
-    inappReaderOriginal.href = url;
+    inappReaderOriginal.href = safeUrl(url);
 
     // Wire up post action buttons if a post was passed
     const replyBtn  = $('inapp-reader-reply-btn');
@@ -2636,7 +2774,7 @@
 
       inappReaderTitle.textContent  = article.title  || cardTitle || 'Article';
       inappReaderByline.textContent = article.byline || '';
-      inappReaderContent.innerHTML  = article.content || '';
+      inappReaderContent.replaceChildren(sanitizeArticleHtml(article.content));
 
       setProgress(100, 'Done');
       await new Promise((r) => setTimeout(r, 300));
@@ -2746,9 +2884,15 @@
     loadSeenFromCloud();      // M20+: merge cloud seen-posts (7-day window) with localStorage
     loadFeedFilters();        // M39: restore persisted filter settings (localStorage fallback)
 
-    // M52: apply saved default feed tab preference
-    const savedTab = localStorage.getItem('bsky_default_tab');
-    if (savedTab === 'following' || savedTab === 'discover') setFeedMode(savedTab);
+    // M52: apply saved default feed tab preference. Migrate legacy 'discover' → 'conversations'.
+    let savedTab = localStorage.getItem('bsky_default_tab');
+    if (savedTab === 'discover' || savedTab === 'network') savedTab = 'conversations';
+    if (savedTab === 'following' || savedTab === 'conversations' || savedTab === 'trending') {
+      setFeedMode(savedTab);
+    } else {
+      // No saved default — reflect the persisted/migrated feedMode in the tab UI.
+      renderFeedTabs();
+    }
 
     // M43: populate sidebar own-profile section
     updateSidebarProfile(ownProfile);
@@ -3017,6 +3161,18 @@
       searchScrollObserver.disconnect();
     }
 
+    // Re-arm paging when RETURNING to a view — disconnect() above is reversible,
+    // and without this Search/Notifications/Profile infinite scroll died after
+    // one trip to a post and back.
+    if (name === 'search' && searchScrollObserver && searchCursor && searchSentinel) searchScrollObserver.observe(searchSentinel);
+    if (name === 'notifications' && notifScrollObserver && notifCursor && notifSentinel) notifScrollObserver.observe(notifSentinel);
+    if (name === 'profile' && profileScrollObserver && profileCursor && profileSentinel) profileScrollObserver.observe(profileSentinel);
+
+    // Inline post videos keep playing (with sound) in a hidden view otherwise.
+    Object.entries(views).forEach(([n, el]) => {
+      if (n !== name && n !== 'tv' && n !== 'stream') el.querySelectorAll('video').forEach((v) => v.pause());
+    });
+
     // M14: dismiss constellation focus card when leaving constellation view
     if (name !== 'constellation') {
       dismissConstellationPanel();
@@ -3054,7 +3210,7 @@
       loadFeed();
     } else {
       // Feed already loaded — restore the scroll observer that showView disconnected.
-      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedHasMore();
       if (hasMore) setupFeedScrollObserver();
     }
   });
@@ -3112,7 +3268,7 @@
       } else if (view === 'feed' && feedLoaded) {
         // Feed already has content — the scroll observer was disconnected on the way
         // out (showView tears it down) so reconnect it without reloading the feed.
-        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedHasMore();
         if (hasMore) setupFeedScrollObserver();
       }
       if (view === 'gallery') {
@@ -3186,24 +3342,7 @@
     openSettings();
   });
 
-  menuSignOut.addEventListener('click', () => {
-    AUTH.clearSession();
-    AUTH.clearCredentials();
-    appScreen.hidden  = true;
-    authScreen.hidden = false;
-    scrollToTopBtn.hidden = true;
-    profileMenu.hidden = true;
-    ownProfile = null;
-    feedLoaded = false;
-    notifLoaded = false;
-    notifBadge.hidden = true;
-    clearComposeImages();
-    searchResults.innerHTML = '<div class="feed-empty"><p>Search for posts, people, or topics on BlueSky.</p></div>';
-    threadContent.innerHTML = '';
-    updateSidebarProfile(null); // M43: clear sidebar profile
-    // Clear save-channel button if any
-    document.querySelector('.save-channel-area')?.remove();
-  });
+  menuSignOut.addEventListener('click', signOut);
 
   /* ================================================================
      SEARCH
@@ -3304,7 +3443,7 @@
             searchScrollObserver.disconnect();
           }
         } catch (err) {
-          console.error('Search infinite scroll error:', err.message);
+          console.error('Search infinite scroll error:', err.message); showBanner('Couldn\'t load more results.', true);
         } finally {
           searchScrollLoading = false;
         }
@@ -3463,7 +3602,7 @@
               btn.setAttribute('aria-label', `Unfollow @${actor.handle}`);
             }
           } catch (err) {
-            console.error('Follow error:', err.message);
+            console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true);
           } finally {
             btn.disabled = false;
           }
@@ -3523,13 +3662,14 @@
           try {
             if (nowFollow && curUri) { await API.unfollowActor(curUri); btn.classList.remove('following'); btn.textContent = 'Follow'; btn.dataset.followUri = ''; }
             else { const r = await API.followActor(actor.did); btn.classList.add('following'); btn.textContent = 'Following'; btn.dataset.followUri = r.uri || ''; }
-          } catch (err) { console.error('Follow error:', err.message); }
+          } catch (err) { console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true); }
           finally { btn.disabled = false; }
         });
         header.appendChild(followBtn);
       }
       card.appendChild(header);
       if (actor.description) { const bio = document.createElement('p'); bio.className = 'post-text'; bio.textContent = actor.description; card.appendChild(bio); }
+      makeActivatable(card);
       card.addEventListener('click', () => openProfile(actor.handle));
       searchResults.appendChild(card);
     });
@@ -3539,13 +3679,92 @@
      HOME / FOLLOWING FEED
   ================================================================ */
 
+  // ---- Three flat top-level feed tabs: Following · Conversations · Trending ----
+  // Matches the iOS FeedMode (following / conversations / trending) — no rank toggle,
+  // no nesting. The selected tab is persisted; switching reloads the feed.
+  const _FEED_MODES = [
+    { key: 'following',     label: 'Following' },
+    { key: 'conversations', label: 'Conversations' },
+    { key: 'trending',      label: 'Trending' },
+  ];
+
   function setFeedMode(mode) {
     feedMode = mode;
-    const isFollowing = mode === 'following';
-    feedTabFollowing.classList.toggle('feed-tab-active', isFollowing);
-    feedTabDiscover.classList.toggle('feed-tab-active', !isFollowing);
-    feedTabFollowing.setAttribute('aria-selected', isFollowing ? 'true' : 'false');
-    feedTabDiscover.setAttribute('aria-selected', isFollowing ? 'false' : 'true');
+    localStorage.setItem('nb_feed_mode', mode);
+    renderFeedTabs();
+  }
+
+  /** True when more feed pages can be fetched. Following paginates getTimeline; the
+   *  discovery feeds (conversations/trending) paginate whats-hot + with-friends and may
+   *  loop back to a fresh page once exhausted. */
+  function feedHasMore() {
+    return !!(feedCursor || feedCursorFriends || (feedMode !== 'following' && feedDiscoverLooped));
+  }
+
+  /** Rebuild the three feed tabs in place. The index.html ships two static buttons
+   *  (#feed-tab-discover, #feed-tab-following) plus the Filters toggle; we repurpose the
+   *  first two and inject a third so all three sit in the same `.feed-tabs` row, keeping
+   *  the Filters button last. Editing happens in JS only (index.html is not touched). */
+  function renderFeedTabs() {
+    const tabs = document.querySelector('.feed-tabs');
+    if (!tabs) return;
+    tabs.classList.add('feed-tabs--triple');
+    // The two existing static buttons, re-used in document order.
+    const reusable = [feedTabDiscover, feedTabFollowing];
+    _FEED_MODES.forEach((m, idx) => {
+      let btn = tabs.querySelector(`.feed-tab[data-mode="${m.key}"]`);
+      if (!btn) {
+        // Reuse a static button if one is still free, otherwise create a fresh one.
+        btn = reusable.find((b) => b && !b.dataset.mode) || null;
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.className = 'feed-tab';
+          btn.setAttribute('role', 'tab');
+          btn.setAttribute('aria-controls', 'feed-results');
+          // Insert before the Filters toggle so it stays last in the row.
+          const filterBtn = tabs.querySelector('.feed-filter-toggle-btn');
+          if (filterBtn) tabs.insertBefore(btn, filterBtn);
+          else tabs.appendChild(btn);
+        }
+        btn.type = 'button';
+        btn.dataset.mode = m.key;
+        btn.textContent = m.label;
+        btn.addEventListener('click', () => {
+          // No guard: clicking the active tab refreshes the feed.
+          setFeedMode(m.key);
+          loadFeed();
+        });
+      }
+      // Ensure correct order: each tab should precede the next mode / the filter button.
+      const next = tabs.querySelector(`.feed-tab[data-mode="${_FEED_MODES[idx + 1]?.key}"]`)
+                || tabs.querySelector('.feed-filter-toggle-btn');
+      if (next && btn.nextSibling !== next) tabs.insertBefore(btn, next);
+      const selected = feedMode === m.key;
+      btn.classList.toggle('feed-tab-active', selected);
+      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+  }
+
+  function buildDiscoverWhyChip(text) {
+    const chip = document.createElement('div');
+    chip.className = 'discover-why-chip';
+    let icon = '✨';
+    if (text.startsWith('From someone you follow') || text.startsWith('Followed by')) icon = '🫂';
+    else if (text.startsWith('Reposted by')) icon = '🔁';
+    else if (text.startsWith('Matches your interest')) icon = '#';
+    else if (text.startsWith('Active conversation')) icon = '💬';
+    else if (text.startsWith('Popular in your network')) icon = '🫂';
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'discover-why-icon';
+    iconSpan.setAttribute('aria-hidden', 'true');
+    iconSpan.textContent = icon;
+    const textSpan = document.createElement('span');
+    textSpan.className = 'discover-why-text';
+    textSpan.textContent = text;
+    chip.appendChild(iconSpan);
+    chip.appendChild(textSpan);
+    chip.setAttribute('aria-label', `Why you're seeing this: ${text}`);
+    return chip;
   }
 
   /** True if a post carries any adult/NSFW content label. */
@@ -3561,11 +3780,224 @@
     return langs.some(l => l.startsWith('en'));
   }
 
+  // Unicode ranges for clearly-non-English scripts (CJK, Hangul, Cyrillic, Greek,
+  // Arabic, Hebrew, Thai, Devanagari). Used to reject obviously non-English articles.
+  const _NON_LATIN_RE = /[぀-ヿ㐀-鿿가-힯Ѐ-ӿͰ-Ͽ؀-ۿ֐-׿฀-๿ऀ-ॿ]/g;
+  // Common English function words — English prose is dense with these; their near-absence
+  // in a Latin-script sentence is a strong "not English" signal.
+  const _EN_STOPWORDS = new Set(['the','and','of','to','in','is','for','on','with','that','this','as','are','was','at','by','an','be','it','from','or','you','your','we','our','has','have','will','not','but','they','their','more','about','how','what','when','who','can','all','new','has','his','her','its','than','out','up','one']);
+
+  /**
+   * Decide whether a Reader ARTICLE is English. The browser has no NLLanguageRecognizer,
+   * so we use: strict lang tags → reject obvious non-Latin scripts → an English-stopword
+   * density heuristic for Latin-script text. Errs toward ALLOWING when genuinely unsure.
+   */
+  function _articleIsEnglish(post, external) {
+    const langs = post?.record?.langs;
+    if (langs && langs.length) return langs.some(l => (l || '').toLowerCase().startsWith('en'));
+
+    const text = `${external?.title || ''}. ${external?.description || ''}. ${post?.record?.text || ''}`.trim();
+    if (text.length < 16) return true;  // too little to judge
+
+    // Non-Latin script → not English.
+    const letters = (text.match(/\p{L}/gu) || []).length;
+    const nonLatin = (text.match(_NON_LATIN_RE) || []).length;
+    if (letters > 0 && nonLatin / letters > 0.12) return false;
+
+    // Latin script → English function-word density. Only judge with enough words so we
+    // don't false-reject short headlines.
+    const words = (text.toLowerCase().match(/[a-z][a-z']+/g) || []);
+    if (words.length >= 8) {
+      const hits = words.filter(w => _EN_STOPWORDS.has(w)).length;
+      if (hits / words.length < 0.05) return false;  // almost no English function words
+    }
+    return true;
+  }
+
   /** HN-style trending score: (likes - 1) / (hours + 2)^1.8 */
   function _trendScore(post) {
     if (!post) return 0;
     const hrs = Math.max(0, (Date.now() - new Date(post.indexedAt || 0).getTime()) / 3600000);
     return ((post.likeCount || 0) - 1) / Math.pow(hrs + 2, 1.8);
+  }
+
+  /* ================================================================
+     DiscoverEngine — personalized, conversation-weighted Discover
+     (ports BskyDreams-iOS DiscoverEngine exactly). The intent: reward
+     conversation over virality, personalize from the user's OWN signals
+     (their network + their topics), honor the user's own moderation, and
+     tell them WHY each post is shown — no opaque "for you" box.
+  ================================================================ */
+
+  // Adult/violent labels always hidden when the user has adult content disabled.
+  const _DISCOVER_ADULT_LABELS = new Set([
+    'porn', 'sexual', 'nudity', 'graphic-media', 'adult', 'gore', 'nsfw', 'sexual-figurative',
+  ]);
+
+  /** Hashtags for a post — from the structured `tags` field plus any `#word` in the text. */
+  function _discoverHashtags(post) {
+    const out = new Set();
+    (post?.record?.tags || []).forEach((t) => { if (t) out.add(String(t).toLowerCase()); });
+    const text = post?.record?.text || '';
+    const re = /#([A-Za-z0-9_]{2,})/g;
+    let m;
+    while ((m = re.exec(text)) !== null) out.add(m[1].toLowerCase());
+    return out;
+  }
+
+  /** Moderation gate: true = hide this post from Discover. */
+  function _discoverShouldHide(item, prefs) {
+    const post = item?.post;
+    if (!post) return true;
+    const viewer = post.author?.viewer || {};
+    // Author muted/blocked (by you or them).
+    if (viewer.muted || viewer.blocking || viewer.blockedBy) return true;
+    // Post + author labels.
+    const labels = (post.labels || []).concat(post.author?.labels || []);
+    for (const lbl of labels) {
+      if (lbl?.neg === true) continue;
+      const val = lbl?.val;
+      if (!val) continue;
+      if (prefs.hiddenLabels.has(val)) return true;
+      if (!prefs.adultEnabled && _DISCOVER_ADULT_LABELS.has(val)) return true;
+    }
+    // Muted words (content + tags).
+    if (prefs.mutedWords.length) {
+      const tags = (post.record?.tags || []).join(' ');
+      const hay = ((post.record?.text || '') + ' ' + tags).toLowerCase();
+      for (const w of prefs.mutedWords) { if (w && hay.includes(w)) return true; }
+    }
+    return false;
+  }
+
+  /**
+   * Personalized score for a discovery post. `conversational === true` = the Conversations
+   * feed (rewards discussion); otherwise the Trending feed (rewards popularity). Both apply
+   * the same network + topic personalization — they differ only in the base signal.
+   * (Ports iOS DiscoverEngine.score; the old 'network'/network^2 mode was removed.)
+   */
+  function _discoverScore(item, conversational, tags) {
+    const post = item.post;
+    const likes = post.likeCount || 0;
+    const replies = post.replyCount || 0;
+
+    const hours = Math.max(0, (Date.now() - new Date(post.indexedAt || 0).getTime()) / 3600000);
+    const recency = Math.pow(hours + 2, 1.6);
+
+    // Network boost — your graph is the input, not a hidden model.
+    let network = 1.0;
+    const viewer = post.author?.viewer || {};
+    if (viewer.following) network += 1.2;
+    else {
+      const kf = viewer.knownFollowers?.count || 0;
+      if (kf > 0) network += Math.min(kf * 0.15, 0.9);
+    }
+
+    // Topic boost — overlap with the user's own hashtags.
+    let topic = 1.0;
+    if (tags.size) {
+      const ht = _discoverHashtags(post);
+      for (const t of ht) { if (tags.has(t)) { topic += 0.8; break; } }
+    }
+
+    if (!conversational) {
+      // Trending: popularity over time, still personalized.
+      return ((likes + replies - 1) / recency) * network * topic;
+    }
+
+    // Conversations: replies dominate; reply-to-like ratio rewards genuine discussion
+    // over applause. Raw likes are intentionally de-emphasized.
+    const replyRatio = replies / Math.max(1, likes);
+    let conversation = (replies * 3 + likes * 0.4) * (1 + Math.min(replyRatio, 2));
+    const isReply = !!post.record?.reply;
+    const isRepost = !!item.reason;
+    if ((post.record?.text || '').includes('?') && !isReply) conversation *= 1.25;  // questions
+    if (isRepost) conversation *= 0.5;                                               // penalize re-sharing
+    else if (!isReply) conversation *= 1.15;                                         // reward originals
+    return (conversation / recency) * network * topic;
+  }
+
+  /** A short, honest reason this post is in Discover — shown as a chip. null = no chip. */
+  function _discoverWhy(item, tags) {
+    const post = item.post;
+    const reasonBy = item.reason?.by;
+    if (reasonBy) {
+      const name = reasonBy.displayName || reasonBy.handle;
+      if (name) return `Reposted by ${name}`;
+    }
+    const viewer = post.author?.viewer || {};
+    if (viewer.following) return 'From someone you follow';
+    const kf = viewer.knownFollowers;
+    if (kf && kf.count > 0) {
+      const first = kf.followers?.[0];
+      const firstName = first?.displayName || first?.handle;
+      if (firstName) {
+        return kf.count === 1 ? `Followed by ${firstName}` : `Followed by ${firstName} +${kf.count - 1} you know`;
+      }
+      return 'Popular in your network';
+    }
+    if (tags.size) {
+      const ht = _discoverHashtags(post);
+      for (const t of ht) { if (tags.has(t)) return `Matches your interest in #${t}`; }
+    }
+    if ((post.replyCount || 0) >= 5) return `Active conversation · ${post.replyCount} replies`;
+    return null;
+  }
+
+  /**
+   * Fetch the user's moderation preferences + build the interest model.
+   * Idempotent; safe to call before a Discover load. Failures degrade gracefully
+   * (Discover still works, just with weaker personalization/moderation).
+   */
+  async function buildDiscoverContext() {
+    if (discoverContextReady) return;
+    discoverContextReady = true; // set first so concurrent calls don't double-fetch
+    try {
+      const prefs = await API.getPreferences().catch(() => null);
+      if (prefs && Array.isArray(prefs.preferences)) {
+        const m = { adultEnabled: false, hiddenLabels: new Set(), mutedWords: [] };
+        const labelers = [];
+        for (const p of prefs.preferences) {
+          switch (p.$type) {
+            case 'app.bsky.actor.defs#adultContentPref':
+              m.adultEnabled = !!p.enabled;
+              break;
+            case 'app.bsky.actor.defs#contentLabelPref':
+              if ((p.visibility === 'hide' || p.visibility === 'warn') && p.label) m.hiddenLabels.add(p.label);
+              break;
+            case 'app.bsky.actor.defs#mutedWordsPref':
+              (p.items || []).forEach((it) => {
+                const v = (it.value || '').toLowerCase();
+                if (v) m.mutedWords.push(v);
+              });
+              break;
+            case 'app.bsky.actor.defs#labelersPref':
+              (p.labelers || []).forEach((l) => { if (l.did) labelers.push(l.did); });
+              break;
+            default: break;
+          }
+        }
+        moderationPrefs = m;
+        API.setAcceptLabelers(labelers);
+      }
+    } catch (_) { /* moderation stays at defaults */ }
+
+    // Interest tags from the user's own recent posts (what THEY choose to post about).
+    try {
+      const did = AUTH.getSession()?.did;
+      if (did) {
+        const mine = await API.getAuthorFeed(did, 60, undefined).catch(() => null);
+        if (mine && Array.isArray(mine.feed)) {
+          const tags = new Set();
+          mine.feed.forEach((it) => {
+            // posts_no_replies equivalent: skip replies so interests come from originals
+            if (it.post?.record?.reply) return;
+            _discoverHashtags(it.post).forEach((t) => tags.add(t));
+          });
+          interestTags = tags;
+        }
+      }
+    } catch (_) { /* interests stay empty */ }
   }
 
   async function loadFeed(append = false) {
@@ -3576,13 +4008,11 @@
 
     if (!append) {
       feedCursor         = null;
-      feedCursorClassic  = null;
       feedCursorFriends  = null;
-      feedCursorBestOf   = null;
-      feedCursorForYou   = null;
       feedLoaded         = false;
       feedSeenBypass     = false;    // M40: reset bypass on fresh feed load
       feedDiscoverLooped = false;    // reset loop-back flag on fresh load / tab switch
+      discoverWhy        = {};       // reset why-chip reasons on fresh load
       feedResults.innerHTML = '<div class="feed-loading">Loading your feed…</div>';
       document.querySelector('.feed-seen-hint')?.remove();
     }
@@ -3591,36 +4021,51 @@
     showLoading();
     try {
       let items;
-      if (feedMode === 'discover') {
-        // Hybrid discover: 3 feeds in parallel — personalized, network-wide, social-graph trending
+
+      // The user's own moderation (muted words, label/adult prefs, labelers) + interest
+      // model is built once per session and applied to ALL feeds — including Following.
+      if (!discoverContextReady) await buildDiscoverContext();
+      const prefs = moderationPrefs;
+      const tags  = interestTags;
+
+      if (feedMode === 'following') {
+        // Following = your follows, chronological. Pure getTimeline (reverse-chron of the
+        // people you follow) — a clean "catch up on your people" feed, distinct from the
+        // ranked discovery feeds. Honors your moderation; does NOT re-rank.
         const apiCursor = (append && feedCursor) ? feedCursor : undefined;
-        const [primary, classic, friends] = await Promise.all([
-          API.getFeed(DISCOVER_FEED_URI, 30, apiCursor),
-          API.getFeed(HOT_CLASSIC_URI, 20, append ? feedCursorClassic || undefined : undefined).catch(() => null),
-          API.getFeed(WITH_FRIENDS_URI, 20, append ? feedCursorFriends || undefined : undefined).catch(() => null),
+        const timeline = await API.getTimeline(40, apiCursor);
+        feedCursor = timeline.cursor || null;
+        const seen = new Set();
+        items = (timeline.feed || []).filter((i) => {
+          const u = i.post?.uri;
+          if (!u || seen.has(u) || !_isEnglishPost(i.post) || _discoverShouldHide(i, prefs)) return false;
+          seen.add(u);
+          return true;
+        });
+        // Keep the API's chronological order (do NOT re-rank).
+      } else {
+        // Personalized discovery (Conversations | Trending). Sources are whats-hot (trending)
+        // + with-friends (social graph). Conversations rewards discussion; Trending rewards
+        // popularity. Both apply the same network + topic personalization + moderation.
+        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
+        const [primary, friends] = await Promise.all([
+          API.getFeed(DISCOVER_FEED_URI, 40, apiCursor),
+          API.getFeed(WITH_FRIENDS_URI, 30, append ? feedCursorFriends || undefined : undefined).catch(() => null),
         ]);
         feedCursor        = primary.cursor || null;
-        feedCursorClassic = classic?.cursor || null;
         feedCursorFriends = friends?.cursor || null;
-        const all = [...(primary.feed || []), ...(classic?.feed || []), ...(friends?.feed || [])];
+        const conversational = feedMode === 'conversations';
+        const all = [...(primary.feed || []), ...(friends?.feed || [])];
         const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
-                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
-      } else {
-        // Hybrid following: chronological timeline + best-of-follows + collaborative "For You"
-        const apiCursor = (append && feedCursor) ? feedCursor : undefined;
-        const [timeline, bestOf, forYou] = await Promise.all([
-          API.getTimeline(30, apiCursor),
-          API.getFeed(BEST_OF_FOLLOWS_URI, 20, append ? feedCursorBestOf || undefined : undefined).catch(() => null),
-          API.getFeed(FOR_YOU_URI, 20, append ? feedCursorForYou || undefined : undefined).catch(() => null),
-        ]);
-        feedCursor       = timeline.cursor || null;
-        feedCursorBestOf = bestOf?.cursor || null;
-        feedCursorForYou = forYou?.cursor || null;
-        const all = [...(timeline.feed || []), ...(bestOf?.feed || []), ...(forYou?.feed || [])];
-        const seen = new Set();
-        items = all.filter(i => { const u = i.post?.uri; if (!u || seen.has(u) || _isAdultPost(i.post) || !_isEnglishPost(i.post)) return false; seen.add(u); return true; })
-                   .sort((a, b) => _trendScore(b.post) - _trendScore(a.post));
+        items = all.filter((i) => {
+                  const u = i.post?.uri;
+                  if (!u || seen.has(u) || !_isEnglishPost(i.post) || _discoverShouldHide(i, prefs)) return false;
+                  seen.add(u);
+                  return true;
+                })
+                .sort((a, b) => _discoverScore(b, conversational, tags) - _discoverScore(a, conversational, tags));
+        // Compute the "why" chip reasons for the merged set.
+        items.forEach((i) => { discoverWhy[i.post.uri] = _discoverWhy(i, tags); });
       }
       feedLoaded   = true;
 
@@ -3639,9 +4084,9 @@
       });
 
       if (!displayItems.length && !append) {
-        const msg = feedMode === 'discover'
-          ? 'Nothing to discover right now. Try again in a moment.'
-          : 'No posts yet. Follow some people to see their posts here.';
+        const msg = feedMode === 'following'
+          ? 'No posts yet. Follow some people to see their posts here.'
+          : 'Nothing to discover right now. Try again in a moment.';
         feedResults.innerHTML = `<div class="feed-empty"><p>${msg}</p></div>`;
       } else {
         renderFeedItems(displayItems, feedResults, append);
@@ -3656,7 +4101,7 @@
       // hit the feedLoading guard and never re-fire (no intersection change → stuck scroll).
       if (feedCursor && feedDiscoverLooped) {
         feedDiscoverLooped = false; // got a fresh cursor — back to normal pagination
-      } else if (!feedCursor && append && feedMode === 'discover' && !feedDiscoverLooped && items.length > 0) {
+      } else if (!feedCursor && append && feedMode !== 'following' && !feedDiscoverLooped && items.length > 0) {
         feedDiscoverLooped = true;  // cursor exhausted — queue one loop-back to fresh page 1
         feedCursor = null;          // ensure apiCursor resolves to undefined on next call
       }
@@ -3670,7 +4115,7 @@
       // Set up or tear down the scroll observer AFTER feedLoading is cleared.
       // Doing it here also ensures the observer is restarted after API errors
       // (previously a failed append would leave the observer dead, requiring a PTR).
-      const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+      const hasMore = feedHasMore();
       if (hasMore) {
         setupFeedScrollObserver();
       } else if (feedScrollObserver) {
@@ -3769,12 +4214,9 @@
     });
   })();
 
-  feedTabFollowing.addEventListener('click', () => {
-    setFeedMode('following'); loadFeed(); // no guard: clicking active tab refreshes feed
-  });
-  feedTabDiscover.addEventListener('click', () => {
-    setFeedMode('discover'); loadFeed(); // no guard: clicking active tab refreshes feed
-  });
+  // Build the three feed tabs (Following · Conversations · Trending). Click handlers are
+  // wired per-tab inside renderFeedTabs() — no static listeners here.
+  renderFeedTabs();
 
   /* ---- M47: Pull-to-refresh on Search + Profile views ---- */
   (() => {
@@ -3869,7 +4311,7 @@
       (entries) => {
         // Fire when sentinel is visible AND there are more pages.
         // Also fire when Discovery has looped back (feedDiscoverLooped + null cursor = fresh fetch).
-        const hasMore = feedCursor || feedCursorClassic || feedCursorFriends || feedCursorBestOf || feedCursorForYou || (feedMode === 'discover' && feedDiscoverLooped);
+        const hasMore = feedHasMore();
         if (entries[0]?.isIntersecting && hasMore) loadFeed(true);
       },
       { root: viewFeed, rootMargin: '0px 0px 400px 0px', threshold: 0 }
@@ -3893,6 +4335,14 @@
 
       const wrapper = document.createElement('div');
       wrapper.className = 'feed-item';
+
+      // Discover "why" chip — an honest, transparent reason this post is shown,
+      // ABOVE the card. Shown for the discovery feeds (Conversations + Trending), not
+      // Following, and only when a reason exists.
+      if (feedMode !== 'following') {
+        const why = discoverWhy[post.uri];
+        if (why) wrapper.appendChild(buildDiscoverWhyChip(why));
+      }
 
       // Repost attribution
       if (item.reason?.$type === 'app.bsky.feed.defs#reasonRepost') {
@@ -4092,7 +4542,7 @@
             btn.setAttribute('aria-label', `Unfollow @${profile.handle}`);
           }
         } catch (err) {
-          console.error('Follow error:', err.message);
+          console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true);
         } finally {
           btn.disabled = false;
         }
@@ -4742,7 +5192,7 @@
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
-        console.warn('TV fetch error:', err.message);
+        console.warn('TV fetch error:', err.message); showBanner('Couldn\'t load more videos.', true);
       }
     }
 
@@ -5096,7 +5546,7 @@
           tvLikeBtn.dataset.likeUri = r.uri || '';
           tvLikeCount.textContent = formatCount((tvCurrent.likeCount || 0) + 1);
         }
-      } catch (err) { console.error('TV like error:', err.message); }
+      } catch (err) { console.error('TV like error:', err.message); showBanner('Couldn\'t like video.', true); }
       tvLikeBtn.disabled = false;
     });
 
@@ -5117,7 +5567,7 @@
           tvRepostBtn.dataset.repostUri = r.uri || '';
           tvRepostCount.textContent = formatCount((tvCurrent.repostCount || 0) + 1);
         }
-      } catch (err) { console.error('TV repost error:', err.message); }
+      } catch (err) { console.error('TV repost error:', err.message); showBanner('Couldn\'t repost video.', true); }
       tvRepostBtn.disabled = false;
     });
 
@@ -5148,11 +5598,7 @@
     const stSourcePicker = $('stream-source-picker');
     const stStartBtn   = $('stream-start-btn');
 
-    function escapeHTML(str) {
-      const d = document.createElement('div');
-      d.textContent = str;
-      return d.innerHTML;
-    }
+    const escapeHTML = (str) => escHtml(str ?? '');
 
     const PALETTE = [
       { hex: '#FF5C35', light: true  },
@@ -5356,8 +5802,8 @@
       if (!hasText) {
         // Full-bleed image
         return `<div class="stream-slide-image-full">
-          <div class="stream-author-bar"><img class="stream-author-avatar" src="${s.post.author?.avatar || ''}" alt=""><span class="stream-author-name" style="color:#fff">${escapeHTML(s.post.author?.displayName || s.post.author?.handle || '')}</span><span class="stream-author-handle" style="color:#fff">@${escapeHTML(s.post.author?.handle || '')}</span><span class="stream-author-time" style="color:#fff">${relTime(s.post.indexedAt)}</span></div>
-          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          <div class="stream-author-bar"><img class="stream-author-avatar" src="${escHtml(s.post.author?.avatar || '')}" alt=""><span class="stream-author-name" style="color:#fff">${escapeHTML(s.post.author?.displayName || s.post.author?.handle || '')}</span><span class="stream-author-handle" style="color:#fff">@${escapeHTML(s.post.author?.handle || '')}</span><span class="stream-author-time" style="color:#fff">${relTime(s.post.indexedAt)}</span></div>
+          <div class="stream-image-pane"><img src="${escHtml(s.image?.fullsize || s.image?.thumb || '')}" alt=""${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
           ${stMetrics ? `<div class="stream-metrics" style="color:#fff"><span class="stream-metric">&#x1F4AC; ${s.post.replyCount || 0}</span><span class="stream-metric">&#x1F501; ${s.post.repostCount || 0}</span><span class="stream-metric">&#x2764;&#xFE0F; ${s.post.likeCount || 0}</span></div>` : ''}
         </div>`;
       }
@@ -5365,7 +5811,7 @@
       const cls = textSizeClass(s.text.length + 40); // slightly smaller for split
       return `${authorBarHTML(s.post, colors)}
         <div class="stream-slide-split">
-          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          <div class="stream-image-pane"><img src="${escHtml(s.image?.fullsize || s.image?.thumb || '')}" alt=""${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
           <div class="stream-text-pane">
             <div class="stream-main-text"><div class="stream-main-text-inner ${cls}" style="${c}">${escapeHTML(s.text)}</div></div>
           </div>
@@ -5377,10 +5823,10 @@
       const card = s.card;
       let domain = '';
       try { domain = new URL(card.uri).hostname; } catch {}
-      const thumb = card.thumb ? `<img class="stream-link-card-thumb" src="${card.thumb}" alt="">` : '';
+      const thumb = card.thumb ? `<img class="stream-link-card-thumb" src="${escHtml(safeUrl(card.thumb))}" alt="">` : '';
       return authorBarHTML(s.post, colors)
         + `<div class="stream-main-text">
-            <a class="stream-link-card" href="${card.uri}" target="_blank" rel="noopener" style="${c}; text-decoration:none">
+            <a class="stream-link-card" href="${escHtml(safeUrl(card.uri))}" target="_blank" rel="noopener" style="${c}; text-decoration:none">
               ${thumb}
               <div class="stream-link-card-body">
                 <div class="stream-link-card-domain">${escapeHTML(domain)}</div>
@@ -5708,7 +6154,7 @@
           btn.dataset.repostUri = result.uri || '';
           countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
         }
-      } catch (err) { console.error('Repost error:', err.message); }
+      } catch (err) { console.error('Repost error:', err.message); showBanner('Couldn\'t repost.', true); }
       btn.disabled = false;
     });
 
@@ -5864,10 +6310,11 @@
     } catch { /* silently ignore */ }
   }
 
-  function quoteSelectGif(gifUrl, thumbUrl, alt) {
+  function quoteSelectGif(embed) {
+    const { uri, gifUrl, thumbUrl, alt } = embed;
     clearQuoteImages();
     clearQuoteVideo();
-    quoteLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+    quoteLinkEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
     quoteLinkWrap.innerHTML = `
       <div class="compose-link-preview compose-gif-preview">
         <img class="compose-gif-preview-img" src="${escHtml(gifUrl)}" alt="${escHtml(alt)}">
@@ -6100,7 +6547,7 @@
       : '';
     card.innerHTML = `
       <div class="post-header">
-        <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+        <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}">
         <div class="post-meta author-link" title="View @${escHtml(author.handle || '')}">
           <div class="post-display-name">${escHtml(author.displayName || author.handle || '')}</div>
           <div class="post-handle">@${escHtml(author.handle || '')}</div>
@@ -6239,6 +6686,7 @@
     const targetCid = opts.openCid || post.cid;
 
     if (opts.clickable) {
+      makeActivatable(card);
       card.addEventListener('click', (e) => {
         // Hashtag links → trigger search instead of following href="#"
         const hashEl = e.target.closest('[data-hashtag]');
@@ -6305,7 +6753,7 @@
         }
         btn.dataset.likeUri = prevLikeUri;
         countEl.textContent = prevCount;
-        console.error('Like error:', err.message);
+        console.error('Like error:', err.message); showBanner('Couldn\'t update like.', true);
       } finally {
         btn.disabled = false;
       }
@@ -6504,6 +6952,8 @@
     try {
       const url  = new URL(external.uri);
       const host = url.hostname;
+      // Klipy GIF CDN — the parser-compatible embed uses static.klipy.com/ii/...
+      if (host === 'static.klipy.com' && url.pathname.startsWith('/ii/')) return true;
       if (
         host === 'tenor.com'   || host.endsWith('.tenor.com') ||
         host === 'giphy.com'   || host.endsWith('.giphy.com') ||
@@ -6520,6 +6970,10 @@
     const wrap = document.createElement('div');
     wrap.className = 'post-gif-wrap';
     let src = external.uri;
+    // Strip the Bluesky GIF-parser query (?hh=&ww=&mp4=&webm=) so the CDN serves
+    // the raw .gif file cleanly instead of treating the params as part of the path.
+    const qIdx = src.indexOf('?');
+    if (qIdx !== -1) src = src.slice(0, qIdx);
     // Tenor/Klipy media URLs sometimes end in .mp4 — swap to .gif for animated display
     if ((src.includes('tenor.com') || src.includes('klipy.com')) && src.endsWith('.mp4')) {
       src = src.replace(/\.mp4$/, '.gif');
@@ -6553,7 +7007,7 @@
 
     const card = document.createElement('a');
     card.className = 'post-external-card';
-    card.href      = external.uri;
+    card.href      = safeUrl(external.uri);
     card.target    = '_blank';
     card.rel       = 'noopener noreferrer';
 
@@ -6659,6 +7113,7 @@
     // Click opens thread from root (or parent if no root)
     const navUri = rootUri || parentPost.uri;
     const navCid = rootCid || parentPost.cid;
+    makeActivatable(card);
     card.addEventListener('click', (e) => {
       e.stopPropagation();
       openThread(navUri, navCid, pAuthor.handle);
@@ -7404,13 +7859,14 @@
       } catch { /* silently ignore */ }
     }
 
-    function selectGifEmbed(gifUrl, thumbUrl, alt) {
+    function selectGifEmbed(embed) {
+      const { uri, gifUrl, thumbUrl, alt } = embed;
       replyImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
       replyImages = [];
       refreshImgPreview();
       clearReplyVideo();
       clearReplyLinkPreview();
-      replyGifEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+      replyGifEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
       gifPanel.hidden = true;
       gifPreviewEl.innerHTML = `
         <div class="compose-link-preview compose-gif-preview">
@@ -7978,6 +8434,59 @@
     composeGifPanel.hidden = true;
   });
 
+  /**
+   * Build a Bluesky-compatible GIF embed descriptor from a Klipy API item.
+   *
+   * Official Bluesky only renders an external embed as an ANIMATED GIF when the
+   * `external.uri` matches its Tenor/Klipy parser: the GIF file URL followed by
+   * `?hh=<height>&ww=<width>&mp4=<mp4-slug>&webm=<webm-slug>`, where the slugs are
+   * the filename (without extension) of the SAME size's mp4/webm files. The host
+   * must stay `static.klipy.com` and the path must start with `/ii/`.
+   *
+   * Returns null if the item lacks a usable animated size.
+   *
+   * @param {object} item Klipy data item ({ title, file: { hd, md, sm, xs } })
+   * @returns {{ uri:string, gifUrl:string, thumbUrl:(string|null), alt:string } | null}
+   */
+  function buildKlipyGifEmbed(item) {
+    const file = item?.file || {};
+    // Prefer sm (~220px) — parser-valid for Bluesky and keeps embeds/previews light;
+    // md (498px) GIFs are needlessly heavy. The chosen size must be internally
+    // consistent (gif/mp4/webm/jpg all from the same size object).
+    const size = file.sm || file.md || file.xs || file.hd || null;
+    const gif  = size?.gif;
+    if (!gif?.url) return null;
+
+    const alt  = item.title || '';
+    const w    = Math.max(1, Math.round(gif.width  || 0)) || undefined;
+    const h    = Math.max(1, Math.round(gif.height || 0)) || undefined;
+
+    // Slug = the filename of the mp4/webm WITHOUT its extension.
+    const slugOf = (url) => {
+      if (!url) return '';
+      try {
+        const path = new URL(url).pathname;
+        const name = path.substring(path.lastIndexOf('/') + 1);
+        return name.replace(/\.[^.]+$/, '');
+      } catch { return ''; }
+    };
+    const mp4Slug  = slugOf(size?.mp4?.url);
+    const webmSlug = slugOf(size?.webm?.url);
+
+    // Build `<gif.url>?hh=&ww=&mp4=&webm=` — only append params we actually have.
+    const params = [];
+    if (h) params.push(`hh=${h}`);
+    if (w) params.push(`ww=${w}`);
+    if (mp4Slug)  params.push(`mp4=${mp4Slug}`);
+    if (webmSlug) params.push(`webm=${webmSlug}`);
+    const uri = params.length ? `${gif.url}?${params.join('&')}` : gif.url;
+
+    // Still image (jpg) of the SAME size — uploaded as the thumb blob at post time.
+    const thumbUrl = size?.jpg?.url || file.xs?.jpg?.url || null;
+
+    return { uri, gifUrl: gif.url, thumbUrl, alt };
+  }
+
   // GIF search via Klipy — accepts target grid element and selection callback
   // Response: { result: true, data: { data: [ { title, file: { xs, gif, hd } } ] } }
   async function searchKlipyGifs(q, gridEl, onSelect) {
@@ -7992,17 +8501,16 @@
       }
       gridEl.innerHTML = '';
       items.forEach((item) => {
-        const thumbUrl = item.file?.xs?.jpg?.url || item.file?.xs?.gif?.url;
-        // Best available animated URL — no upload needed, so size is not a constraint
-        const gifUrl = item.file?.hd?.gif?.url || item.file?.gif?.url || item.file?.xs?.gif?.url;
-        // Use a medium-quality animated preview for the grid (better than xs thumbnail)
-        const previewUrl = item.file?.md?.gif?.url || item.file?.sm?.gif?.url || gifUrl;
-        if (!gifUrl) return;
+        const embed = buildKlipyGifEmbed(item);
+        if (!embed) return;
+        // Use a small (xs) animated preview for the grid — the chosen embed size
+        // (md/sm) is used only at post time.
+        const previewUrl = item.file?.xs?.gif?.url || item.file?.sm?.gif?.url || embed.gifUrl;
         const wrap = document.createElement('div');
         wrap.className = 'compose-gif-item-wrap';
         const img = document.createElement('img');
         img.src       = previewUrl;
-        img.alt       = item.title || '';
+        img.alt       = embed.alt;
         img.className = 'compose-gif-item';
         img.loading   = 'lazy';
         const watermark = document.createElement('img');
@@ -8012,7 +8520,7 @@
         watermark.setAttribute('aria-hidden', 'true');
         wrap.appendChild(img);
         wrap.appendChild(watermark);
-        wrap.addEventListener('click', () => onSelect(gifUrl, thumbUrl, item.title || ''));
+        wrap.addEventListener('click', () => onSelect(embed));
         gridEl.appendChild(wrap);
       });
     } catch (err) {
@@ -8036,12 +8544,13 @@
    * integration) is to store the CDN URL as app.bsky.embed.external so the GIF
    * is served directly from Klipy — no upload, no re-encoding, animation intact.
    *
-   * @param {string}      gifUrl   Direct Klipy animated GIF URL
-   * @param {string|null} thumbUrl Static xs.jpg thumbnail URL (uploaded as blob at post time
-   *                               so native Bluesky shows an image card instead of a text link)
-   * @param {string}      alt      GIF title / alt text
+   * @param {{ uri:string, gifUrl:string, thumbUrl:(string|null), alt:string }} embed
+   *        Bluesky-ready GIF embed from buildKlipyGifEmbed(). `uri` is the parser
+   *        URL (?hh=&ww=&mp4=&webm=); `gifUrl` is the bare animated URL for preview;
+   *        `thumbUrl` is the static jpg uploaded as a blob at post time.
    */
-  function selectGif(gifUrl, thumbUrl, alt) {
+  function selectGif(embed) {
+    const { uri, gifUrl, thumbUrl, alt } = embed;
     // Clear any existing images, video, or link preview — GIF is mutually exclusive
     composeImages.forEach((img) => { try { URL.revokeObjectURL(img.previewUrl); } catch {} });
     composeImages = [];
@@ -8050,7 +8559,8 @@
 
     // _thumbUrl is a private hint used by the submit handler to upload a static
     // preview blob — it is not sent to the AT Protocol API directly.
-    composeLinkEmbed = { uri: gifUrl, title: alt, description: '', _thumbUrl: thumbUrl || null };
+    // description "ALT: <alt>" is the load-bearing prefix Bluesky's GIF parser expects.
+    composeLinkEmbed = { uri, title: alt, description: 'ALT: ' + alt, _thumbUrl: thumbUrl || null };
 
     // Show an animated preview in the link-preview slot with a dismiss button
     composeLinkWrap.innerHTML = `
@@ -8335,7 +8845,47 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Only http(s) URLs may become links or media sources. Post facets, link
+   * cards and fetched articles are author-controlled; a `javascript:` or
+   * `data:` URI there must never reach an href. Returns '#' when unsafe.
+   */
+  function safeUrl(url) {
+    try {
+      const u = new URL(String(url), location.href);
+      return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '#';
+    } catch { return '#'; }
+  }
+
+  /**
+   * Readability output comes from third-party pages via third-party CORS
+   * proxies — untrusted HTML. Drop active/structural elements, inline event
+   * handlers, styles, and non-http(s) links/sources before it touches the DOM.
+   */
+  function sanitizeArticleHtml(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html || '';
+    tpl.content.querySelectorAll(
+      'script,style,link,meta,base,form,input,button,textarea,select,iframe,frame,object,embed,svg,math'
+    ).forEach((el) => el.remove());
+    tpl.content.querySelectorAll('*').forEach((el) => {
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on') || name === 'style' || name === 'srcdoc' || name === 'formaction') {
+          el.removeAttribute(attr.name);
+        } else if (name === 'href' || name === 'src' || name === 'poster' || name === 'xlink:href') {
+          el.setAttribute(attr.name, safeUrl(attr.value));
+        } else if (name === 'srcset') {
+          el.removeAttribute(attr.name);
+        }
+      }
+      if (el.tagName === 'A') { el.target = '_blank'; el.rel = 'noopener noreferrer'; }
+    });
+    return tpl.content;
   }
 
   /**
@@ -8384,7 +8934,7 @@
       if (!feature) {
         html += escHtml(segText);
       } else if (feature.$type === 'app.bsky.richtext.facet#link') {
-        const href = escHtml(feature.uri || segText);
+        const href = escHtml(safeUrl(feature.uri || segText));
         html += `<a href="${href}" target="_blank" rel="noopener noreferrer">${escHtml(segText)}</a>`;
       } else if (feature.$type === 'app.bsky.richtext.facet#tag') {
         const tag = escHtml(feature.tag || segText.replace(/^#/, ''));
@@ -9093,7 +9643,7 @@
       card.style.cssText = `position:absolute;left:${cardLeft}px;top:${cardY}px;width:${CARD_W}px;z-index:2`;
       card.innerHTML = `
         <div class="timeline-card-author">
-          <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+          <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="">
           <span class="timeline-card-handle">@${escHtml(author.handle||'')}</span>
         </div>
         <div class="timeline-card-text">${escHtml(text)}</div>
@@ -9105,6 +9655,7 @@
           </span>
         </div>
       `;
+      makeActivatable(card);
       card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
       scrollInner.appendChild(card);
     });
@@ -9159,6 +9710,73 @@
   let dmsPollTimer      = null;
   let dmsLastMessageId  = null;
   let dmsConvoCursor    = null;
+  let dmsMessages       = [];   // current chat's message objects (for reaction updates)
+
+  const DM_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+  /* ---- Group helpers (parity with iOS Conversation model) ---- */
+  // A convo is a group when convo.kind?.$type ends with "#groupConvo".
+  function _convoIsGroup(convo) {
+    const t = convo?.kind?.['$type'] || '';
+    if (t) return t.includes('groupConvo');
+    return (convo?.members || []).length > 2;
+  }
+  function _convoMemberCount(convo) {
+    return convo?.kind?.memberCount ?? (convo?.members || []).length;
+  }
+  function _convoJoinLink(convo) {
+    return convo?.kind?.joinLink || null;
+  }
+  function _convoOthers(convo) {
+    return (convo?.members || []).filter(m => m.did !== dmsOwnDid);
+  }
+  // Title to show in the convo list / chat header.
+  function _convoTitle(convo) {
+    if (_convoIsGroup(convo)) return convo?.kind?.name || 'Group';
+    const others = _convoOthers(convo);
+    const m = others[0] || convo?.members?.[0] || {};
+    return m.displayName || m.handle || 'Conversation';
+  }
+  // Resolve a DID to a display name using the convo's members.
+  function _nameForDid(convo, did) {
+    if (!did) return 'Someone';
+    if (did === dmsOwnDid) return 'You';
+    const m = (convo?.members || []).find(x => x.did === did);
+    return m?.displayName || m?.handle || 'Someone';
+  }
+
+  // Render a #systemMessageView's data as a sentence (mirrors SystemMessageData.summary).
+  function _systemMessageSummary(convo, data) {
+    const t = data?.['$type'] || '';
+    const nm = (key) => _nameForDid(convo, data?.[key]?.did);
+    if (t.endsWith('AddMember'))    return `${nm('addedBy')} added ${nm('member')}`;
+    if (t.endsWith('RemoveMember')) return `${nm('removedBy')} removed ${nm('member')}`;
+    if (t.endsWith('MemberJoin')) {
+      if (data?.approvedBy?.did) return `${nm('member')} joined · approved by ${nm('approvedBy')}`;
+      return `${nm('member')} joined`;
+    }
+    if (t.endsWith('MemberLeave')) return `${nm('member')} left`;
+    if (t.endsWith('EditGroup'))   return data?.newName ? `Group renamed to “${data.newName}”` : 'Group updated';
+    if (t.endsWith('CreateJoinLink') || t.endsWith('EnableJoinLink')) return 'Invite link enabled';
+    if (t.endsWith('DisableJoinLink')) return 'Invite link disabled';
+    if (t.includes('Lock')) return 'Conversation locked';
+    return 'Conversation updated';
+  }
+
+  // Message-type classification (3-way union: messageView | deletedMessageView | systemMessageView).
+  function _msgIsSystem(msg)  { return !!msg?.data && !!msg.data['$type']; }
+  function _msgIsDeleted(msg) { return !_msgIsSystem(msg) && (msg?.text == null || msg?.sender == null); }
+
+  // Group reactions by emoji value, preserving first-seen order.
+  function _groupReactions(reactions) {
+    const order = [];
+    const grouped = {};
+    (reactions || []).forEach(r => {
+      if (!grouped[r.value]) { grouped[r.value] = []; order.push(r.value); }
+      grouped[r.value].push(r);
+    });
+    return order.map(value => ({ value, reactions: grouped[value] }));
+  }
 
   function startDmsPolling() {
     stopDmsPolling();
@@ -9192,7 +9810,19 @@
       dmsConvoCursor = data.cursor || null;
       loadingEl.hidden = true;
 
-      if (!convos.length && !append) {
+      // Requests inbox entry (only on the first page).
+      if (!append) {
+        try {
+          const reqData = await API.listConvoRequests();
+          // Keep only the convoView arms (they carry an "id").
+          const requests = (reqData.requests || []).filter(r => r && r.id);
+          if (requests.length) {
+            listEl.appendChild(buildRequestsEntry(requests));
+          }
+        } catch { /* requests are best-effort */ }
+      }
+
+      if (!convos.length && !append && !listEl.children.length) {
         emptyEl.hidden = false;
         return;
       }
@@ -9208,35 +9838,157 @@
     }
   }
 
+  // Up to 3 overlapping member avatars for a group row.
+  function _avatarStackHtml(convo) {
+    const avatars = _convoOthers(convo).slice(0, 3);
+    const fb = window._bskyAvatarFallback || '';
+    const imgs = avatars.map(m =>
+      `<img class="dms-stack-avatar" src="${escHtml(m.avatar || fb)}" alt="">`
+    ).join('');
+    return `<div class="dms-avatar-stack">${imgs}</div>`;
+  }
+
   function buildConvoItem(convo) {
     const li = document.createElement('li');
     li.className = 'dms-convo-item' + (convo.unreadCount > 0 ? ' dms-convo-unread' : '');
     li.dataset.convoId = convo.id;
 
-    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
-    const displayMember = others[0] || convo.members?.[0] || {};
-    const name = displayMember.displayName || displayMember.handle || 'Unknown';
-    const handle = displayMember.handle ? `@${displayMember.handle}` : '';
-    const avatarSrc = displayMember.avatar || window._bskyAvatarFallback || '';
-
+    const isGroup = _convoIsGroup(convo);
     const lastMsg = convo.lastMessage;
-    const preview = lastMsg?.text ? lastMsg.text.slice(0, 60) + (lastMsg.text.length > 60 ? '\u2026' : '') : '';
+    const previewRaw = _msgIsSystem(lastMsg)
+      ? _systemMessageSummary(convo, lastMsg.data)
+      : (lastMsg?.text || '');
+    const preview = previewRaw ? previewRaw.slice(0, 60) + (previewRaw.length > 60 ? '\u2026' : '') : '';
     const ts = lastMsg?.sentAt ? formatTimestamp(lastMsg.sentAt) : '';
+    const fb = window._bskyAvatarFallback || '';
 
-    li.innerHTML = `
-      <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">\
-      <div class="dms-convo-info">
-        <div class="dms-convo-name-row">
-          <span class="dms-convo-name">${escHtml(name)}</span>
-          <span class="dms-convo-ts">${escHtml(ts)}</span>
+    if (isGroup) {
+      const name = _convoTitle(convo);
+      const count = _convoMemberCount(convo);
+      li.innerHTML = `
+        ${_avatarStackHtml(convo)}
+        <div class="dms-convo-info">
+          <div class="dms-convo-name-row">
+            <span class="dms-convo-name">${escHtml(name)}</span>
+            <span class="dms-convo-ts">${escHtml(ts)}</span>
+          </div>
+          <div class="dms-convo-handle">${count} member${count === 1 ? '' : 's'}</div>
+          <div class="dms-convo-preview">${escHtml(preview)}</div>
         </div>
-        <div class="dms-convo-handle">${escHtml(handle)}</div>
-        <div class="dms-convo-preview">${escHtml(preview)}</div>
-      </div>
-      ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
-    `;
+        ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
+      `;
+    } else {
+      const others = _convoOthers(convo);
+      const displayMember = others[0] || convo.members?.[0] || {};
+      const name = displayMember.displayName || displayMember.handle || 'Unknown';
+      const handle = displayMember.handle ? `@${displayMember.handle}` : '';
+      const avatarSrc = displayMember.avatar || fb;
+      li.innerHTML = `
+        <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="">\
+        <div class="dms-convo-info">
+          <div class="dms-convo-name-row">
+            <span class="dms-convo-name">${escHtml(name)}</span>
+            <span class="dms-convo-ts">${escHtml(ts)}</span>
+          </div>
+          <div class="dms-convo-handle">${escHtml(handle)}</div>
+          <div class="dms-convo-preview">${escHtml(preview)}</div>
+        </div>
+        ${convo.unreadCount > 0 ? '<span class="dms-unread-dot" aria-label="Unread"></span>' : ''}
+      `;
+    }
 
     li.addEventListener('click', () => openDmsChat(convo));
+    return li;
+  }
+
+  /* ---- Requests inbox ---- */
+  function buildRequestsEntry(requests) {
+    const li = document.createElement('li');
+    li.className = 'dms-convo-item dms-requests-entry';
+    li.innerHTML = `
+      <div class="dms-requests-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <div class="dms-convo-info">
+        <div class="dms-convo-name">Requests</div>
+        <div class="dms-convo-preview">${requests.length} message request${requests.length === 1 ? '' : 's'}</div>
+      </div>
+      <span class="dms-requests-badge">${requests.length}</span>
+    `;
+    li.addEventListener('click', () => openRequestsInbox(requests));
+    return li;
+  }
+
+  function openRequestsInbox(requests) {
+    const listEl = $('dms-list');
+    listEl.innerHTML = '';
+    $('dms-loading').hidden = true;
+    $('dms-empty').hidden   = true;
+
+    const header = document.createElement('li');
+    header.className = 'dms-requests-header';
+    header.innerHTML = `
+      <button type="button" class="btn btn-ghost dms-requests-back" aria-label="Back to messages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span>Requests</span>
+    `;
+    header.querySelector('.dms-requests-back').addEventListener('click', () => loadDmsList());
+    listEl.appendChild(header);
+
+    requests.forEach(convo => listEl.appendChild(buildRequestRow(convo)));
+  }
+
+  function buildRequestRow(convo) {
+    const li = document.createElement('li');
+    li.className = 'dms-convo-item dms-request-row';
+    const isGroup = _convoIsGroup(convo);
+    const title = _convoTitle(convo);
+    const fb = window._bskyAvatarFallback || '';
+    const sub = isGroup
+      ? `${_convoMemberCount(convo)} members`
+      : (_convoOthers(convo)[0]?.handle ? `@${_convoOthers(convo)[0].handle}` : '');
+    const avatarHtml = isGroup
+      ? _avatarStackHtml(convo)
+      : `<img class="dms-convo-avatar" src="${escHtml(_convoOthers(convo)[0]?.avatar || fb)}" alt="">`;
+
+    li.innerHTML = `
+      ${avatarHtml}
+      <div class="dms-convo-info">
+        <div class="dms-convo-name">${escHtml(title)}</div>
+        <div class="dms-convo-handle">${escHtml(sub)}</div>
+      </div>
+      <div class="dms-request-actions">
+        <button type="button" class="btn btn-primary dms-req-accept">Accept</button>
+        <button type="button" class="btn btn-ghost dms-req-decline">Decline</button>
+      </div>
+    `;
+    const acceptBtn  = li.querySelector('.dms-req-accept');
+    const declineBtn = li.querySelector('.dms-req-decline');
+    acceptBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = declineBtn.disabled = true;
+      try {
+        await API.acceptConvo(convo.id);
+        li.remove();
+        showBanner('Conversation accepted.');
+        loadDmsList();
+      } catch (err) {
+        acceptBtn.disabled = declineBtn.disabled = false;
+        showBanner(`Could not accept: ${err.message}`, true);
+      }
+    });
+    declineBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = declineBtn.disabled = true;
+      try {
+        await API.leaveConvo(convo.id);
+        li.remove();
+        showBanner('Request declined.');
+        loadDmsList();
+      } catch (err) {
+        acceptBtn.disabled = declineBtn.disabled = false;
+        showBanner(`Could not decline: ${err.message}`, true);
+      }
+    });
     return li;
   }
 
@@ -9245,11 +9997,12 @@
     dmsActiveConvo   = convo;
     dmsMessageCursor = null;
     dmsLastMessageId = null;
-    const others = (convo.members || []).filter(m => m.did !== dmsOwnDid);
-    const displayMember = others[0] || convo.members?.[0] || {};
-    const name = displayMember.displayName || displayMember.handle || 'Messages';
+    dmsMessages      = [];
 
-    $('dms-chat-title').textContent = name;
+    const isGroup = _convoIsGroup(convo);
+    $('dms-chat-title').textContent = _convoTitle(convo);
+    setupChatHeader(convo);
+
     $('dms-list-panel').hidden  = true;
     $('dms-chat-panel').hidden  = false;
     $('dms-messages').innerHTML = '';
@@ -9257,6 +10010,40 @@
 
     await loadMessages(false);
     startDmsPolling();
+  }
+
+  // Group convos get a member-count subtitle + a "Manage" button in the header
+  // (in place of the 1:1 Leave button). Built dynamically since index.html is fixed.
+  function setupChatHeader(convo) {
+    const isGroup = _convoIsGroup(convo);
+    const titleEl = $('dms-chat-title');
+    const leaveBtn = $('dms-leave-btn');
+
+    // Remove any previously injected group elements.
+    document.getElementById('dms-manage-btn')?.remove();
+    document.getElementById('dms-group-subtitle')?.remove();
+
+    if (isGroup) {
+      leaveBtn.hidden = true;
+      const count = _convoMemberCount(convo);
+      const sub = document.createElement('div');
+      sub.id = 'dms-group-subtitle';
+      sub.className = 'dms-group-subtitle';
+      sub.textContent = `${count} member${count === 1 ? '' : 's'}`;
+      titleEl.insertAdjacentElement('afterend', sub);
+
+      const manageBtn = document.createElement('button');
+      manageBtn.id = 'dms-manage-btn';
+      manageBtn.type = 'button';
+      manageBtn.className = 'btn btn-ghost dms-manage-btn';
+      manageBtn.setAttribute('aria-label', 'Manage group');
+      manageBtn.title = 'Manage group';
+      manageBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/><circle cx="5" cy="12" r="1.6"/></svg>';
+      manageBtn.addEventListener('click', () => openGroupManagePanel());
+      leaveBtn.insertAdjacentElement('afterend', manageBtn);
+    } else {
+      leaveBtn.hidden = false;
+    }
   }
 
   async function loadMessages(append = false) {
@@ -9278,11 +10065,12 @@
       const wasAtBottom  = scrollBottom < 60;
 
       msgs.forEach(msg => {
-        const bubble = buildMessageBubble(msg);
         if (append) {
-          messagesEl.insertBefore(bubble, messagesEl.firstChild);
+          dmsMessages.unshift(msg);
+          messagesEl.insertBefore(buildMessageBubble(msg), messagesEl.firstChild);
         } else {
-          messagesEl.appendChild(bubble);
+          dmsMessages.push(msg);
+          messagesEl.appendChild(buildMessageBubble(msg));
         }
       });
 
@@ -9295,61 +10083,252 @@
       }
     } catch (err) {
       loadingEl.hidden = true;
-      console.warn('DM load error:', err.message);
+      console.warn('DM load error:', err.message); showBanner('Couldn\'t load this conversation.', true);
     }
   }
 
   async function pollNewMessages() {
-    if (!dmsActiveConvoId) return;
+    // Capture the convo BEFORE awaiting: switching chats mid-request used to
+    // append the old chat's messages to the new one.
+    const convoId = dmsActiveConvoId;
+    if (!convoId) return;
     try {
-      const data = await API.getConvoMessages(dmsActiveConvoId);
+      const data = await API.getConvoMessages(convoId);
+      if (convoId !== dmsActiveConvoId) return;
       const msgs = (data.messages || []).reverse();
       if (!msgs.length) return;
 
-      const newestId = msgs[msgs.length - 1]?.id;
-      if (newestId === dmsLastMessageId) return;
+      // Dedupe by id, not by "last seen id": a send advanced that id past other
+      // people's unseen messages, and a burst bigger than one page never found it.
+      const have = new Set(dmsMessages.map((m) => m.id));
+      const fresh = msgs.filter((m) => m.id && !have.has(m.id));
+      if (!fresh.length) return;
 
       const messagesEl = $('dms-messages');
       const wasAtBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) < 60;
-
-      let foundLast = (dmsLastMessageId === null);
-      msgs.forEach(msg => {
-        if (!foundLast) {
-          if (msg.id === dmsLastMessageId) foundLast = true;
-          return;
-        }
+      messagesEl.querySelector('.dms-no-msgs')?.remove();
+      fresh.forEach((msg) => {
+        dmsMessages.push(msg);
         messagesEl.appendChild(buildMessageBubble(msg));
       });
 
-      dmsLastMessageId = newestId;
-      API.updateRead(dmsActiveConvoId, newestId).catch(() => {});
+      dmsLastMessageId = msgs[msgs.length - 1].id;
+      API.updateRead(convoId, dmsLastMessageId).catch(() => {});
 
       if (wasAtBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
-    } catch { /* silent */ }
+    } catch (err) {
+      // A 30s poll: one miss is fine, but don't hide it entirely.
+      console.warn('DM poll failed:', err.message);
+    }
   }
 
   function buildMessageBubble(msg) {
-    const isMine = msg.sender?.did === dmsOwnDid;
+    // System messages render as centered pills (group events).
+    if (_msgIsSystem(msg)) {
+      const pill = document.createElement('div');
+      pill.className = 'dms-system-pill';
+      pill.textContent = _systemMessageSummary(dmsActiveConvo, msg.data);
+      return pill;
+    }
+
+    const isMine   = msg.sender?.did === dmsOwnDid;
+    const isGroup  = _convoIsGroup(dmsActiveConvo);
+    const deleted  = _msgIsDeleted(msg);
     const wrap = document.createElement('div');
     wrap.className = 'dms-bubble-wrap ' + (isMine ? 'dms-bubble-mine' : 'dms-bubble-theirs');
+    if (msg.id) wrap.dataset.messageId = msg.id;
+
+    // Row: optional sender avatar (incoming group messages) + bubble.
+    const row = document.createElement('div');
+    row.className = 'dms-bubble-row';
+
+    if (isGroup && !isMine) {
+      const sender = (dmsActiveConvo?.members || []).find(m => m.did === msg.sender?.did);
+      const img = document.createElement('img');
+      img.className = 'dms-bubble-sender-avatar';
+      img.src = sender?.avatar || window._bskyAvatarFallback || '';
+      img.alt = '';
+      img.onerror = function () { this.src = window._bskyAvatarFallback || ''; };
+      row.appendChild(img);
+    }
 
     const bubble = document.createElement('div');
-    bubble.className = 'dms-bubble';
-    bubble.textContent = msg.text || '';
+    bubble.className = 'dms-bubble' + (deleted ? ' dms-bubble-deleted' : '');
+    bubble.textContent = deleted ? 'Message deleted' : (msg.text || '');
+
+    // Reaction picker — tapping the bubble reveals a small emoji bar.
+    if (!deleted && msg.id) {
+      const picker = document.createElement('div');
+      picker.className = 'dms-reaction-picker';
+      DM_REACTIONS.forEach(emoji => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'dms-reaction-pick';
+        b.textContent = emoji;
+        b.addEventListener('click', (e) => { e.stopPropagation(); toggleReaction(msg, emoji); });
+        picker.appendChild(b);
+      });
+      bubble.addEventListener('click', () => {
+        const open = picker.classList.toggle('dms-reaction-picker-open');
+        if (open) {
+          document.querySelectorAll('.dms-reaction-picker-open').forEach(p => {
+            if (p !== picker) p.classList.remove('dms-reaction-picker-open');
+          });
+        }
+      });
+      row.appendChild(bubble);
+      row.appendChild(picker);
+    } else {
+      row.appendChild(bubble);
+    }
+
+    wrap.appendChild(row);
+
+    // Existing reactions as pills.
+    if (!deleted && msg.reactions && msg.reactions.length) {
+      wrap.appendChild(buildReactionPills(msg));
+    }
 
     const ts = document.createElement('time');
     ts.className = 'dms-bubble-ts';
     ts.textContent = msg.sentAt ? formatTimestamp(msg.sentAt) : '';
-
-    wrap.appendChild(bubble);
     wrap.appendChild(ts);
+
     return wrap;
+  }
+
+  // Grouped emoji-count pills; my own reactions highlighted; tap toggles.
+  function buildReactionPills(msg) {
+    const container = document.createElement('div');
+    container.className = 'dms-reaction-pills';
+    _groupReactions(msg.reactions).forEach(({ value, reactions }) => {
+      const mine = reactions.some(r => r.sender?.did === dmsOwnDid);
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'dms-reaction-pill' + (mine ? ' dms-reaction-pill-mine' : '');
+      pill.innerHTML = `<span class="dms-reaction-emoji">${escHtml(value)}</span><span class="dms-reaction-count">${reactions.length}</span>`;
+      pill.addEventListener('click', () => toggleReaction(msg, value));
+      container.appendChild(pill);
+    });
+    return container;
+  }
+
+  // Add my reaction, or remove it if I've already reacted with this emoji.
+  // The API returns the updated message; replace local state + rerender the bubble.
+  async function toggleReaction(msg, emoji) {
+    const alreadyMine = (msg.reactions || []).some(
+      r => r.value === emoji && r.sender?.did === dmsOwnDid
+    );
+    try {
+      const resp = alreadyMine
+        ? await API.removeReaction(dmsActiveConvoId, msg.id, emoji)
+        : await API.addReaction(dmsActiveConvoId, msg.id, emoji);
+      const updated = resp?.message;
+      if (!updated) return;
+      // Replace in dmsMessages and rerender the corresponding bubble.
+      const idx = dmsMessages.findIndex(m => m.id === msg.id);
+      if (idx !== -1) dmsMessages[idx] = updated;
+      const oldWrap = $('dms-messages').querySelector(`[data-message-id="${cssEscape(msg.id)}"]`);
+      if (oldWrap) oldWrap.replaceWith(buildMessageBubble(updated));
+    } catch (err) {
+      showBanner(`Couldn't update reaction: ${err.message}`, true);
+    }
+  }
+
+  // Minimal CSS.escape fallback for attribute selectors.
+  function cssEscape(s) {
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/["\\]/g, '\\$&');
+  }
+
+  /* ---- New conversation (multi-select → 1:1 or group) + join-via-link ---- */
+  let dmsSelectedRecipients = [];   // [{did, handle, displayName, avatar}]
+
+  // Lazily inject the extra new-convo UI (chips, group-name input, create + join)
+  // into the existing #dms-new-search container, once.
+  function ensureNewConvoUI() {
+    if (document.getElementById('dms-new-chips')) return;
+    const searchEl = $('dms-new-search');
+
+    const chips = document.createElement('div');
+    chips.id = 'dms-new-chips';
+    chips.className = 'dms-new-chips';
+    searchEl.insertBefore(chips, $('dms-new-input'));
+
+    const groupRow = document.createElement('div');
+    groupRow.id = 'dms-new-group-row';
+    groupRow.className = 'dms-new-group-row';
+    groupRow.hidden = true;
+    groupRow.innerHTML = `
+      <input type="text" id="dms-new-group-name" class="dms-new-input" placeholder="Group name…" maxlength="64" autocomplete="off">
+      <button type="button" class="btn btn-primary dms-new-create-btn" id="dms-new-create-btn">Create group</button>
+    `;
+    searchEl.appendChild(groupRow);
+
+    const startRow = document.createElement('div');
+    startRow.id = 'dms-new-start-row';
+    startRow.className = 'dms-new-start-row';
+    startRow.hidden = true;
+    startRow.innerHTML = `<button type="button" class="btn btn-primary dms-new-create-btn" id="dms-new-start-btn">Start conversation</button>`;
+    searchEl.appendChild(startRow);
+
+    const joinRow = document.createElement('div');
+    joinRow.id = 'dms-new-join-row';
+    joinRow.className = 'dms-new-join-row';
+    joinRow.innerHTML = `
+      <div class="dms-new-join-label">Join a group via invite link</div>
+      <div class="dms-new-join-input-row">
+        <input type="text" id="dms-new-join-input" class="dms-new-input" placeholder="bsky.app/messages/join/… or code" autocomplete="off">
+        <button type="button" class="btn btn-secondary" id="dms-new-join-btn">Join</button>
+      </div>
+      <div id="dms-new-join-status" class="dms-new-join-status" hidden></div>
+    `;
+    searchEl.appendChild(joinRow);
+
+    $('dms-new-create-btn').addEventListener('click', () => createGroupFromSelection());
+    $('dms-new-start-btn').addEventListener('click', () => startOneToOne());
+    $('dms-new-join-btn').addEventListener('click', () => joinViaLink());
+    $('dms-new-join-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); joinViaLink(); } });
+  }
+
+  function resetNewConvoUI() {
+    dmsSelectedRecipients = [];
+    $('dms-new-input').value = '';
+    $('dms-new-results').innerHTML = '';
+    if (document.getElementById('dms-new-chips')) {
+      $('dms-new-chips').innerHTML = '';
+      $('dms-new-group-row').hidden = true;
+      $('dms-new-start-row').hidden = true;
+      $('dms-new-group-name').value = '';
+      $('dms-new-join-input').value = '';
+      $('dms-new-join-status').hidden = true;
+    }
+  }
+
+  function renderRecipientChips() {
+    const chips = $('dms-new-chips');
+    chips.innerHTML = '';
+    dmsSelectedRecipients.forEach(actor => {
+      const chip = document.createElement('span');
+      chip.className = 'dms-recipient-chip';
+      chip.innerHTML = `<span>${escHtml(actor.displayName || actor.handle)}</span><button type="button" class="dms-chip-x" aria-label="Remove">×</button>`;
+      chip.querySelector('.dms-chip-x').addEventListener('click', () => {
+        dmsSelectedRecipients = dmsSelectedRecipients.filter(a => a.did !== actor.did);
+        renderRecipientChips();
+      });
+      chips.appendChild(chip);
+    });
+    // Group name needed when 2+ recipients; otherwise a simple "Start conversation".
+    const n = dmsSelectedRecipients.length;
+    $('dms-new-group-row').hidden = n < 2;
+    $('dms-new-start-row').hidden = n !== 1;
   }
 
   $('dms-new-btn').addEventListener('click', () => {
     const searchEl = $('dms-new-search');
+    ensureNewConvoUI();
     searchEl.hidden = !searchEl.hidden;
-    if (!searchEl.hidden) $('dms-new-input').focus();
+    if (!searchEl.hidden) { resetNewConvoUI(); renderRecipientChips(); $('dms-new-input').focus(); }
   });
 
   let dmsNewSearchTimer = null;
@@ -9364,32 +10343,108 @@
         const resultsEl = $('dms-new-results');
         resultsEl.innerHTML = '';
         actors.forEach(actor => {
+          if (dmsSelectedRecipients.some(a => a.did === actor.did)) return;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'dms-new-result-btn';
           btn.innerHTML = `
-            <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">
+            <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="">
             <div>
               <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
               <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
             </div>
           `;
-          btn.addEventListener('click', async () => {
-            try {
-              const convoData = await API.getConvoForMembers([actor.did]);
-              $('dms-new-search').hidden = true;
-              $('dms-new-input').value = '';
-              $('dms-new-results').innerHTML = '';
-              await openDmsChat(convoData.convo);
-            } catch (err) {
-              showBanner(`Could not open conversation: ${err.message}`);
-            }
+          btn.addEventListener('click', () => {
+            dmsSelectedRecipients.push({
+              did: actor.did, handle: actor.handle,
+              displayName: actor.displayName, avatar: actor.avatar,
+            });
+            $('dms-new-input').value = '';
+            $('dms-new-results').innerHTML = '';
+            renderRecipientChips();
+            $('dms-new-input').focus();
           });
           resultsEl.appendChild(btn);
         });
       } catch { /* silent */ }
     }, 300);
   });
+
+  async function startOneToOne() {
+    if (dmsSelectedRecipients.length !== 1) return;
+    const btn = $('dms-new-start-btn');
+    btn.disabled = true;
+    try {
+      const convoData = await API.getConvoForMembers([dmsSelectedRecipients[0].did]);
+      $('dms-new-search').hidden = true;
+      resetNewConvoUI();
+      await openDmsChat(convoData.convo);
+    } catch (err) {
+      showBanner(`Could not open conversation: ${err.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function createGroupFromSelection() {
+    const name = $('dms-new-group-name').value.trim();
+    if (dmsSelectedRecipients.length < 2) return;
+    if (!name) { showBanner('Enter a group name.', true); return; }
+    const btn = $('dms-new-create-btn');
+    btn.disabled = true;
+    try {
+      // Creator is excluded from members per the lexicon.
+      const dids = dmsSelectedRecipients.map(a => a.did);
+      const resp = await API.createGroup(name, dids);
+      $('dms-new-search').hidden = true;
+      resetNewConvoUI();
+      await openDmsChat(resp.convo);
+    } catch (err) {
+      showBanner(`Could not create group: ${err.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Extract a join code from a pasted bsky.app/messages/join/<code> URL or a raw code.
+  function extractJoinCode(raw) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return '';
+    try {
+      const u = new URL(trimmed);
+      if (u.host) {
+        const comps = u.pathname.split('/').filter(Boolean);
+        if (comps.length) return comps[comps.length - 1];
+      }
+    } catch { /* not a URL */ }
+    return trimmed;
+  }
+
+  async function joinViaLink() {
+    const code = extractJoinCode($('dms-new-join-input').value);
+    if (!code) return;
+    const btn = $('dms-new-join-btn');
+    const statusEl = $('dms-new-join-status');
+    btn.disabled = true;
+    statusEl.hidden = true;
+    try {
+      const resp = await API.requestJoinGroup(code);
+      if (resp.status === 'joined' && resp.convo) {
+        $('dms-new-search').hidden = true;
+        resetNewConvoUI();
+        await openDmsChat(resp.convo);
+      } else {
+        statusEl.textContent = "Request sent. You'll join once an admin approves.";
+        statusEl.hidden = false;
+        $('dms-new-join-input').value = '';
+      }
+    } catch (err) {
+      statusEl.textContent = "Couldn't join with that link. Check the code and try again.";
+      statusEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
   $('dms-compose-text').addEventListener('input', (e) => {
     const len = e.target.value.length;
@@ -9413,7 +10468,9 @@
       const messagesEl = $('dms-messages');
       const noMsgs = messagesEl.querySelector('.dms-no-msgs');
       if (noMsgs) noMsgs.remove();
-      messagesEl.appendChild(buildMessageBubble({ ...msg, sender: { did: dmsOwnDid } }));
+      const localMsg = { ...msg, sender: { did: dmsOwnDid }, reactions: msg.reactions || [] };
+      dmsMessages.push(localMsg);
+      messagesEl.appendChild(buildMessageBubble(localMsg));
       dmsLastMessageId = msg.id;
       messagesEl.scrollTop = messagesEl.scrollHeight;
     } catch (err) {
@@ -9426,8 +10483,13 @@
 
   $('dms-back-btn').addEventListener('click', () => {
     stopDmsPolling();
+    closeGroupManagePanel();
     dmsActiveConvoId = null;
     dmsActiveConvo   = null;
+    dmsMessages      = [];
+    document.getElementById('dms-manage-btn')?.remove();
+    document.getElementById('dms-group-subtitle')?.remove();
+    $('dms-leave-btn').hidden = false;
     $('dms-chat-panel').hidden = true;
     $('dms-list-panel').hidden = false;
     loadDmsList();
@@ -9455,6 +10517,219 @@
       btn.disabled = false;
     }
   });
+
+  /* ---- Group manage panel (members, add/remove, invite link, leave) ---- */
+  function closeGroupManagePanel() {
+    document.getElementById('dms-group-panel-overlay')?.remove();
+  }
+
+  function openGroupManagePanel() {
+    if (!dmsActiveConvo || !_convoIsGroup(dmsActiveConvo)) return;
+    closeGroupManagePanel();
+    const convo = dmsActiveConvo;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'dms-group-panel-overlay';
+    overlay.className = 'dms-group-panel-overlay';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeGroupManagePanel(); });
+
+    const panel = document.createElement('div');
+    panel.className = 'dms-group-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Manage group');
+
+    const link = _convoJoinLink(convo);
+    const linkSection = link && link.code
+      ? `<div class="dms-invite-url-row">
+           <input type="text" class="dms-new-input dms-invite-url" id="dms-invite-url" readonly value="https://bsky.app/messages/join/${escHtml(link.code)}">
+           <button type="button" class="btn btn-secondary" id="dms-invite-copy">Copy</button>
+         </div>`
+      : `<button type="button" class="btn btn-secondary" id="dms-invite-create">Create invite link</button>`;
+
+    panel.innerHTML = `
+      <div class="dms-group-panel-header">
+        <h3>${escHtml(_convoTitle(convo))}</h3>
+        <button type="button" class="btn btn-ghost dms-group-panel-close" id="dms-group-panel-close" aria-label="Close">×</button>
+      </div>
+      <div class="dms-group-panel-body">
+        <div class="dms-group-section">
+          <div class="dms-group-section-head">
+            <span class="dms-group-section-title">Members (${_convoMemberCount(convo)})</span>
+            <button type="button" class="btn btn-secondary dms-group-add-btn" id="dms-group-add-btn">Add people</button>
+          </div>
+          <div id="dms-group-add-search" class="dms-group-add-search" hidden>
+            <input type="search" id="dms-group-add-input" class="dms-new-input" placeholder="Find a person (@handle)…" autocomplete="off">
+            <div id="dms-group-add-results" class="dms-new-results"></div>
+          </div>
+          <ul class="dms-group-members" id="dms-group-members"></ul>
+        </div>
+        <div class="dms-group-section">
+          <div class="dms-group-section-title">Invite link</div>
+          <div id="dms-invite-section">${linkSection}</div>
+        </div>
+        <div class="dms-group-section">
+          <button type="button" class="btn btn-danger dms-group-leave-btn" id="dms-group-leave-btn">Leave group</button>
+        </div>
+      </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    renderGroupMembers(convo);
+
+    $('dms-group-panel-close').addEventListener('click', () => closeGroupManagePanel());
+    $('dms-group-add-btn').addEventListener('click', () => {
+      const s = $('dms-group-add-search');
+      s.hidden = !s.hidden;
+      if (!s.hidden) $('dms-group-add-input').focus();
+    });
+
+    let addSearchTimer = null;
+    $('dms-group-add-input').addEventListener('input', (e) => {
+      clearTimeout(addSearchTimer);
+      const q = e.target.value.trim();
+      const resultsEl = $('dms-group-add-results');
+      if (!q) { resultsEl.innerHTML = ''; return; }
+      addSearchTimer = setTimeout(async () => {
+        try {
+          const data = await API.searchActors(q, 8);
+          resultsEl.innerHTML = '';
+          (data.actors || []).forEach(actor => {
+            if ((dmsActiveConvo.members || []).some(m => m.did === actor.did)) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'dms-new-result-btn';
+            btn.innerHTML = `
+              <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="">
+              <div>
+                <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
+                <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
+              </div>`;
+            btn.addEventListener('click', () => addGroupMember(actor));
+            resultsEl.appendChild(btn);
+          });
+        } catch { /* silent */ }
+      }, 300);
+    });
+
+    $('dms-group-leave-btn').addEventListener('click', () => leaveGroup());
+
+    if (link && link.code) {
+      $('dms-invite-copy').addEventListener('click', () => {
+        const url = `https://bsky.app/messages/join/${link.code}`;
+        navigator.clipboard?.writeText(url).then(
+          () => showBanner('Invite link copied.'),
+          () => showBanner('Could not copy link.', true)
+        );
+      });
+    } else {
+      $('dms-invite-create').addEventListener('click', () => createInviteLink());
+    }
+  }
+
+  function renderGroupMembers(convo) {
+    const ul = document.getElementById('dms-group-members');
+    if (!ul) return;
+    ul.innerHTML = '';
+    const fb = window._bskyAvatarFallback || '';
+    (convo.members || []).forEach(member => {
+      const li = document.createElement('li');
+      li.className = 'dms-group-member';
+      const isMe = member.did === dmsOwnDid;
+      li.innerHTML = `
+        <img class="dms-convo-avatar" src="${escHtml(member.avatar || fb)}" alt="">
+        <div class="dms-group-member-info">
+          <div class="dms-convo-name">${escHtml(member.displayName || member.handle || 'Unknown')}${isMe ? ' <span class="dms-you-tag">(you)</span>' : ''}</div>
+          <div class="dms-convo-handle">@${escHtml(member.handle || '')}</div>
+        </div>
+        ${isMe ? '' : '<button type="button" class="btn btn-ghost dms-member-remove" aria-label="Remove member" title="Remove">×</button>'}
+      `;
+      const removeBtn = li.querySelector('.dms-member-remove');
+      if (removeBtn) removeBtn.addEventListener('click', () => removeGroupMember(member));
+      ul.appendChild(li);
+    });
+  }
+
+  async function addGroupMember(actor) {
+    try {
+      const resp = await API.addGroupMembers(dmsActiveConvoId, [actor.did]);
+      dmsActiveConvo = resp.convo;
+      setupChatHeader(dmsActiveConvo);
+      renderGroupMembers(dmsActiveConvo);
+      const head = document.querySelector('.dms-group-section-title');
+      if (head) head.textContent = `Members (${_convoMemberCount(dmsActiveConvo)})`;
+      $('dms-group-add-search').hidden = true;
+      $('dms-group-add-input').value = '';
+      $('dms-group-add-results').innerHTML = '';
+      showBanner(`Added ${actor.displayName || actor.handle}.`);
+    } catch (err) {
+      showBanner(`Could not add member: ${err.message}`, true);
+    }
+  }
+
+  async function removeGroupMember(member) {
+    if (!confirm(`Remove ${member.displayName || member.handle} from the group?`)) return;
+    try {
+      const resp = await API.removeGroupMembers(dmsActiveConvoId, [member.did]);
+      dmsActiveConvo = resp.convo;
+      setupChatHeader(dmsActiveConvo);
+      renderGroupMembers(dmsActiveConvo);
+      const head = document.querySelector('.dms-group-section-title');
+      if (head) head.textContent = `Members (${_convoMemberCount(dmsActiveConvo)})`;
+      showBanner(`Removed ${member.displayName || member.handle}.`);
+    } catch (err) {
+      showBanner(`Could not remove member: ${err.message}`, true);
+    }
+  }
+
+  async function createInviteLink() {
+    const btn = document.getElementById('dms-invite-create');
+    if (btn) btn.disabled = true;
+    try {
+      const resp = await API.createJoinLink(dmsActiveConvoId);
+      const code = resp.joinLink?.code;
+      if (!code) throw new Error('No code returned');
+      const section = document.getElementById('dms-invite-section');
+      section.innerHTML = `
+        <div class="dms-invite-url-row">
+          <input type="text" class="dms-new-input dms-invite-url" id="dms-invite-url" readonly value="https://bsky.app/messages/join/${escHtml(code)}">
+          <button type="button" class="btn btn-secondary" id="dms-invite-copy">Copy</button>
+        </div>`;
+      $('dms-invite-copy').addEventListener('click', () => {
+        navigator.clipboard?.writeText(`https://bsky.app/messages/join/${code}`).then(
+          () => showBanner('Invite link copied.'),
+          () => showBanner('Could not copy link.', true)
+        );
+      });
+      showBanner('Invite link created.');
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showBanner(`Could not create invite link: ${err.message}`, true);
+    }
+  }
+
+  async function leaveGroup() {
+    if (!dmsActiveConvoId) return;
+    if (!confirm('Leave this group? You will stop receiving its messages.')) return;
+    const convoId = dmsActiveConvoId;
+    try {
+      await API.leaveConvo(convoId);
+      stopDmsPolling();
+      closeGroupManagePanel();
+      document.getElementById('dms-manage-btn')?.remove();
+      document.getElementById('dms-group-subtitle')?.remove();
+      $('dms-leave-btn').hidden = false;
+      dmsActiveConvoId = null;
+      dmsActiveConvo   = null;
+      dmsMessages      = [];
+      $('dms-chat-panel').hidden = true;
+      $('dms-list-panel').hidden = false;
+      loadDmsList();
+      showBanner('Left group.');
+    } catch (err) {
+      showBanner(`Could not leave group: ${err.message}`, true);
+    }
+  }
 
   /* ================================================================
      M14: NETWORK CONSTELLATION
@@ -9510,8 +10785,10 @@
         if (type === 'mutual' || (type === 'follow' && e.type === 'reply')) e.type = type;
       };
 
-      // Detect profile-mode: query starts with @ or looks like a single handle
-      const isProfileMode = /^@?\S+$/.test(query.trim()) && !query.includes(' ');
+      // Profile mode only for something handle-shaped (@x, x.bsky.social, did:…);
+      // a bare topic word like "climate" is a search, not a handle lookup.
+      const q0 = query.trim();
+      const isProfileMode = !q0.includes(' ') && (q0.startsWith('@') || q0.startsWith('did:') || /^[\w-]+(\.[\w-]+)+$/.test(q0));
       const seedHandle    = isProfileMode ? query.trim().replace(/^@/, '') : null;
 
       // Update URL so this constellation is bookmarkable/shareable
@@ -9714,7 +10991,7 @@
     card.innerHTML = `
       <div class="cnf-header">
         <div class="cnf-avatar-wrap">
-          <img class="cnf-avatar" src="${d.avatar || ''}" alt="" onerror="this.style.display='none'">
+          <img class="cnf-avatar" src="${escHtml(d.avatar || '')}" alt="">
           <div class="cnf-avatar-placeholder" aria-hidden="true"></div>
         </div>
         <div class="cnf-info">
@@ -9773,6 +11050,7 @@
     });
 
     // Prevent taps inside card from bubbling to SVG background dismiss handler
+    makeActivatable(card);
     card.addEventListener('click', e => e.stopPropagation());
   }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 // MARK: - Neubrutalist + Memphis Design System
 // Mirrors the web app's visual identity exactly
@@ -9,6 +10,19 @@ extension Color {
     static var nbAccent: Color {
         let hex = UserDefaults.standard.string(forKey: "nb_accent_color_hex") ?? "#0047FF"
         return Color(hex: hex)
+    }
+
+    /// Accent tuned for legibility AS A FOREGROUND (links, bordered-button tint, icons).
+    /// The default accent #0047FF is too dark to read on the dark navy surfaces, so in
+    /// dark mode it is lightened ~28%. Light mode is the accent unchanged. Use this for
+    /// accent-colored text/icons; keep `nbAccent` for fills (buttons, shadows) where the
+    /// background is bright and near-black text sits on top.
+    static var nbAccentLegible: Color {
+        Color(UIColor { traits in
+            let hex = UserDefaults.standard.string(forKey: "nb_accent_color_hex") ?? "#0047FF"
+            let base = UIColor(Color(hex: hex))
+            return traits.userInterfaceStyle == .dark ? base.nbLightened(by: 0.28) : base
+        })
     }
     static let nbBlue    = Color(hex: "#0047FF")  // Electric blue — links, mentions
     static let nbLime    = Color(hex: "#B8E04A")  // Lime — active channels, indicators
@@ -128,14 +142,17 @@ extension Color {
 // MARK: - Typography
 
 extension Font {
-    /// Syne Bold — headings, nav labels, buttons
+    /// Syne Bold — headings, nav labels, buttons.
+    /// `relativeTo: .body` makes the custom font scale with Dynamic Type so the
+    /// whole app respects the user's text-size setting (Accessibility). Without
+    /// `relativeTo:`, a custom font is a fixed point size and ignores Dynamic Type.
     static func syne(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .custom("Syne-Bold", size: size).weight(weight)
+        .custom("Syne-Bold", size: size, relativeTo: .body).weight(weight)
     }
 
-    /// Inter — body text
+    /// Inter — body text. Scales with Dynamic Type (see `syne`).
     static func inter(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom("Inter", size: size).weight(weight)
+        .custom("Inter", size: size, relativeTo: .body).weight(weight)
     }
 }
 
@@ -205,14 +222,13 @@ struct NeubrutalistButtonStyle: ButtonStyle {
             // "click" feel more dramatic and unmistakably Neubrutalist.
             let offset: CGFloat = isPressed ? 1 : -3
             let shadowSize: CGFloat = isPressed ? 1 : 4
-            // Buttons always have a bright accent background, so text is always near-black
-            // regardless of color scheme — never near-white on lime/yellow buttons.
             let shadowColor = colorScheme == .dark
                 ? Color.nbBlack.opacity(0.35)  // soft white glow on dark bg
                 : Color.nbShadowColor
             return configuration.label
                 .font(.syne(14))
-                .foregroundStyle(Color(red: 0.04, green: 0.04, blue: 0.04))  // always #0A0A0A
+                .textCase(.uppercase)   // §4.1: buttons are Syne, uppercase
+                .foregroundStyle(Self.labelColor(on: color))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(color)
@@ -220,6 +236,18 @@ struct NeubrutalistButtonStyle: ButtonStyle {
                 .background(shadowColor.offset(x: shadowSize, y: shadowSize))
                 .offset(x: offset, y: offset)
                 .animation(.easeOut(duration: 0.08), value: isPressed)
+        }
+
+        /// Near-black OR white, whichever contrasts more with the fill. Near-black was
+        /// hard-coded for "bright" accents, but the iOS DEFAULT accent is #0047FF:
+        /// black on it is ~3.35:1 (fails AA); white is ~6.3:1. Lime/coral/teal keep black.
+        static func labelColor(on fill: Color) -> Color {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(fill).getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ c: CGFloat) -> CGFloat { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+            let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+            let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
+            return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
         }
     }
 }
@@ -271,4 +299,445 @@ struct DiagonalStripeBackground: View {
             }
         }
     }
+}
+
+// MARK: - UIColor lighten helper
+
+extension UIColor {
+    /// Returns a copy lightened toward white by `amount` (0…1). Used for dark-mode
+    /// accent legibility (see `Color.nbAccentLegible`).
+    func nbLightened(by amount: CGFloat) -> UIColor {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard getRed(&r, green: &g, blue: &b, alpha: &a) else { return self }
+        let t = max(0, min(1, amount))
+        return UIColor(red: r + (1 - r) * t,
+                       green: g + (1 - g) * t,
+                       blue: b + (1 - b) * t,
+                       alpha: a)
+    }
+}
+
+// MARK: - Haptics
+
+/// Intentional, semantic haptics. Match the *type* of generator to the *type* of event
+/// so feedback feels deliberate rather than buzzy:
+///   • `.selection` — stepping through peers (image paging, tab/segment change)
+///   • `.light/.medium/.heavy` — a discrete action, weight scaled to consequence
+///   • `.success/.warning/.error` — an outcome (post sent, hit a limit, request failed)
+/// All calls are no-ops if the user has reduced/!supported haptics; UIKit handles that.
+enum Haptics {
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+    static func light()  { impact(.light) }
+    static func medium() { impact(.medium) }
+    static func heavy()  { impact(.heavy) }
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+    static func success() { notify(.success) }
+    static func warning() { notify(.warning) }
+    static func error()   { notify(.error) }
+    static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        UINotificationFeedbackGenerator().notificationOccurred(type)
+    }
+}
+
+// MARK: - Universal feature-state primitives
+//
+// Every list / grid / sheet should resolve four states beyond the happy path:
+// loading, empty, error, offline. These are the canonical neubrutalist renderings —
+// never hand-roll per view, so the app stays consistent.
+
+/// Empty state: a brand-voiced `ContentUnavailableView` with an optional productive
+/// next action (e.g. "No posts yet — pull to refresh"). Prefer giving users a way
+/// forward over a dead-end "No items".
+struct NBEmptyState: View {
+    let icon: String
+    let title: String
+    var message: String? = nil
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 44, weight: .bold))
+                .foregroundStyle(Color.nbAccentLegible)
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.syne(20))
+                    .textCase(.uppercase)   // every empty-state title reads the same
+                    .foregroundStyle(Color.nbBlack)
+                    .multilineTextAlignment(.center)
+                if let message {
+                    Text(message)
+                        .font(.inter(14))
+                        .foregroundStyle(Color.nbTextSecondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(NeubrutalistButtonStyle())
+                    .accessibilityHint("Double tap to \(actionTitle.lowercased())")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(32)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Error banner: distinct from hints — coral/red, shown ABOVE the content/action,
+/// never as a navigation interruption. Optional retry closure.
+struct NBErrorBanner: View {
+    let message: String
+    var retry: (() -> Void)? = nil
+    var onDismiss: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(hex: "#FF5C35"))
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.inter(13))
+                .foregroundStyle(Color.nbBlack)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if let retry {
+                Button("Retry", action: retry)
+                    .font(.syne(12))
+                    .foregroundStyle(Color.nbAccentLegible)
+                    .accessibilityLabel("Retry")
+            }
+            if let onDismiss {
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.nbTextSecondary)
+                }
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(12)
+        .background(Color(hex: "#FF5C35").opacity(0.12))
+        .nbBorder(Color(hex: "#FF5C35"), width: 2)
+        .padding(.horizontal, 12)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Offline pill: subtle, persistent indicator that the network is unavailable.
+/// Degrade, don't block — cached content stays browsable.
+struct NBOfflineBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 12, weight: .bold))
+                .accessibilityHidden(true)
+            Text("You're offline — showing cached content")
+                .font(.inter(12, weight: .medium))
+        }
+        .foregroundStyle(Color.nbBlack)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.nbLime)
+        .overlay(Rectangle().frame(height: 2).foregroundStyle(Color.nbBlack), alignment: .bottom)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Offline. Showing cached content.")
+    }
+}
+
+/// Skeleton placeholder block with a subtle shimmer — use to preserve layout while a
+/// list's first page loads, instead of a full-screen spinner. Honors Reduce Motion.
+struct NBSkeleton: View {
+    var height: CGFloat = 14
+    var cornerRadius: CGFloat = 0
+    @State private var shimmer = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.nbBorder.opacity(0.5))
+            .frame(height: height)
+            .overlay(
+                LinearGradient(
+                    colors: [.clear, Color.nbWhite.opacity(0.45), .clear],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .offset(x: shimmer ? 260 : -260)
+                .opacity(reduceMotion ? 0 : 1)
+            )
+            .clipped()
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+                    shimmer = true
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// A skeleton shaped like a feed post card (avatar + lines), for first-load.
+struct NBSkeletonPostRow: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle().fill(Color.nbBorder.opacity(0.5)).frame(width: 40, height: 40)
+            VStack(alignment: .leading, spacing: 8) {
+                NBSkeleton(height: 12).frame(width: 140)
+                NBSkeleton(height: 12)
+                NBSkeleton(height: 12).frame(maxWidth: .infinity)
+                NBSkeleton(height: 12).frame(width: 200)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - First-run hints
+//
+// Lightweight just-in-time tips shown on a known surface (NOT a launch slide-deck).
+// Each hint dismisses permanently per-device. Teach with real UI in context.
+
+/// Persists the set of permanently-dismissed hint IDs. `@Observable` with a STORED
+/// Set (not computed) so SwiftUI re-renders when a hint is dismissed.
+@Observable
+@MainActor
+final class HintsManager {
+    static let shared = HintsManager()
+    private let key = "bskydreams_dismissed_hints"
+    var dismissed: Set<String>
+
+    /// Master switch — user can silence all hints from Settings.
+    var hintsEnabled: Bool {
+        didSet { UserDefaults.standard.set(hintsEnabled, forKey: "bskydreams_hints_enabled") }
+    }
+
+    init() {
+        let arr = UserDefaults.standard.stringArray(forKey: key) ?? []
+        dismissed = Set(arr)
+        hintsEnabled = UserDefaults.standard.object(forKey: "bskydreams_hints_enabled") as? Bool ?? true
+    }
+
+    func isVisible(_ id: String) -> Bool { hintsEnabled && !dismissed.contains(id) }
+
+    func dismiss(_ id: String) {
+        dismissed.insert(id)
+        UserDefaults.standard.set(Array(dismissed), forKey: key)
+    }
+
+    func resetAll() {
+        dismissed.removeAll()
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+/// A dismissible tip banner. Renders nothing once dismissed. Cyan-tinted so it's
+/// visually distinct from the coral error banner.
+struct HintBanner: View {
+    let id: String
+    let text: String
+    var icon: String = "lightbulb.fill"
+    @State private var hints = HintsManager.shared
+
+    var body: some View {
+        if hints.isVisible(id) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundStyle(Color.nbLinkColor)
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(.inter(13))
+                    .foregroundStyle(Color.nbBlack)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button {
+                    Haptics.light()
+                    withAnimation { hints.dismiss(id) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.nbTextSecondary)
+                }
+                .accessibilityLabel("Dismiss tip")
+            }
+            .padding(12)
+            .background(Color.nbBlue.opacity(0.10))
+            .nbBorder(Color.nbBlue, width: 2)
+            .padding(.horizontal, 12)
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+// MARK: - Cached, URL-bound async image
+//
+// NOTE: this lives here (not a standalone CachedImage.swift) because the project's
+// Xcode file-system-synchronized groups intermittently fail to pick up new .swift
+// files; co-locating in an already-compiled file is the reliable workaround.
+//
+// AsyncImage has two problems for a recycling feed/grid: (1) a recycled cell can
+// briefly show the PREVIOUS row's image because the displayed image is held in
+// @State that survives a parameter change, and (2) it decodes full-resolution
+// bitmaps on the main actor. CachedImage fixes both: bound to the current URL via
+// `.task(id:)`, consults a shared NSCache synchronously (no spinner flash on a hit),
+// decodes/downsamples OFF the main actor, and re-checks the URL after every await.
+
+/// Thread-safe (NSCache is documented thread-safe) shared decoded-image cache.
+nonisolated(unsafe) private let nbImageCache: NSCache<NSURL, UIImage> = {
+    let c = NSCache<NSURL, UIImage>()
+    c.countLimit = 600
+    c.totalCostLimit = 60 * 1024 * 1024   // ~60 MB of decoded bitmaps
+    return c
+}()
+
+enum NBImageLoader {
+    /// Synchronous cache peek for the exact URL — lets the view render instantly on a hit.
+    static func cached(_ url: URL) -> UIImage? { nbImageCache.object(forKey: url as NSURL) }
+
+    /// Empties the in-memory decoded-image cache and the shared URL response cache.
+    /// Exposed to Settings → "Clear Image Cache".
+    static func clearCache() {
+        nbImageCache.removeAllObjects()
+        URLCache.shared.removeAllCachedResponses()
+    }
+
+    /// Fetch + decode + downsample off the main actor. Returns a display-ready image.
+    /// `maxPixel` caps the longest side (in points) so small cells don't decode huge bitmaps.
+    static func load(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
+        if let hit = cached(url) { return hit }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        // UIScreen is main-actor-only; read the scale here, before hopping off-main.
+        let scale = await MainActor.run { UIScreen.main.scale }
+        return await Task.detached(priority: .utility) { () -> UIImage? in
+            let image: UIImage?
+            if let maxPixel, let downsampled = NBImageLoader.downsample(data, maxPixel: maxPixel * scale) {
+                image = downsampled
+            } else {
+                image = UIImage(data: data)?.preparingForDisplay()
+            }
+            if let image {
+                let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+                nbImageCache.setObject(image, forKey: url as NSURL, cost: cost)
+            }
+            return image
+        }.value
+    }
+
+    /// ImageIO thumbnail decode — never inflates the full bitmap into memory.
+    /// `maxPixel` is in PIXELS (callers multiply by screen scale). ImageIO is thread-safe.
+    nonisolated private static func downsample(_ data: Data, maxPixel: CGFloat) -> UIImage? {
+        let srcOpts = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let src = CGImageSourceCreateWithData(data as CFData, srcOpts) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
+enum CachedImagePhase {
+    case empty
+    case success(Image)
+    case failure
+}
+
+/// Drop-in, URL-bound replacement for `AsyncImage(url:content:)`. Mirrors the phase
+/// API so adoption is mostly mechanical.
+struct CachedImage<Content: View>: View {
+    let url: URL?
+    /// Longest side in points to downsample to (avatars ~40, grid cells ~200). nil = full size.
+    var maxPixelSize: CGFloat? = nil
+    @ViewBuilder let content: (CachedImagePhase) -> Content
+
+    @State private var phase: CachedImagePhase = .empty
+
+    init(url: URL?, maxPixelSize: CGFloat? = nil,
+         @ViewBuilder content: @escaping (CachedImagePhase) -> Content) {
+        self.url = url
+        self.maxPixelSize = maxPixelSize
+        self.content = content
+        // Seed synchronously from cache so a cache hit renders on first frame (no flash).
+        if let url, let hit = NBImageLoader.cached(url) {
+            _phase = State(initialValue: .success(Image(uiImage: hit)))
+        }
+    }
+
+    var body: some View {
+        content(phase)
+            .task(id: url) { await reload() }
+    }
+
+    private func reload() async {
+        guard let url else { phase = .failure; return }
+        if case .success = phase, NBImageLoader.cached(url) != nil { return }
+        let target = url
+        if let img = await NBImageLoader.load(url, maxPixel: maxPixelSize) {
+            guard target == url else { return }   // parameter changed mid-flight (fast scroll)
+            phase = .success(Image(uiImage: img))
+        } else {
+            guard target == url else { return }
+            phase = .failure
+        }
+    }
+}
+
+// MARK: - Dynamic Type for system-font text
+//
+// `Font.system(size:)` is a FIXED point size — it ignores the user's text-size
+// setting. Post bodies, names and chat use the system font for emoji/Unicode
+// coverage (see RichTextView), so they need this: a @ScaledMetric-backed size
+// that tracks Dynamic Type live. Icons in fixed-size controls stay fixed.
+private struct NBScaledSystemFont: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    let weight: Font.Weight
+
+    init(size: CGFloat, weight: Font.Weight, relativeTo style: Font.TextStyle) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: style)
+        self.weight = weight
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight))
+    }
+}
+
+extension View {
+    /// System font at `size` pt (at the default text size) that scales with Dynamic Type.
+    func scaledSystemFont(_ size: CGFloat, weight: Font.Weight = .regular,
+                          relativeTo style: Font.TextStyle = .body) -> some View {
+        modifier(NBScaledSystemFont(size: size, weight: weight, relativeTo: style))
+    }
+}
+
+// MARK: - Offline banner as a modifier
+//
+// One line per screen instead of hand-placing NBOfflineBanner in each layout branch
+// (loading/empty/error/content). Pinned under the nav bar as a top safe-area inset,
+// so scrolling content is never covered. Rule §2 (offline state) + §8.2.
+private struct NBOfflineInset: ViewModifier {
+    @Environment(NetworkMonitor.self) private var network
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+            if network.isOffline { NBOfflineBanner() }
+        }
+    }
+}
+
+extension View {
+    /// Shows the lime offline banner above this screen's content while offline.
+    func nbOfflineBanner() -> some View { modifier(NBOfflineInset()) }
 }

@@ -23,22 +23,37 @@ struct NotificationGroup: Identifiable {
 struct NotificationsView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(NetworkMonitor.self) private var network
 
     @State private var notifications: [BskyNotification] = []
     @State private var groups: [NotificationGroup] = []
     @State private var cursor: String?
     @State private var isLoading = false
-    @State private var scrollToTopTrigger = 0
+    @State private var errorMessage: String?
 
     var body: some View {
-        Group {
-            if isLoading && notifications.isEmpty {
-                ProgressView("Loading notifications...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if groups.isEmpty {
-                ContentUnavailableView("No Notifications", systemImage: "bell.slash", description: Text("You're all caught up!"))
-            } else {
-                notificationList
+        VStack(spacing: 0) {
+            if network.isOffline { NBOfflineBanner() }
+            if let errorMessage {
+                NBErrorBanner(
+                    message: errorMessage,
+                    retry: { self.errorMessage = nil; Task { await load() } },
+                    onDismiss: { self.errorMessage = nil }
+                )
+            }
+            Group {
+                if isLoading && notifications.isEmpty {
+                    ProgressView("Loading notifications...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if groups.isEmpty {
+                    NBEmptyState(
+                        icon: "bell.slash",
+                        title: "No Notifications",
+                        message: "You're all caught up!"
+                    )
+                } else {
+                    notificationList
+                }
             }
         }
         .nbNavBar(title: "NOTIFICATIONS", leading: { NBHamburger() }, trailing: {
@@ -51,6 +66,8 @@ struct NotificationsView: View {
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 .contentShape(Rectangle())
                 .onTapGesture { markAllRead() }
+                .accessibilityLabel("Mark all as read")
+                .accessibilityAddTraits(.isButton)
         })
         .task { await load() }
     }
@@ -79,9 +96,6 @@ struct NotificationsView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await load() }
-        .onChange(of: scrollToTopTrigger) { _, _ in
-            withAnimation { proxy.scrollTo("notif-top", anchor: .top) }
-        }
         }
     }
 
@@ -128,7 +142,7 @@ struct NotificationsView: View {
         guard !subjectURIs.isEmpty else { return }
         let uniqueURIs = Array(Set(subjectURIs))
         guard let posts = try? await ATProtocolClient.shared.getPosts(uris: uniqueURIs) else { return }
-        let textMap = Dictionary(uniqueKeysWithValues: posts.map { ($0.uri, $0.record.text) })
+        let textMap = Dictionary(posts.map { ($0.uri, $0.record.text) }, uniquingKeysWith: { a, _ in a })
         for i in groups.indices {
             if let subject = groups[i].primary.reasonSubject,
                let text = textMap[subject], !text.isEmpty {
@@ -156,11 +170,14 @@ struct NotificationsView: View {
             store.unreadNotificationCount = 0
             UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
             try? await ATProtocolClient.shared.updateNotificationsSeen()
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = "Couldn't load notifications. \(error.localizedDescription)"
+        }
     }
 
     private func loadMore() async {
-        guard !isLoading else { return }
+        guard !isLoading, cursor != nil else { return }   // nil cursor = end (or not loaded): don't refetch page 1
         isLoading = true
         defer { isLoading = false }
         do {
@@ -172,10 +189,13 @@ struct NotificationsView: View {
             var newGroups = buildGroups(from: notifications)
             await enrichGroupsWithSubjectText(&newGroups)
             groups = newGroups
-        } catch {}
+        } catch {
+            errorMessage = "Couldn't load more notifications. \(error.localizedDescription)"
+        }
     }
 
     private func markAllRead() {
+        Haptics.success()
         notifications = notifications.map { var n = $0; n.isRead = true; return n }
         groups = groups.map { g in
             var updated = g
@@ -234,9 +254,9 @@ struct NotificationGroupRowView: View {
                         .lineLimit(2)
                 }
 
-                let formatter = RelativeDateTimeFormatter()
-                if let date = ISO8601DateFormatter().date(from: notification.indexedAt) {
-                    Text(formatter.localizedString(for: date, relativeTo: Date()))
+                let when = ATDate.relative(notification.indexedAt)
+                if !when.isEmpty {
+                    Text(when)
                         .font(.inter(12))
                         .foregroundStyle(Color.nbTextTertiary)
                 }
@@ -270,6 +290,7 @@ struct NotificationGroupRowView: View {
                             AvatarView(url: notif.author.avatar, size: 36)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("View \(notif.author.name)'s profile")
                         .offset(x: CGFloat(idx) * 10, y: CGFloat(idx) * 6)
                     }
                 }
@@ -281,11 +302,13 @@ struct NotificationGroupRowView: View {
                     AvatarView(url: notification.author.avatar, size: 44)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("View \(notification.author.name)'s profile")
             }
 
             Image(systemName: notification.reason.icon)
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                // White on lime is ~1.6:1 — lime badges get fixed near-black.
+                .foregroundStyle(accentColor == .nbLime ? Color(hex: "#0A0A0A") : .white)
                 .padding(4)
                 .background(accentColor)
                 .clipShape(.circle)

@@ -4,13 +4,19 @@ import UserNotifications
 
 struct RootView: View {
     @Environment(AuthManager.self) private var auth
+    @Environment(AppStore.self) private var store
 
     var body: some View {
-        if auth.isLoggedIn {
-            MainAppView()
-        } else {
-            LoginView()
+        Group {
+            if auth.isLoggedIn {
+                MainAppView()
+            } else {
+                LoginView()
+            }
         }
+        #if DEBUG
+        .task { await DebugLaunchDoors.apply(auth: auth, store: store) }
+        #endif
     }
 }
 
@@ -164,6 +170,17 @@ struct MainAppView: View {
                     }
                 }
         )
+        .overlay(alignment: .bottom) {
+            if let failed = store.failedPost {
+                NBErrorBanner(message: "Your post didn't send — \(failed.reason)",
+                              retry: { store.retryFailedPost() },
+                              onDismiss: { store.failedPost = nil })
+                    .padding(.bottom, 24)
+            } else if let message = store.actionError {
+                NBErrorBanner(message: message, onDismiss: { store.actionError = nil })
+                    .padding(.bottom, 24)
+            }
+        }
         .sheet(isPresented: Bindable(store).showComposeSheet, onDismiss: {
             store.composeQuote = nil
             store.composeText = ""
@@ -183,6 +200,12 @@ struct MainAppView: View {
             await auth.refreshIfNeeded()
             // Pick up any share that arrived before auth was ready (cold-start from Share Extension)
             store.processPendingShare()
+            // Ask for notification permission once signed in — on the login screen
+            // the prompt arrived before the app had shown why it would notify.
+            let center = UNUserNotificationCenter.current()
+            if await center.notificationSettings().authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+            }
             await refreshBadges()
             await fetchCurrentUserAvatar()
             // Merge cloud seen-posts into local SwiftData on every login/cold start
@@ -251,11 +274,16 @@ struct MainAppView: View {
         }
     }
 
+    /// Badges are ambient, best-effort hints: a failed refresh keeps the last count
+    /// (no banner — the views themselves surface real failures).
     private func refreshBadges() async {
-        do {
-            let notifs = try await ATProtocolClient.shared.listNotifications(limit: 1)
-            store.unreadNotificationCount = notifs.notifications.filter { !$0.isRead }.count
-        } catch {}
+        async let notifs = try? ATProtocolClient.shared.unreadNotificationCount()
+        async let convos = try? ATProtocolClient.shared.listConversations(limit: 50)
+        if let n = await notifs { store.unreadNotificationCount = n }
+        if let c = await convos {
+            // Accepted conversations only — requests have their own inbox.
+            store.unreadDMCount = c.convos.filter { $0.status != "request" }.reduce(0) { $0 + $1.unreadCount }
+        }
     }
 
     private func fetchCurrentUserAvatar() async {
@@ -278,6 +306,7 @@ struct SidebarView: View {
 
     @State private var editingChannel: SavedSearch? = nil
     @State private var channelRenameText = ""
+    @State private var confirmSignOut = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -409,12 +438,18 @@ struct SidebarView: View {
             }
             Spacer()
             Button {
-                auth.logout()
+                confirmSignOut = true
             } label: {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(.system(size: 14))
                     .foregroundStyle(Color.red)
                     .padding(8)
+            }
+            .accessibilityLabel("Sign out")
+            // A small icon next to your avatar is easy to hit by accident.
+            .confirmationDialog("Sign out of Bsky Dreams?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+                Button("Sign Out", role: .destructive) { auth.logout() }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .padding(.horizontal, 16)
@@ -486,7 +521,7 @@ struct SidebarChannelButton: View {
                       ? "calendar.day.timeline.leading"
                       : "number")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -503,7 +538,7 @@ struct SidebarChannelButton: View {
                 if channel.unreadCount > 0 {
                     Text("\(channel.unreadCount)")
                         .font(.inter(10, weight: .bold))
-                        .foregroundStyle(Color.nbWhite)
+                        .foregroundStyle(Color(hex: "#0A0A0A"))   // white on lime failed contrast
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.nbLime)
@@ -561,6 +596,8 @@ struct SettingsView: View {
 
     @State private var showClearSeenConfirm = false
     @State private var showLogoutConfirm = false
+    @State private var cacheCleared = false
+    @State private var hints = HintsManager.shared
 
     private var prefs: CachedPreferences? { cachedPrefs.first }
 
@@ -576,6 +613,12 @@ struct SettingsView: View {
                     }
                     settingsSection("DATA & HISTORY") {
                         seenPostsRow
+                        clearCacheRow
+                        notificationSettingsRow
+                    }
+                    settingsSection("TIPS & HINTS") {
+                        hintsToggleRow
+                        resetHintsRow
                     }
                     settingsSection("ACCOUNT") {
                         if let handle = auth.session?.handle {
@@ -630,7 +673,7 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                 Text("SETTINGS")
                     .font(.syne(22, weight: .bold))
                     .foregroundStyle(Color.nbBlack)
@@ -713,16 +756,22 @@ struct SettingsView: View {
                 .foregroundStyle(Color.nbBlack)
             HStack(spacing: 0) {
                 ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
-                    let isSelected = (prefs?.defaultFeedTab ?? "discover") == mode.rawValue.lowercased()
+                    // Legacy default "discover" maps to the new Conversations feed.
+                    let stored = (prefs?.defaultFeedTab ?? "conversations")
+                    let normalized = stored == "discover" ? "conversations" : stored
+                    let isSelected = normalized == mode.rawValue.lowercased()
                     Button {
                         updateDefaultFeed(mode.rawValue.lowercased())
                         store.feedMode = mode
                     } label: {
                         Text(mode.rawValue.uppercased())
-                            .font(.syne(12, weight: .bold))
+                            .font(.syne(11, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .foregroundStyle(isSelected ? Color.white : Color.nbBlack)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
+                            .padding(.horizontal, 4)
                             .background(isSelected ? Color.nbAccent : Color.nbWhite)
                     }
                 }
@@ -762,6 +811,105 @@ struct SettingsView: View {
         .nbBorder()
     }
 
+    private var clearCacheRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Image Cache")
+                    .font(.inter(15, weight: .semibold))
+                    .foregroundStyle(Color.nbBlack)
+                Text(cacheCleared ? "Cleared" : "Free up space used by cached images")
+                    .font(.inter(12))
+                    .foregroundStyle(cacheCleared ? Color.nbLinkColor : Color.nbTextSecondary)
+            }
+            Spacer()
+            Button {
+                NBImageLoader.clearCache()
+                Haptics.success()
+                withAnimation { cacheCleared = true }
+            } label: {
+                Text("CLEAR")
+                    .font(.syne(12, weight: .bold))
+                    .foregroundStyle(Color.nbBlack)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.nbWhite)
+                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .background(Color.nbBlack.offset(x: 2, y: 2))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear image cache")
+        }
+        .padding(14)
+        .background(Color.nbWhite)
+        .nbBorder()
+    }
+
+    private var notificationSettingsRow: some View {
+        Button {
+            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+        } label: {
+            HStack {
+                Text("Notification Settings")
+                    .font(.inter(15))
+                    .foregroundStyle(Color.nbBlack)
+                Spacer()
+                Text("System")
+                    .font(.inter(13))
+                    .foregroundStyle(Color.nbLinkColor)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.nbLinkColor)
+            }
+            .padding(14)
+            .background(Color.nbWhite)
+            .nbBorder()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open notification settings in the system Settings app")
+    }
+
+    private var hintsToggleRow: some View {
+        Toggle(isOn: Binding(
+            get: { hints.hintsEnabled },
+            set: { hints.hintsEnabled = $0; Haptics.selection() }
+        )) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Show Tips")
+                    .font(.inter(15, weight: .semibold))
+                    .foregroundStyle(Color.nbBlack)
+                Text("In-context hints on feeds and tools")
+                    .font(.inter(12))
+                    .foregroundStyle(Color.nbTextSecondary)
+            }
+        }
+        .tint(Color.nbAccent)
+        .padding(14)
+        .background(Color.nbWhite)
+        .nbBorder()
+    }
+
+    private var resetHintsRow: some View {
+        Button {
+            hints.resetAll()
+            Haptics.success()
+        } label: {
+            HStack {
+                Text("Reset All Tips")
+                    .font(.inter(15))
+                    .foregroundStyle(Color.nbBlack)
+                Spacer()
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.nbAccentLegible)
+            }
+            .padding(14)
+            .background(Color.nbWhite)
+            .nbBorder()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reset all dismissed tips")
+    }
+
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -784,11 +932,11 @@ struct SettingsView: View {
                 Spacer()
                 Text(subtitle)
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .lineLimit(1)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
             }
             .padding(14)
             .background(Color.nbWhite)
@@ -810,6 +958,7 @@ struct SettingsView: View {
 
     private func clearSeenPosts() {
         for post in seenPosts { modelContext.delete(post) }
+        if let did = auth.session?.did { Task { await store.clearSeenInCloud(did: did) } }
     }
 
     private func updateAccentColor(_ hex: String) {

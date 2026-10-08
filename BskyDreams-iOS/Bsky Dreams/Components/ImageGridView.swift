@@ -66,7 +66,7 @@ struct ImageGridView: View {
     /// Both maxWidth AND height in a single .frame() call is required before .clipped()
     /// so scaledToFill knows to fill both dimensions. See DECISIONS.md.
     private func gridImage(_ img: EmbedImage, index: Int, height: CGFloat) -> some View {
-        AsyncImage(url: URL(string: img.thumb)) { phase in
+        CachedImage(url: URL(string: img.thumb), maxPixelSize: 200) { phase in
             switch phase {
             case .success(let image): image.resizable().scaledToFill()
             default: Color.nbBorder.opacity(0.3)
@@ -170,6 +170,7 @@ struct LightboxView: View {
             dismissOffset = 0
             isDismissGesture = false
             zoomResets[old] = UUID()
+            Haptics.selection()
         }
         .alert("Photos Access Required", isPresented: $showSettingsAlert) {
             Button("Open Settings") {
@@ -217,6 +218,7 @@ struct LightboxView: View {
                 .frame(width: 44, height: 44)
             }
             .disabled(isSaving)
+            .accessibilityLabel("Save image")
             .padding(.leading, 8)
 
             Spacer()
@@ -228,6 +230,7 @@ struct LightboxView: View {
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.2), in: Circle())
             }
+            .accessibilityLabel("Close")
             .padding(.trailing, 12)
         }
         .padding(.top, 8)
@@ -362,10 +365,15 @@ struct ZoomScrollImage: UIViewRepresentable {
             sv.lastResetID = resetID
             sv.clearAndResetZoom()
             guard let url = url else { return }
-            Task.detached(priority: .userInitiated) {
-                guard let data = try? Data(contentsOf: url),
-                      let img = UIImage(data: data) else { return }
-                await MainActor.run { sv.setImage(img) }
+            // URLSession (cached, cancellable) rather than synchronous Data(contentsOf:);
+            // after the await, drop the result if the user has already paged on.
+            Task {
+                guard let (data, _) = try? await URLSession.shared.data(from: url),
+                      let img = await Task.detached(priority: .userInitiated, operation: {
+                          UIImage(data: data)?.preparingForDisplay()
+                      }).value,
+                      sv.lastURL == url else { return }
+                sv.setImage(img)
             }
         } else if sv.lastResetID != resetID {
             // resetID changed (navigated away and back) — reset zoom only, keep image.
@@ -579,6 +587,14 @@ private final class DismissGestureDelegate: NSObject, UIGestureRecognizerDelegat
 struct GifEmbedView: UIViewRepresentable {
     let url: URL
 
+    /// Strip any query string (e.g. Klipy's `?hh=&ww=&mp4=&webm=` animation params)
+    /// so the bare `.gif` file is fetched cleanly by the animated loader.
+    private var bareGifURLString: String {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        return components?.url?.absoluteString ?? url.absoluteString
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -593,7 +609,7 @@ struct GifEmbedView: UIViewRepresentable {
         <style>html,body{margin:0;padding:0;background:#000;display:flex;align-items:center;justify-content:center;height:100%;}
         img{max-width:100%;max-height:100%;object-fit:contain;}</style>
         </head>
-        <body><img src="\(url.absoluteString)"></body>
+        <body><img src="\(bareGifURLString)"></body>
         </html>
         """
         webView.loadHTMLString(html, baseURL: nil)
@@ -610,7 +626,8 @@ func isGifExternalCard(_ card: ExternalCard) -> Bool {
         let gifHosts = ["media.tenor.com", "c.tenor.com", "media.giphy.com",
                         "media0.giphy.com", "media1.giphy.com", "media2.giphy.com",
                         "media3.giphy.com", "i.giphy.com",
-                        "media.klipy.com", "cdn.klipy.com", "i.klipy.com"]
+                        "media.klipy.com", "cdn.klipy.com", "i.klipy.com",
+                        "static.klipy.com"]
         if gifHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return true }
     }
     return false
@@ -626,7 +643,7 @@ struct LinkCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Full-width thumbnail (160pt tall) — matches web app's `.post-external-thumb`
             if let thumb = card.thumb, let url = URL(string: thumb) {
-                AsyncImage(url: url) { phase in
+                CachedImage(url: url, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img):
                         img.resizable().scaledToFill()
@@ -709,7 +726,7 @@ struct YouTubeLinkCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Thumbnail
             ZStack {
-                AsyncImage(url: thumbnailURL) { phase in
+                CachedImage(url: thumbnailURL, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
                     default: Color.black
@@ -801,7 +818,7 @@ struct QuotedPostView: View {
                 HStack(spacing: 4) {
                     Text("GIF")
                         .font(.syne(10, weight: .bold))
-                        .foregroundStyle(Color.nbBlue)
+                        .foregroundStyle(Color.nbLinkColor)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
                         .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1))
@@ -811,10 +828,10 @@ struct QuotedPostView: View {
                     if let host = URL(string: card.uri)?.host {
                         Image(systemName: "link")
                             .font(.system(size: 10))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                         Text(host.lowercased())
                             .font(.inter(11))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                             .lineLimit(1)
                     }
                 }
@@ -834,7 +851,7 @@ struct QuotedPostView: View {
     private func quotedVideoThumbnail(_ vid: VideoEmbed) -> some View {
         ZStack {
             if let thumbURL = vid.thumbnail.flatMap({ URL(string: $0) }) {
-                AsyncImage(url: thumbURL) { phase in
+                CachedImage(url: thumbURL, maxPixelSize: 400) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
                     default: Color.nbBorder.opacity(0.3)
@@ -857,7 +874,7 @@ struct QuotedPostView: View {
     @ViewBuilder
     private func quotedImageGrid(_ images: [EmbedImage]) -> some View {
         if images.count == 1 {
-            AsyncImage(url: URL(string: images[0].thumb)) { phase in
+            CachedImage(url: URL(string: images[0].thumb), maxPixelSize: 200) { phase in
                 switch phase {
                 case .success(let img): img.resizable().scaledToFill()
                 default: Color.nbBorder.opacity(0.3)
@@ -871,7 +888,7 @@ struct QuotedPostView: View {
         } else {
             HStack(spacing: 3) {
                 ForEach(images.prefix(3)) { img in
-                    AsyncImage(url: URL(string: img.thumb)) { phase in
+                    CachedImage(url: URL(string: img.thumb), maxPixelSize: 160) { phase in
                         switch phase {
                         case .success(let i): i.resizable().scaledToFill()
                         default: Color.nbBorder.opacity(0.3)
@@ -915,6 +932,7 @@ struct VideoThumbnailView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Full screen")
                 .padding(10)
             } else {
                 // Thumbnail with play button overlay
@@ -945,6 +963,10 @@ struct VideoThumbnailView: View {
                 .onTapGesture {
                     if hasPlayableURL { startPlaying() }
                 }
+                // A tap-gesture ZStack is invisible to VoiceOver without this.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(hasPlayableURL ? "Play video" : "Video unavailable")
+                .accessibilityAddTraits(hasPlayableURL ? .isButton : [])
             }
         }
         // Prevent SwiftUI animation propagation into AVPlayerViewController.
@@ -1003,17 +1025,21 @@ struct VideoThumbnailView: View {
 
 // MARK: - Retry-capable Image loader
 
-/// AsyncImage wrapper with one automatic retry followed by a manual retry button.
+/// CachedImage wrapper with one automatic retry followed by a manual retry button.
 /// The single auto-retry fires after 1.5 s (not on scroll) to avoid Task stutter.
+/// Backs the single-image feed post — the highest-churn image in the app — so it uses
+/// CachedImage (off-main downsample, URL-bound) per design rule 7.1, not AsyncImage.
 struct RetryAsyncImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
+    /// Longest side in points; a feed image is at most ~screen width.
+    var maxPixelSize: CGFloat = 800
 
     @State private var retryCount = 0
     @State private var autoRetried = false
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
+        CachedImage(url: url, maxPixelSize: maxPixelSize) { phase in
             switch phase {
             case .success(let image):
                 if contentMode == .fill {
@@ -1032,6 +1058,7 @@ struct RetryAsyncImage: View {
                                 Image(systemName: "arrow.clockwise")
                                     .foregroundStyle(Color.nbTextTertiary)
                             }
+                            .accessibilityLabel("Retry loading image")
                         )
                 } else {
                     // First failure — auto-retry once after a short delay
@@ -1044,8 +1071,6 @@ struct RetryAsyncImage: View {
                 }
             case .empty:
                 Color.nbBorder.opacity(0.15)
-            @unknown default:
-                Color.nbBorder
             }
         }
         .id(retryCount)

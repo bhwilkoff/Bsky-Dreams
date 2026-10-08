@@ -1,12 +1,49 @@
 import SwiftUI
 import SwiftData
 import WebKit
+import NaturalLanguage
+
+// MARK: - Article language detection
+//
+// The Reader displays the linked ARTICLE, whose language is independent of the post's
+// `langs` tag (which is often absent entirely — and `PostView.isEnglish` treats absent
+// as English, so non-English articles leaked through). Detect the article's own language
+// from its card text using Apple's on-device NLLanguageRecognizer (free, no network).
+
+/// True unless `text` is confidently a non-English language. Empty/short/ambiguous → true
+/// (we don't over-filter when we genuinely can't tell).
+private func textLooksEnglish(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.count >= 16 else { return true }
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(trimmed)
+    guard let dominant = recognizer.dominantLanguage else { return true }
+    if dominant == .english { return true }
+    // Non-English is the best guess — only reject if English isn't a close runner-up
+    // (handles bilingual / English-with-loanwords cards).
+    let englishProbability = recognizer.languageHypotheses(withMaximum: 3)[.english] ?? 0
+    return englishProbability >= 0.45
+}
+
+/// Decide whether a Reader article is English. Prefers the article's OWN text (card
+/// title + description); falls back to explicit post `langs`, then the post text.
+func articleIsEnglish(post: PostView, card: ExternalCard) -> Bool {
+    let articleText = (card.title + ". " + card.description).trimmingCharacters(in: .whitespacesAndNewlines)
+    if articleText.count >= 16 { return textLooksEnglish(articleText) }
+    // Too little article text — honor an explicit language tag if present.
+    if let langs = post.record.langs, !langs.isEmpty {
+        return langs.contains { $0.hasPrefix("en") }
+    }
+    // Last resort: judge from the post body, else allow.
+    return textLooksEnglish(post.record.text)
+}
 
 struct ReaderView: View {
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
     private let newsFeedURI = "at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news"
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(NetworkMonitor.self) private var network
     @State private var articles: [PostView] = []
     @State private var timelineCursor: String?
     @State private var discoverCursor: String?
@@ -33,13 +70,12 @@ struct ReaderView: View {
     var body: some View {
         Group {
             if (isLoading || !hasLoaded) && articles.isEmpty {
-                ProgressView("Loading articles...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage, articles.isEmpty {
+                loadingState
+            } else if let err = errorMessage, articles.isEmpty, !network.isOffline {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text(err)
                         .font(.inter(14))
                         .multilineTextAlignment(.center)
@@ -48,8 +84,6 @@ struct ReaderView: View {
                         .nbButton()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if articles.isEmpty {
-                ContentUnavailableView("No Articles", systemImage: "doc.text", description: Text("Pull to refresh or check back later."))
             } else {
                 articleList
             }
@@ -68,6 +102,43 @@ struct ReaderView: View {
     private var articleList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 10)
+                }
+
+                if let err = errorMessage, !articlesWithCards.isEmpty {
+                    NBErrorBanner(message: err) {
+                        Task { await load() }
+                    }
+                    .padding(.top, 10)
+                }
+
+                HintBanner(id: "reader.welcome", text: "Tap an article to read it distraction-free in Readable mode.")
+                    .padding(.top, 10)
+
+                if articlesWithCards.isEmpty && !isLoading && errorMessage == nil {
+                    NBEmptyState(
+                        icon: "doc.text",
+                        title: "You're all caught up",
+                        message: "No new articles right now",
+                        actionTitle: "Refresh",
+                        action: {
+                            Task {
+                                let descriptor = FetchDescriptor<SeenPost>()
+                                seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
+                                articles = []
+                                timelineCursor = nil
+                                discoverCursor = nil
+                                newsCursor = nil
+                                await load()
+                            }
+                        }
+                    )
+                    .padding(.top, 40)
+                }
+
                 ForEach(articlesWithCards, id: \.post.uri) { item in
                     ArticleCardView(
                         post: item.post,
@@ -115,6 +186,25 @@ struct ReaderView: View {
         }
     }
 
+    private var loadingState: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if network.isOffline {
+                    NBOfflineBanner()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 10)
+                }
+                ForEach(0..<5, id: \.self) { _ in
+                    NBSkeletonPostRow()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private func load(loadMore: Bool = false) async {
         guard !isLoading else { return }
         isLoading = true
@@ -147,9 +237,10 @@ struct ReaderView: View {
             let allItems = home.feed + (discover?.feed ?? []) + (news?.feed ?? [])
             let filtered = allItems.compactMap { item -> PostView? in
                 guard !item.post.isAdultContent else { return nil }
-                guard item.post.isEnglish else { return nil }
                 guard let ext = item.post.embed?.external else { return nil }
                 guard isReadableArticle(ext) else { return nil }
+                // Filter on the ARTICLE's language (card text), not the post's lang tag.
+                guard articleIsEnglish(post: item.post, card: ext) else { return nil }
                 guard !seenURISet.contains(item.post.uri) else { return nil }
                 return item.post
             }
@@ -241,6 +332,10 @@ struct ArticleCardView: View {
     @Environment(AppStore.self) private var store
 
     @State private var isLiked: Bool = false
+
+    @State private var likeURI: String?
+
+    @State private var repostURI: String?
     @State private var likeCount: Int = 0
     @State private var isReposted: Bool = false
     @State private var repostCount: Int = 0
@@ -252,7 +347,7 @@ struct ArticleCardView: View {
             Button(action: onTap) {
                 VStack(alignment: .leading, spacing: 0) {
                     if let thumb = card.thumb, let url = URL(string: thumb) {
-                        AsyncImage(url: url) { phase in
+                        CachedImage(url: url, maxPixelSize: 500) { phase in
                             switch phase {
                             case .success(let img): img.resizable().scaledToFill()
                             default: Color.nbBorder.opacity(0.3)
@@ -264,9 +359,9 @@ struct ArticleCardView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         if let host = URL(string: card.uri)?.host {
-                            Text(host.uppercased())
+                            Text((host.hasPrefix("www.") ? String(host.dropFirst(4)) : host).uppercased())
                                 .font(.syne(10))
-                                .foregroundStyle(Color.nbAccent)
+                                .foregroundStyle(Color.nbAccentLegible)
                                 .tracking(1)
                         }
 
@@ -311,14 +406,16 @@ struct ArticleCardView: View {
                         .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
                 .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                 Button { toggleLike() } label: {
                     Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                         .font(.inter(12))
-                        .foregroundStyle(isLiked ? Color.nbAccent : Color.nbTextSecondary)
+                        .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
+                    .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
                 .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                 Spacer()
@@ -331,6 +428,8 @@ struct ArticleCardView: View {
         .nbShadow()
         .onAppear {
             isLiked = post.viewer?.like != nil
+            likeURI = post.viewer?.like
+            repostURI = post.viewer?.repost
             likeCount = post.likeCount ?? 0
             isReposted = post.viewer?.repost != nil
             repostCount = post.repostCount ?? 0
@@ -351,12 +450,9 @@ struct ArticleCardView: View {
         isLiked.toggle(); likeCount += isLiked ? 1 : -1
         Task {
             do {
-                if wasLiked, let likeUri = post.viewer?.like {
-                    try await ATProtocolClient.shared.unlikePost(likeUri: likeUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.likePost(uri: post.uri, cid: post.cid, did: did)
-                }
-            } catch { isLiked = wasLiked; likeCount = prevCount }
+                likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
+            } catch { isLiked = wasLiked; likeCount = prevCount
+                store.showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.") }
         }
     }
 
@@ -366,12 +462,9 @@ struct ArticleCardView: View {
         isReposted.toggle(); repostCount += isReposted ? 1 : -1
         Task {
             do {
-                if wasReposted, let repostUri = post.viewer?.repost {
-                    try await ATProtocolClient.shared.unrepost(repostUri: repostUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.repost(uri: post.uri, cid: post.cid, did: did)
-                }
-            } catch { isReposted = wasReposted; repostCount = prevCount }
+                repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
+            } catch { isReposted = wasReposted; repostCount = prevCount
+                store.showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.") }
         }
     }
 }
@@ -544,6 +637,20 @@ struct ArticleWebView: UIViewRepresentable {
         weak var mainWebView: WKWebView?
         // Keep extractor alive until JS finishes
         private var extractorWebView: WKWebView?
+        /// True while the main view shows OUR rebuilt Readable HTML. That HTML is the
+        /// article's own markup (inline handlers and all), so it renders with
+        /// JavaScript OFF; tapping a link out of it restores normal browsing.
+        private var renderingExtractedHTML = false
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     preferences: WKWebpagePreferences,
+                     decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+            if webView === mainWebView {
+                if navigationAction.navigationType == .linkActivated { renderingExtractedHTML = false }
+                preferences.allowsContentJavaScript = !renderingExtractedHTML
+            }
+            decisionHandler(.allow, preferences)
+        }
 
         init(url: URL, isReaderMode: Bool, onProgress: ((String?) -> Void)?) {
             self.url = url
@@ -711,6 +818,7 @@ struct ArticleWebView: UIViewRepresentable {
 
                 let styledHTML = self.buildReaderHTML(title: extractedTitle, content: extractedContent)
                 DispatchQueue.main.async { self.onProgress?("Rendering…") }
+                self.renderingExtractedHTML = true
                 self.mainWebView?.loadHTMLString(styledHTML, baseURL: self.url)
                 self.extractorWebView = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.onProgress?(nil) }
@@ -736,7 +844,11 @@ struct ArticleWebView: UIViewRepresentable {
         // MARK: Reader HTML template (matches web app reader style)
 
         private func buildReaderHTML(title: String, content: String) -> String {
-            """
+            let escapedTitle = title
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            return """
             <!DOCTYPE html>
             <html>
             <head>
@@ -819,7 +931,7 @@ struct ArticleWebView: UIViewRepresentable {
             </style>
             </head>
             <body>
-            \(title.isEmpty ? "" : "<h1 class=\"reader-title\">\(title)</h1>")
+            \(title.isEmpty ? "" : "<h1 class=\"reader-title\">\(escapedTitle)</h1>")
             \(content)
             </body>
             </html>

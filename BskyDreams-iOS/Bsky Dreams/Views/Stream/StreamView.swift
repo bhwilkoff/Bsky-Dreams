@@ -109,6 +109,7 @@ struct StreamView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Persisted settings
     @AppStorage("stream_duration")       private var streamDuration: Double = 8.0
@@ -138,6 +139,7 @@ struct StreamView: View {
     @State private var seenURISet: Set<String> = []
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>? = nil
+    @State private var errorMessage: String? = nil
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
@@ -232,7 +234,7 @@ struct StreamView: View {
             HStack(spacing: 14) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("STREAM")
                         .font(.syne(22, weight: .bold))
@@ -292,10 +294,10 @@ struct StreamView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text("Streaming: \"\(q)\"")
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Spacer()
                     Button { source = .discover; searchInput = "" } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -527,6 +529,7 @@ struct StreamView: View {
                                 .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Reply")
                     }
 
                     Button {
@@ -542,6 +545,7 @@ struct StreamView: View {
                             .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isPaused ? "Play" : "Pause")
 
                     Button { isLandscape = false } label: {
                         Image(systemName: "xmark")
@@ -552,6 +556,7 @@ struct StreamView: View {
                             .overlay(Rectangle().strokeBorder(controlBorder, lineWidth: 1.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Close stream")
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
@@ -581,19 +586,28 @@ struct StreamView: View {
                             .progressViewStyle(.circular)
                             .tint(controlFg)
                             .scaleEffect(1.5)
+                    } else if slides.isEmpty, let errorMessage {
+                        NBErrorBanner(
+                            message: errorMessage,
+                            retry: { self.errorMessage = nil; Task { await loadMore() } },
+                            onDismiss: { self.errorMessage = nil }
+                        )
+                        .padding(.horizontal, 24)
                     } else if let slide = currentSlide {
                         slideContent(slide)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .id(slide.id)
-                            .transition(.asymmetric(
-                                insertion: slideDirection >= 0
-                                    ? .move(edge: .trailing).combined(with: .opacity)
-                                    : .move(edge: .leading).combined(with: .opacity),
-                                removal: slideDirection >= 0
-                                    ? .move(edge: .leading).combined(with: .opacity)
-                                    : .move(edge: .trailing).combined(with: .opacity)
+                            .transition(reduceMotion
+                                ? .opacity
+                                : .asymmetric(
+                                    insertion: slideDirection >= 0
+                                        ? .move(edge: .trailing).combined(with: .opacity)
+                                        : .move(edge: .leading).combined(with: .opacity),
+                                    removal: slideDirection >= 0
+                                        ? .move(edge: .leading).combined(with: .opacity)
+                                        : .move(edge: .trailing).combined(with: .opacity)
                             ))
-                            .animation(.spring(response: 0.38, dampingFraction: 0.86), value: currentIndex)
+                            .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: currentIndex)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -691,7 +705,7 @@ struct StreamView: View {
                 } label: {
                     Text("DONE")
                         .font(.syne(13, weight: .bold))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .overlay(Rectangle().strokeBorder(Color.nbAccent, lineWidth: 1.5))
@@ -892,20 +906,26 @@ struct StreamView: View {
 
     private func advance() {
         guard !slides.isEmpty else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+        Haptics.selection()   // advancing to the next slide (auto/tap/swipe)
+        let step = {
             slideDirection = 1
             if currentIndex < slides.count - 1 { currentIndex += 1 }
         }
+        if reduceMotion { step() }
+        else { withAnimation(.spring(response: 0.38, dampingFraction: 0.86), step) }
         resetTimer()
         if currentIndex >= slides.count - 6 { Task { await loadMore() } }
     }
 
     private func retreat() {
         guard currentIndex > 0 else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+        Haptics.selection()
+        let step = {
             slideDirection = -1
             currentIndex -= 1
         }
+        if reduceMotion { step() }
+        else { withAnimation(.spring(response: 0.38, dampingFraction: 0.86), step) }
         resetTimer()
     }
 
@@ -980,20 +1000,33 @@ struct StreamView: View {
             switch source {
             case .discover:
                 let r = try await ATProtocolClient.shared.getFeed(uri: discoverURI, limit: 20, cursor: feedCursor)
-                posts = r.feed.map { $0.post }; nextCursor = r.cursor
+                posts = r.feed.filter { !DiscoverEngine.shouldHide($0, prefs: store.moderationPrefs) }.map { $0.post }
+                nextCursor = r.cursor
             case .following:
                 let r = try await ATProtocolClient.shared.getTimeline(limit: 20, cursor: feedCursor)
-                posts = r.feed.map { $0.post }; nextCursor = r.cursor
+                posts = r.feed.filter { !DiscoverEngine.shouldHide($0, prefs: store.moderationPrefs) }.map { $0.post }
+                nextCursor = r.cursor
             case .search(let q):
                 let r = try await ATProtocolClient.shared.searchPosts(q: q, sort: "latest", limit: 20, cursor: feedCursor)
                 posts = r.posts; nextCursor = r.cursor
             }
+            // A full-screen, unattended slideshow must never surface adult-labelled
+            // posts or muted/blocked authors — the feeds filter these; Stream didn't.
+            posts = posts.filter { !$0.isAdultContent && $0.author.viewer?.isHidden != true }
             let newSlides = posts.enumerated().flatMap { i, post in
                 buildSlidesFromPost(post, postIndex: nextPostIdx + i)
             }
             slides.append(contentsOf: newSlides)
             feedCursor = nextCursor
-        } catch { /* continue with loaded content */ }
+            // Surface a load failure only when there is nothing on screen yet;
+            // otherwise the user keeps browsing already-loaded slides silently.
+            if slides.isEmpty { errorMessage = "Couldn't load posts to stream. Check your connection and try again." }
+            else { errorMessage = nil }
+        } catch {
+            if slides.isEmpty {
+                errorMessage = "Couldn't load posts to stream. Check your connection and try again."
+            }
+        }
     }
 
     private func buildSlidesFromPost(_ post: PostView, postIndex: Int) -> [IndexedSlide] {
