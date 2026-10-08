@@ -51,7 +51,21 @@ const API = (() => {
   }
 
   /**
-   * Wraps an API call with automatic token refresh on 401.
+   * Refresh tokens ROTATE: the hybrid feeds fire 3–4 requests at once, and if
+   * each refreshed with the same token every one but the first would fail.
+   * All expired callers share one in-flight refresh.
+   */
+  let refreshInFlight = null;
+  function refreshOnce(refreshJwt) {
+    if (!refreshInFlight) {
+      refreshInFlight = AUTH.refreshSession(refreshJwt).finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
+  }
+
+  /**
+   * Wraps an API call with automatic token refresh when the access token has
+   * expired — a 401, or the PDS's 400 `ExpiredToken`.
    */
   async function withAuth(apiFn) {
     const session = AUTH.getSession();
@@ -60,9 +74,14 @@ const API = (() => {
     try {
       return await apiFn(session.accessJwt);
     } catch (err) {
-      if (err.status === 401 && session.refreshJwt) {
-        const refreshed = await AUTH.refreshSession(session.refreshJwt);
-        return apiFn(refreshed.accessJwt);
+      const expired = err.status === 401 || (err.status === 400 && err.error === 'ExpiredToken');
+      if (expired && session.refreshJwt) {
+        // Another request may already have rotated the tokens while we waited.
+        const current = AUTH.getSession();
+        const token = current && current.accessJwt !== session.accessJwt
+          ? current.accessJwt
+          : (await refreshOnce(current?.refreshJwt || session.refreshJwt)).accessJwt;
+        return apiFn(token);
       }
       throw err;
     }
@@ -85,6 +104,7 @@ const API = (() => {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `API error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     return res.json();
@@ -103,6 +123,7 @@ const API = (() => {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `API error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     // Some endpoints return 200 with no body
@@ -130,6 +151,7 @@ const API = (() => {
       const err = await res.json().catch(() => ({}));
       const e = new Error(err.message || `Upload error ${res.status}`);
       e.status = res.status;
+      e.error  = err.error;   // XRPC error code, e.g. 'ExpiredToken'
       throw e;
     }
     return res.json();

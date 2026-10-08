@@ -790,6 +790,20 @@
   /* ================================================================
      BANNER HELPER
   ================================================================ */
+  /*
+   * Broken-avatar fallback. Inline onerror= attributes are blocked by the CSP
+   * (script-src 'self'), so they never ran — one capturing listener instead
+   * (image `error` events don't bubble, but they do reach capture listeners).
+   */
+  const AVATAR_IMG = '.post-avatar, .timeline-card-avatar, .dms-stack-avatar, .dms-convo-avatar';
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.matches('.cnf-avatar')) { img.style.display = 'none'; return; }
+    const fb = window._bskyAvatarFallback;
+    if (fb && img.matches(AVATAR_IMG) && img.getAttribute('src') !== fb) img.src = fb;
+  }, true);
+
   function showBanner(text, isError = false) {
     const banner = document.createElement('div');
     banner.className = 'report-success-banner' + (isError ? ' banner-error' : '');
@@ -1773,6 +1787,22 @@
   }
 
   /**
+   * Advance one source of a multi-feed merge. A REJECTED request keeps its
+   * cursor so the next scroll retries it; only a real end-of-feed (a response
+   * with no cursor) marks the source 'done'. Skipped sources stay as they were.
+   */
+  function advanceCursor(res, prev) {
+    if (res.status === 'rejected' || !res.value) return prev;
+    return res.value.cursor || 'done';
+  }
+
+  /** True when every source that was actually requested failed (offline, 5xx). */
+  function allSourcesFailed(results) {
+    const tried = results.filter((r) => r.status === 'rejected' || r.value);
+    return tried.length > 0 && tried.every((r) => r.status === 'rejected');
+  }
+
+  /**
    * Fetch one batch of images from both timeline and discover feeds,
    * filter and render them.
    */
@@ -1789,16 +1819,17 @@
         galleryCursorArt !== 'done' ? API.getFeed(ART_TREND_URI, 15, galleryCursorArt || undefined) : Promise.resolve(null),
       ]);
 
+      if (allSourcesFailed([timelineRes, discoverRes, picsRes, artRes])) throw timelineRes.reason || discoverRes.reason;
+
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
       const picsData     = picsRes.status === 'fulfilled' ? picsRes.value : null;
       const artData      = artRes.status === 'fulfilled' ? artRes.value : null;
 
-      // Update cursors
-      galleryCursorTimeline  = timelineData?.cursor || 'done';
-      galleryCursorDiscover  = discoverData?.cursor || 'done';
-      galleryCursorFollowPic = picsData?.cursor || 'done';
-      galleryCursorArt       = artData?.cursor || 'done';
+      galleryCursorTimeline  = advanceCursor(timelineRes, galleryCursorTimeline);
+      galleryCursorDiscover  = advanceCursor(discoverRes, galleryCursorDiscover);
+      galleryCursorFollowPic = advanceCursor(picsRes, galleryCursorFollowPic);
+      galleryCursorArt       = advanceCursor(artRes, galleryCursorArt);
 
       if (galleryCursorTimeline === 'done' && galleryCursorDiscover === 'done'
           && galleryCursorFollowPic === 'done' && galleryCursorArt === 'done') {
@@ -1848,8 +1879,8 @@
         if (galleryScrollObserver) galleryScrollObserver.disconnect();
       }
     } catch (err) {
-      // silently log — gallery is non-critical
       console.warn('Gallery load error:', err);
+      showBanner(navigator.onLine ? 'Couldn\'t load more images — scroll to retry.' : 'You\'re offline — images will load when you reconnect.', true);
     } finally {
       galleryLoading_flag = false;
       galleryLoading.hidden = true;
@@ -2271,13 +2302,15 @@
         readerCursorNews !== 'done' ? API.getFeed(NEWS_FEED_URI, 20, readerCursorNews || undefined) : Promise.resolve(null),
       ]);
 
+      if (allSourcesFailed([timelineRes, discoverRes, newsRes])) throw timelineRes.reason || discoverRes.reason;
+
       const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : null;
       const discoverData = discoverRes.status === 'fulfilled'  ? discoverRes.value  : null;
       const newsData     = newsRes.status === 'fulfilled' ? newsRes.value : null;
 
-      readerCursorTimeline = timelineData?.cursor || 'done';
-      readerCursorDiscover = discoverData?.cursor || 'done';
-      readerCursorNews     = newsData?.cursor || 'done';
+      readerCursorTimeline = advanceCursor(timelineRes, readerCursorTimeline);
+      readerCursorDiscover = advanceCursor(discoverRes, readerCursorDiscover);
+      readerCursorNews     = advanceCursor(newsRes, readerCursorNews);
 
       if (readerCursorTimeline === 'done' && readerCursorDiscover === 'done' && readerCursorNews === 'done') {
         readerAllDone = true;
@@ -2343,6 +2376,7 @@
       }
     } catch (err) {
       console.warn('Reader load error:', err);
+      showBanner(navigator.onLine ? 'Couldn\'t load more articles — scroll to retry.' : 'You\'re offline — articles will load when you reconnect.', true);
     } finally {
       readerLoading_flag = false;
       readerLoadingEl.hidden = true;
@@ -3056,6 +3090,18 @@
     if (name !== 'search' && searchScrollObserver) {
       searchScrollObserver.disconnect();
     }
+
+    // Re-arm paging when RETURNING to a view — disconnect() above is reversible,
+    // and without this Search/Notifications/Profile infinite scroll died after
+    // one trip to a post and back.
+    if (name === 'search' && searchScrollObserver && searchCursor && searchSentinel) searchScrollObserver.observe(searchSentinel);
+    if (name === 'notifications' && notifScrollObserver && notifCursor && notifSentinel) notifScrollObserver.observe(notifSentinel);
+    if (name === 'profile' && profileScrollObserver && profileCursor && profileSentinel) profileScrollObserver.observe(profileSentinel);
+
+    // Inline post videos keep playing (with sound) in a hidden view otherwise.
+    Object.entries(views).forEach(([n, el]) => {
+      if (n !== name && n !== 'tv' && n !== 'stream') el.querySelectorAll('video').forEach((v) => v.pause());
+    });
 
     // M14: dismiss constellation focus card when leaving constellation view
     if (name !== 'constellation') {
@@ -6430,7 +6476,7 @@
       : '';
     card.innerHTML = `
       <div class="post-header">
-        <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+        <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" alt="" class="post-avatar author-link" loading="lazy" title="View @${escHtml(author.handle || '')}">
         <div class="post-meta author-link" title="View @${escHtml(author.handle || '')}">
           <div class="post-display-name">${escHtml(author.displayName || author.handle || '')}</div>
           <div class="post-handle">@${escHtml(author.handle || '')}</div>
@@ -9524,7 +9570,7 @@
       card.style.cssText = `position:absolute;left:${cardLeft}px;top:${cardY}px;width:${CARD_W}px;z-index:2`;
       card.innerHTML = `
         <div class="timeline-card-author">
-          <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="" onerror="this.onerror=null;this.src=window._bskyAvatarFallback">
+          <img src="${escHtml(author.avatar || window._bskyAvatarFallback)}" class="timeline-card-avatar" alt="">
           <span class="timeline-card-handle">@${escHtml(author.handle||'')}</span>
         </div>
         <div class="timeline-card-text">${escHtml(text)}</div>
@@ -9723,7 +9769,7 @@
     const avatars = _convoOthers(convo).slice(0, 3);
     const fb = window._bskyAvatarFallback || '';
     const imgs = avatars.map(m =>
-      `<img class="dms-stack-avatar" src="${escHtml(m.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">`
+      `<img class="dms-stack-avatar" src="${escHtml(m.avatar || fb)}" alt="">`
     ).join('');
     return `<div class="dms-avatar-stack">${imgs}</div>`;
   }
@@ -9764,7 +9810,7 @@
       const handle = displayMember.handle ? `@${displayMember.handle}` : '';
       const avatarSrc = displayMember.avatar || fb;
       li.innerHTML = `
-        <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="" onerror="this.src='${escHtml(fb)}'">\
+        <img class="dms-convo-avatar" src="${escHtml(avatarSrc)}" alt="">\
         <div class="dms-convo-info">
           <div class="dms-convo-name-row">
             <span class="dms-convo-name">${escHtml(name)}</span>
@@ -9830,7 +9876,7 @@
       : (_convoOthers(convo)[0]?.handle ? `@${_convoOthers(convo)[0].handle}` : '');
     const avatarHtml = isGroup
       ? _avatarStackHtml(convo)
-      : `<img class="dms-convo-avatar" src="${escHtml(_convoOthers(convo)[0]?.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">`;
+      : `<img class="dms-convo-avatar" src="${escHtml(_convoOthers(convo)[0]?.avatar || fb)}" alt="">`;
 
     li.innerHTML = `
       ${avatarHtml}
@@ -9968,33 +10014,38 @@
   }
 
   async function pollNewMessages() {
-    if (!dmsActiveConvoId) return;
+    // Capture the convo BEFORE awaiting: switching chats mid-request used to
+    // append the old chat's messages to the new one.
+    const convoId = dmsActiveConvoId;
+    if (!convoId) return;
     try {
-      const data = await API.getConvoMessages(dmsActiveConvoId);
+      const data = await API.getConvoMessages(convoId);
+      if (convoId !== dmsActiveConvoId) return;
       const msgs = (data.messages || []).reverse();
       if (!msgs.length) return;
 
-      const newestId = msgs[msgs.length - 1]?.id;
-      if (newestId === dmsLastMessageId) return;
+      // Dedupe by id, not by "last seen id": a send advanced that id past other
+      // people's unseen messages, and a burst bigger than one page never found it.
+      const have = new Set(dmsMessages.map((m) => m.id));
+      const fresh = msgs.filter((m) => m.id && !have.has(m.id));
+      if (!fresh.length) return;
 
       const messagesEl = $('dms-messages');
       const wasAtBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) < 60;
-
-      let foundLast = (dmsLastMessageId === null);
-      msgs.forEach(msg => {
-        if (!foundLast) {
-          if (msg.id === dmsLastMessageId) foundLast = true;
-          return;
-        }
+      messagesEl.querySelector('.dms-no-msgs')?.remove();
+      fresh.forEach((msg) => {
         dmsMessages.push(msg);
         messagesEl.appendChild(buildMessageBubble(msg));
       });
 
-      dmsLastMessageId = newestId;
-      API.updateRead(dmsActiveConvoId, newestId).catch(() => {});
+      dmsLastMessageId = msgs[msgs.length - 1].id;
+      API.updateRead(convoId, dmsLastMessageId).catch(() => {});
 
       if (wasAtBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
-    } catch { /* silent */ }
+    } catch (err) {
+      // A 30s poll: one miss is fine, but don't hide it entirely.
+      console.warn('DM poll failed:', err.message);
+    }
   }
 
   function buildMessageBubble(msg) {
@@ -10223,7 +10274,7 @@
           btn.type = 'button';
           btn.className = 'dms-new-result-btn';
           btn.innerHTML = `
-            <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">
+            <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="">
             <div>
               <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
               <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
@@ -10475,7 +10526,7 @@
             btn.type = 'button';
             btn.className = 'dms-new-result-btn';
             btn.innerHTML = `
-              <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="" onerror="this.src='${escHtml(window._bskyAvatarFallback || '')}'">
+              <img class="dms-convo-avatar" src="${escHtml(actor.avatar || '')}" alt="">
               <div>
                 <div class="dms-convo-name">${escHtml(actor.displayName || actor.handle)}</div>
                 <div class="dms-convo-handle">@${escHtml(actor.handle)}</div>
@@ -10512,7 +10563,7 @@
       li.className = 'dms-group-member';
       const isMe = member.did === dmsOwnDid;
       li.innerHTML = `
-        <img class="dms-convo-avatar" src="${escHtml(member.avatar || fb)}" alt="" onerror="this.src='${escHtml(fb)}'">
+        <img class="dms-convo-avatar" src="${escHtml(member.avatar || fb)}" alt="">
         <div class="dms-group-member-info">
           <div class="dms-convo-name">${escHtml(member.displayName || member.handle || 'Unknown')}${isMe ? ' <span class="dms-you-tag">(you)</span>' : ''}</div>
           <div class="dms-convo-handle">@${escHtml(member.handle || '')}</div>
@@ -10660,8 +10711,10 @@
         if (type === 'mutual' || (type === 'follow' && e.type === 'reply')) e.type = type;
       };
 
-      // Detect profile-mode: query starts with @ or looks like a single handle
-      const isProfileMode = /^@?\S+$/.test(query.trim()) && !query.includes(' ');
+      // Profile mode only for something handle-shaped (@x, x.bsky.social, did:…);
+      // a bare topic word like "climate" is a search, not a handle lookup.
+      const q0 = query.trim();
+      const isProfileMode = !q0.includes(' ') && (q0.startsWith('@') || q0.startsWith('did:') || /^[\w-]+(\.[\w-]+)+$/.test(q0));
       const seedHandle    = isProfileMode ? query.trim().replace(/^@/, '') : null;
 
       // Update URL so this constellation is bookmarkable/shareable
@@ -10864,7 +10917,7 @@
     card.innerHTML = `
       <div class="cnf-header">
         <div class="cnf-avatar-wrap">
-          <img class="cnf-avatar" src="${d.avatar || ''}" alt="" onerror="this.style.display='none'">
+          <img class="cnf-avatar" src="${escHtml(d.avatar || '')}" alt="">
           <div class="cnf-avatar-placeholder" aria-hidden="true"></div>
         </div>
         <div class="cnf-info">
