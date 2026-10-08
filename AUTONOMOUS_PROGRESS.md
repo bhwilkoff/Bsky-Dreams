@@ -156,3 +156,7 @@ P3
 - Gallery + Stream: a fully-filtered page no longer stalls paging (bounded auto-advance); Stream no
   longer claims a connection failure for an all-seen page.
 - Compiles with release Xcode 27.1; Home + Gallery re-checked on iPhone 12.
+
+### Tick 14 — 2026-10-08 — web opt (-14 lines) + live site checked in iPhone Safari ✅
+- fetchOgEmbed() + uploadEmbedThumb() replace 3 copies each (compose/quote/inline reply), now with
+  AbortSignal timeouts on the third-party proxy + CDN fetches. Deployed.
