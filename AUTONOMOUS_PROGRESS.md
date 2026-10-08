@@ -174,3 +174,5 @@ P3
 - Notification permission asked on first Notifications visit, after the list loads (HIG in-context).
 
 ### Tick 17 — 2026-10-08 — Compose GIF frame decode off the main actor; SCRATCHPAD summary. Backlog clear → RELEASE next.
+
+### Tick 18 — 2026-10-08 — final polish (MARK READ 36pt, notifications end cue) → RELEASE 1.48 (50)

@@ -62,7 +62,7 @@ struct NotificationsView: View {
                 .tracking(0.5)
                 .foregroundStyle(Color.nbBlack)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .frame(height: 36)   // match the 36pt hamburger box beside it
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 .contentShape(Rectangle())
                 .onTapGesture { markAllRead() }
@@ -101,6 +101,13 @@ struct NotificationsView: View {
                 }
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding()
+                } else if cursor == nil && !groups.isEmpty {
+                    // End-of-list cue: a short list otherwise just ends in blank space.
+                    Text("You're all caught up")
+                        .font(.inter(12))
+                        .foregroundStyle(Color.nbTextSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
                 }
             }
         }
