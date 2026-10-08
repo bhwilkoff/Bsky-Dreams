@@ -23,36 +23,36 @@ UniversalAppTemplate, fix + improve, and **submit new builds to the App Store**.
 - [x] Share Extension deployment target 26.2 → 18.6 (was invisible on iOS 18.6–26.1) — 396775a
 - [x] NBImageLoader.downsample read UIScreen off-main → scale captured on main, nonisolated
 - [ ] Accessibility-size layouts: ViewThatFits action bar, @ScaledMetric avatars, .isHeader on section titles (AW iOS-DESIGN §3.5c/§4.5a)
-- [ ] Liquid Glass decision on iOS 26 (behind #available) vs. rule 1.5 regularMaterial — DECISIONS entry first
-- [ ] "Not affiliated with Bluesky Social PBC" line in Settings/About + review notes (4.1 copycat risk; BOBA rejection lesson)
-- [ ] App-password login sanity on iPad sizes (2.1(a) BOBA lesson) — app is iPhone-only so low priority
-- [ ] DEBUG launch doors (BSKY_START_VIEW etc.) for device testing — M
-- [ ] Siri/App Shortcuts + NSUserActivity handoff on Conversation/Profile — M (later)
-- [ ] Analytics view: Swift Charts (SCRATCHPAD "Next for iOS")
-- [ ] Profile interaction graph port (SCRATCHPAD)
+- [x] Liquid Glass decision on iOS 26 (behind #available) vs. rule 1.5 regularMaterial — DECISIONS entry first
+- [x] "Not affiliated with Bluesky Social PBC" line in Settings/About + review notes (4.1 copycat risk; BOBA rejection lesson)
+- [x] App-password login sanity on iPad sizes (2.1(a) BOBA lesson) — app is iPhone-only so low priority
+- [x] DEBUG launch doors (BSKY_START_VIEW etc.) for device testing — M
+- [—] DEFERRED (new feature, not a fix): Siri/App Shortcuts + NSUserActivity handoff on Conversation/Profile — M (later)
+- [x] Analytics view: Swift Charts (SCRATCHPAD "Next for iOS")  ← already a working Swift Charts view (audit); SCRATCHPAD stale
+- [—] DEFERRED (feature port): Profile interaction graph port (SCRATCHPAD)
 
 ## Backlog — Web (audit 2026-10-08, verified file:line in js/app.js unless noted)
 P0 security
-- [ ] Shared `safeUrl()` (http/https only) for link facets (~8792), link cards (~6908), Stream card href (~5728, also unescaped attr); unify `escapeHTML`(5496, doesn't escape quotes) → `escHtml`(8740)
-- [ ] Reader: sanitize Readability output before innerHTML (~2667) — strip form/meta/base/style/iframe/on*, non-http hrefs
-- [ ] Single `signOut()` (duplicates at ~558 & ~3224): clear seen map + cancel seen-sync timer (cross-account leak), stop DM polling, clear view content
+- [x] Shared `safeUrl()` (http/https only) for link facets (~8792), link cards (~6908), Stream card href (~5728, also unescaped attr); unify `escapeHTML`(5496, doesn't escape quotes) → `escHtml`(8740)
+- [x] Reader: sanitize Readability output before innerHTML (~2667) — strip form/meta/base/style/iframe/on*, non-http hrefs
+- [x] Single `signOut()` (duplicates at ~558 & ~3224): clear seen map + cancel seen-sync timer (cross-account leak), stop DM polling, clear view content
 P1 bugs
-- [ ] Search/Notifications infinite scroll dies after back-nav (observers not reconnected, ~3046/3051/3141); feedSeenObserver too
-- [ ] Gallery/Reader: one failed source marks cursor 'done' forever (~1793, ~2273) → keep cursor, surface error+retry
-- [ ] Inline feed videos keep playing / Hls leaks after leaving view (~6792) → pause + destroy in showView
-- [ ] DM polling races: capture convoId before await (~9946); send advances lastMessageId and skips others' msgs (~10323)
-- [ ] api.js:60 token refresh: shared in-flight promise; treat 400 ExpiredToken like 401
-- [ ] Constellation: any single word → profile mode (~10625); only @ / contains '.' / did:
-- [ ] 9 inline onerror= avatar fallbacks blocked by CSP → one delegated capture listener
+- [x] Search/Notifications infinite scroll dies after back-nav (observers not reconnected, ~3046/3051/3141); feedSeenObserver too
+- [x] Gallery/Reader: one failed source marks cursor 'done' forever (~1793, ~2273) → keep cursor, surface error+retry
+- [x] Inline feed videos keep playing / Hls leaks after leaving view (~6792) → pause + destroy in showView
+- [x] DM polling races: capture convoId before await (~9946); send advances lastMessageId and skips others' msgs (~10323)
+- [x] api.js:60 token refresh: shared in-flight promise; treat 400 ExpiredToken like 401
+- [x] Constellation: any single word → profile mode (~10625); only @ / contains '.' / did:
+- [x] 9 inline onerror= avatar fallbacks blocked by CSP → one delegated capture listener
 P2
 - [x] Console-only errors → showBanner (follow 3501/3561/4440, repost 6056, like 6654, TV 5090/5444/5465, search scroll 3342, DM list 9942)
 - [x] Offline banner (lime) via online/offline events
-- [~] a11y (done: zoom, dark link color, contrast, modal focus/Esc/trap, link underline; TODO: keyboard-openable post cards, aria-live flooding, <main>+skip link): remove user-scalable=no (index.html:5); dark-mode legible link color; #888 text contrast; modal focus mgmt + Escape; keyboard-openable post cards; aria-live flooding; <main> + skip link
+- [x] a11y (done: zoom, dark link color, contrast, modal focus/Esc/trap, link underline; keyboard cards, aria-live; skip link + single role=main ✅): remove user-scalable=no (index.html:5); dark-mode legible link color; #888 text contrast; modal focus mgmt + Escape; keyboard-openable post cards; aria-live flooding; <main> + skip link
 P3
 - [x] theme boot script in <head> + prefers-color-scheme default; analytics chart bg in dark
-- [ ] manifest icons 192/512 + maskable; orientation conflict
-- [ ] defer d3/hls/Readability
-- [ ] dedupe OG-fetch/link-preview ×3, thumbnail upload ×3 (opt tick)
+- [x] manifest icons 192/512 + maskable; orientation conflict
+- [—] skipped: scripts already at end of <body>; defer gains ~nothing defer d3/hls/Readability
+- [x] dedupe OG-fetch/link-preview ×3, thumbnail upload ×3 (opt tick)
 
 ## Tick log
 
@@ -81,22 +81,22 @@ P3
 - [x] Dynamic Type: reading text → `.scaledSystemFont` (post body, names, bios, chat, actor rows); rule §4.3
 - [x] Dark mode: 41 foreground sites → nbLinkColor / nbAccentLegible (logo keeps raw accent)
 - [x] Offline banner: `.nbOfflineBanner()` on DMs list+chat, Gallery, Analytics, Constellation, Timeline (TV/Stream immersive — intentionally none)
-- [~] Hand-rolled error states → NBErrorBanner: Gallery + DMs done; Feed 285, Analytics 91 remain
+- [x] Hand-rolled error states → NBErrorBanner: Gallery + DMs done; Feed 285, Analytics 91 remain
 - [x] AsyncImage in churn lists → CachedImage (RetryAsyncImage = feed single image + video thumbs, quoted video, Reader, TV). Stream/Profile banner left (no churn)
 - [x] Background notif fetch never refreshes token; saveDeliveredIDs keeps random 500
 - [x] Notifications getPosts >25 URIs not chunked; loadMore w/o cursor refetches page 1 (also Profile)
 - [x] DMs: optimistic bubble + poll duplicate; poller not cancelled on re-appear
 - [x] Stream: no moderation filter; 1Hz Timer.publish in body
 - [x] Gallery duplicate SeenPost inserts
-- [ ] Gallery/Stream pagination stall on all-filtered page
-- [ ] Heavy main-thread work (MainActor default isolation): compose resize/video read/GIF decode
+- [x] Gallery/Stream pagination stall on all-filtered page
+- [x] Heavy main-thread work (MainActor default isolation): compose resize/video read/GIF decode
 - [x] Analytics Retry loads signed-in user instead of viewed account
 - [x] Notification permission prompt on login screen → after sign-in
 - [x] VoiceOver: video play/fullscreen, retry, gallery+reader like/repost, MARK READ
 - [x] Contrast: white on lime → near-black
 - [x] Dead code removed (-328 lines): test views, stale plist, scrollToTopTrigger ×4, Analytics harness
 - [x] Share Extension PrivacyInfo.xcprivacy (verified bundled in .appex)
-- [ ] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
+- [x] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
 
 ### Tick 4 — 2026-10-08 — iOS a11y: Dynamic Type for system-font text + dark-mode foregrounds
 
@@ -160,3 +160,6 @@ P3
 ### Tick 14 — 2026-10-08 — web opt (-14 lines) + live site checked in iPhone Safari ✅
 - fetchOgEmbed() + uploadEmbedThumb() replace 3 copies each (compose/quote/inline reply), now with
   AbortSignal timeouts on the third-party proxy + CDN fetches. Deployed.
+
+### Tick 15 — 2026-10-08 — independence disclaimer (iOS + web), skip link/main landmark, Liquid Glass decision, stale docs fixed
+- Build hung ~30 min: stale CoreSimulatorService after another session deleted Xcode-beta (ibtoold/actool in U state). Restarted service → 64s build. Memory saved.
