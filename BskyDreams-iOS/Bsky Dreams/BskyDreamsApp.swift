@@ -60,8 +60,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        AppDelegate.streamingActive ? .landscape : .portrait
+        // On iPad the (iPhone-only) app runs in compatibility mode, where the idiom
+        // reports .phone — so test the HARDWARE. A portrait lock there made iPadOS
+        // draw the whole app rotated 90° whenever the iPad was held landscape.
+        if AppDelegate.isIPadHardware { return .all }
+        return AppDelegate.streamingActive ? .landscape : .portrait
     }
+
+    static let isIPadHardware = UIDevice.current.model.hasPrefix("iPad")
 }
 
 // MARK: - App
