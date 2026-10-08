@@ -24,6 +24,12 @@ struct LoginView: View {
                         .font(.syne(28, weight: .heavy))
                         .tracking(4)
                         .foregroundStyle(Color.nbBlack)
+                        // 28pt Syne Heavy + tracking is wider than a 390pt iPhone (and
+                        // grows with Dynamic Type) — it clipped at both edges. Shrink to fit.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .padding(.horizontal, 24)
+                        .accessibilityAddTraits(.isHeader)
                 }
                 .padding(.bottom, 48)
 

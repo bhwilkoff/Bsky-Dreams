@@ -107,3 +107,12 @@ P3
 ### Tick 7 — 2026-10-08 — web a11y + states: zoom, link token, contrast, dialog manager, offline banner, visible errors, theme boot (browser smoke ✅)
 
 ### Tick 8 — 2026-10-08 — iOS: CachedImage in churn surfaces, offline modifier, error banners, VoiceOver, lime contrast, extension privacy manifest
+
+### Tick 9 — 2026-10-08 — web keyboard/live-regions + REAL-DEVICE verification begins
+- Ben: verify on devices, not just the SDK. Test devices = iPhone 12 + iPad Pro 12.9 (NOT the
+  personal 15 Pro — a Debug build was installed there once by mistake). `tools/device_smoke.py`.
+- iPhone 12 (wired): login title "BSKY DREAMS" clipped both edges at 390pt → shrink-to-fit. ✅ device
+- iPad Pro 12.9 (landscape): iPhone-compat window renders app content ROTATED 90°. Adding landscape to
+  UISupportedInterfaceOrientations~ipad made no difference (reverted). OPEN: asked Ben whether the
+  physical screen is sideways or only the devicectl capture. App Review tests on iPad → must resolve.
+- iPhone 12 Wi-Fi: `transport None` (Mac can't discover it; same as AW's ATV note) — cable works.
