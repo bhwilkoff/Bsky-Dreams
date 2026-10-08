@@ -177,7 +177,7 @@ No build step required. The app runs as a static file.
 
 ### Tech Stack
 
-- **Language / UI:** Swift 6, SwiftUI (`@Observable`, iOS 17+)
+- **Language / UI:** Swift 6, SwiftUI (`@Observable`, iOS 18.6+ deployment target)
 - **Local persistence:** SwiftData (SeenPost, SavedSearch, CachedPreferences)
 - **Auth storage:** Keychain via Security framework (`kSecAttrAccessibleAfterFirstUnlock`)
 - **API:** AT Protocol HTTP API via `URLSession` async/await — no SDK
@@ -212,8 +212,8 @@ No build step required. The app runs as a static file.
 
 ### How to Run Locally
 
-Open `BskyDreams-iOS/BskyDreams.xcodeproj` in Xcode, select an iOS 17+
-simulator or device, and press Run. No build scripts or dependencies to
+Open the repo-root `BskyDreams.xcworkspace` in Xcode, select an iOS 18.6+ physical
+device (no local simulators), and press Run. No build scripts or dependencies to
 install — all third-party code is absent (pure Apple frameworks only).
 
 ### iOS Conventions
@@ -249,7 +249,7 @@ install — all third-party code is absent (pure Apple frameworks only).
 
 ### iOS Constraints
 
-- iOS 17+ minimum deployment target
+- iOS 18.6 minimum deployment target — the app AND the Share Extension must match (an extension above the app floor silently fails to load on older iOS)
 - No third-party Swift packages — use only Apple frameworks
 - Keychain for all credential storage — never UserDefaults for secrets
 - AT Protocol base URL: `https://bsky.social/xrpc/`
