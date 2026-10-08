@@ -479,6 +479,7 @@ private struct FeedNavBar: View {
                     .onTapGesture { onToggleSidebar() }
                     .accessibilityLabel("Open sidebar")
                     .accessibilityAddTraits(.isButton)
+                    .padding(.leading, NBWindowControls.leadingInset)
 
                 Spacer()
 

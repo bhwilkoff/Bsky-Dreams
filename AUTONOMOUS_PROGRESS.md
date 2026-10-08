@@ -125,3 +125,11 @@ P3
 - Backlog (polish): notifications end-of-list cue; Reader hint banner inset vs cards; nav→content top
   gap varies 5–11pt; toolbar box heights (MARK READ vs hamburger); notification permission asked
   seconds after first sign-in → ask at a meaningful moment (HIG).
+
+### Tick 11 — 2026-10-08 — iPad fixes (device-verified) + WEB DEPLOYED
+- iPad sideways: AppDelegate.supportedInterfaceOrientationsFor returned .portrait at runtime (overrode
+  plist). iPad hardware → .all. ✅ upright on iPad Pro 12.9.
+- iPad window controls overlapped the leading nav button → NBWindowControls.leadingInset (56pt, iPad
+  hardware only) in NBNavBar + FeedNavBar. ✅ device (dark mode).
+- Web: PR #120 merged → main → Pages built; live site verified serving new code (cache-busted).
+  Ben: deploy web myself from now on.
