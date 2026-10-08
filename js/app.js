@@ -555,19 +555,24 @@
     }
   });
 
-  sidebarSignOutBtn.addEventListener('click', () => {
+  /**
+   * Sign out = forget this account entirely, then reload. Per-account state
+   * (seen posts, channels, the 30s seen-sync timer, DM polling, players) lives
+   * in dozens of closures; a reload is the only reset that can't miss one —
+   * otherwise account A's seen URIs could sync into account B's repo.
+   */
+  function signOut() {
+    clearTimeout(seenSyncTimer);
     AUTH.clearSession();
     AUTH.clearCredentials();
-    appScreen.hidden  = true;
-    authScreen.hidden = false;
-    scrollToTopBtn.hidden = true;
-    sidebarOwnProfile.hidden = true;
-    ownProfile = null;
-    feedLoaded = false;
-    notifLoaded = false;
-    notifBadge.hidden = true;
-    closeSidebar();
-  });
+    ['bsky_feed_seen', 'bsky_reader_seen', 'bsky_tv_seen', 'bsky_channels',
+     'bsky_channels_synced_at', 'bsky_video_daily'].forEach((k) => {
+      try { localStorage.removeItem(k); } catch { /* storage unavailable */ }
+    });
+    location.replace(location.pathname);
+  }
+
+  sidebarSignOutBtn.addEventListener('click', signOut);
 
   /* ================================================================
      SETTINGS MODAL (M52)
@@ -2507,7 +2512,7 @@
 
     const archiveLink = $('inapp-reader-archive');
     if (archiveLink) archiveLink.href = `https://archive.ph/?url=${encodeURIComponent(url)}`;
-    inappReaderOriginal.href = url;
+    inappReaderOriginal.href = safeUrl(url);
 
     // Wire up post action buttons if a post was passed
     const replyBtn  = $('inapp-reader-reply-btn');
@@ -2665,7 +2670,7 @@
 
       inappReaderTitle.textContent  = article.title  || cardTitle || 'Article';
       inappReaderByline.textContent = article.byline || '';
-      inappReaderContent.innerHTML  = article.content || '';
+      inappReaderContent.replaceChildren(sanitizeArticleHtml(article.content));
 
       setProgress(100, 'Done');
       await new Promise((r) => setTimeout(r, 300));
@@ -3221,24 +3226,7 @@
     openSettings();
   });
 
-  menuSignOut.addEventListener('click', () => {
-    AUTH.clearSession();
-    AUTH.clearCredentials();
-    appScreen.hidden  = true;
-    authScreen.hidden = false;
-    scrollToTopBtn.hidden = true;
-    profileMenu.hidden = true;
-    ownProfile = null;
-    feedLoaded = false;
-    notifLoaded = false;
-    notifBadge.hidden = true;
-    clearComposeImages();
-    searchResults.innerHTML = '<div class="feed-empty"><p>Search for posts, people, or topics on BlueSky.</p></div>';
-    threadContent.innerHTML = '';
-    updateSidebarProfile(null); // M43: clear sidebar profile
-    // Clear save-channel button if any
-    document.querySelector('.save-channel-area')?.remove();
-  });
+  menuSignOut.addEventListener('click', signOut);
 
   /* ================================================================
      SEARCH
@@ -5493,11 +5481,7 @@
     const stSourcePicker = $('stream-source-picker');
     const stStartBtn   = $('stream-start-btn');
 
-    function escapeHTML(str) {
-      const d = document.createElement('div');
-      d.textContent = str;
-      return d.innerHTML;
-    }
+    const escapeHTML = (str) => escHtml(str ?? '');
 
     const PALETTE = [
       { hex: '#FF5C35', light: true  },
@@ -5701,8 +5685,8 @@
       if (!hasText) {
         // Full-bleed image
         return `<div class="stream-slide-image-full">
-          <div class="stream-author-bar"><img class="stream-author-avatar" src="${s.post.author?.avatar || ''}" alt=""><span class="stream-author-name" style="color:#fff">${escapeHTML(s.post.author?.displayName || s.post.author?.handle || '')}</span><span class="stream-author-handle" style="color:#fff">@${escapeHTML(s.post.author?.handle || '')}</span><span class="stream-author-time" style="color:#fff">${relTime(s.post.indexedAt)}</span></div>
-          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          <div class="stream-author-bar"><img class="stream-author-avatar" src="${escHtml(s.post.author?.avatar || '')}" alt=""><span class="stream-author-name" style="color:#fff">${escapeHTML(s.post.author?.displayName || s.post.author?.handle || '')}</span><span class="stream-author-handle" style="color:#fff">@${escapeHTML(s.post.author?.handle || '')}</span><span class="stream-author-time" style="color:#fff">${relTime(s.post.indexedAt)}</span></div>
+          <div class="stream-image-pane"><img src="${escHtml(s.image?.fullsize || s.image?.thumb || '')}" alt=""${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
           ${stMetrics ? `<div class="stream-metrics" style="color:#fff"><span class="stream-metric">&#x1F4AC; ${s.post.replyCount || 0}</span><span class="stream-metric">&#x1F501; ${s.post.repostCount || 0}</span><span class="stream-metric">&#x2764;&#xFE0F; ${s.post.likeCount || 0}</span></div>` : ''}
         </div>`;
       }
@@ -5710,7 +5694,7 @@
       const cls = textSizeClass(s.text.length + 40); // slightly smaller for split
       return `${authorBarHTML(s.post, colors)}
         <div class="stream-slide-split">
-          <div class="stream-image-pane"><img src="${s.image?.fullsize || s.image?.thumb || ''}" alt="${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
+          <div class="stream-image-pane"><img src="${escHtml(s.image?.fullsize || s.image?.thumb || '')}" alt=""${escapeHTML(s.image?.alt || '')}">${altBadge}</div>
           <div class="stream-text-pane">
             <div class="stream-main-text"><div class="stream-main-text-inner ${cls}" style="${c}">${escapeHTML(s.text)}</div></div>
           </div>
@@ -5722,10 +5706,10 @@
       const card = s.card;
       let domain = '';
       try { domain = new URL(card.uri).hostname; } catch {}
-      const thumb = card.thumb ? `<img class="stream-link-card-thumb" src="${card.thumb}" alt="">` : '';
+      const thumb = card.thumb ? `<img class="stream-link-card-thumb" src="${escHtml(safeUrl(card.thumb))}" alt="">` : '';
       return authorBarHTML(s.post, colors)
         + `<div class="stream-main-text">
-            <a class="stream-link-card" href="${card.uri}" target="_blank" rel="noopener" style="${c}; text-decoration:none">
+            <a class="stream-link-card" href="${escHtml(safeUrl(card.uri))}" target="_blank" rel="noopener" style="${c}; text-decoration:none">
               ${thumb}
               <div class="stream-link-card-body">
                 <div class="stream-link-card-domain">${escapeHTML(domain)}</div>
@@ -6905,7 +6889,7 @@
 
     const card = document.createElement('a');
     card.className = 'post-external-card';
-    card.href      = external.uri;
+    card.href      = safeUrl(external.uri);
     card.target    = '_blank';
     card.rel       = 'noopener noreferrer';
 
@@ -8742,7 +8726,47 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Only http(s) URLs may become links or media sources. Post facets, link
+   * cards and fetched articles are author-controlled; a `javascript:` or
+   * `data:` URI there must never reach an href. Returns '#' when unsafe.
+   */
+  function safeUrl(url) {
+    try {
+      const u = new URL(String(url), location.href);
+      return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '#';
+    } catch { return '#'; }
+  }
+
+  /**
+   * Readability output comes from third-party pages via third-party CORS
+   * proxies — untrusted HTML. Drop active/structural elements, inline event
+   * handlers, styles, and non-http(s) links/sources before it touches the DOM.
+   */
+  function sanitizeArticleHtml(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html || '';
+    tpl.content.querySelectorAll(
+      'script,style,link,meta,base,form,input,button,textarea,select,iframe,frame,object,embed,svg,math'
+    ).forEach((el) => el.remove());
+    tpl.content.querySelectorAll('*').forEach((el) => {
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on') || name === 'style' || name === 'srcdoc' || name === 'formaction') {
+          el.removeAttribute(attr.name);
+        } else if (name === 'href' || name === 'src' || name === 'poster' || name === 'xlink:href') {
+          el.setAttribute(attr.name, safeUrl(attr.value));
+        } else if (name === 'srcset') {
+          el.removeAttribute(attr.name);
+        }
+      }
+      if (el.tagName === 'A') { el.target = '_blank'; el.rel = 'noopener noreferrer'; }
+    });
+    return tpl.content;
   }
 
   /**
@@ -8791,7 +8815,7 @@
       if (!feature) {
         html += escHtml(segText);
       } else if (feature.$type === 'app.bsky.richtext.facet#link') {
-        const href = escHtml(feature.uri || segText);
+        const href = escHtml(safeUrl(feature.uri || segText));
         html += `<a href="${href}" target="_blank" rel="noopener noreferrer">${escHtml(segText)}</a>`;
       } else if (feature.$type === 'app.bsky.richtext.facet#tag') {
         const tag = escHtml(feature.tag || segText.replace(/^#/, ''));
