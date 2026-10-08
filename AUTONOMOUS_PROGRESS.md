@@ -78,8 +78,8 @@ P3
   thread skeleton/error per contract; seen-cloud record capped + clear clears cloud.
 
 ## Remaining iOS backlog (from 2026-10-08 audit)
-- [ ] Dynamic Type: ~120 `.system(size:)` don't scale (RichTextView body!) — DECISIONS claims they do
-- [ ] Dark mode: static nbBlue/raw nbAccent as foreground (~49 sites) → nbAccentLegible/nbLinkColor
+- [x] Dynamic Type: reading text → `.scaledSystemFont` (post body, names, bios, chat, actor rows); rule §4.3
+- [x] Dark mode: 41 foreground sites → nbLinkColor / nbAccentLegible (logo keeps raw accent)
 - [ ] Offline banner missing: DMs/Chat, Gallery, TV, Stream, Analytics, Constellation, Timeline
 - [ ] Hand-rolled error states → NBErrorBanner (Feed 285, Gallery 28, DMs 24, Analytics 91)
 - [ ] AsyncImage in churn lists: ImageGridView 57/849/934, Reader 346, TV 518, Stream ×4, Profile 165
@@ -96,3 +96,5 @@ P3
 - [ ] Dead code: SidebarHeaderTest.swift, PostButtonTest.swift, Bsky-Dreams-Info.plist, scrollToTopTrigger×4, Analytics test harness
 - [ ] Share Extension PrivacyInfo.xcprivacy (App Group UserDefaults)
 - [ ] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
+
+### Tick 4 — 2026-10-08 — iOS a11y: Dynamic Type for system-font text + dark-mode foregrounds

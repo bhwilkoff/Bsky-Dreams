@@ -291,7 +291,7 @@ struct ComposeView: View {
                 showLinkInput.toggle()
             } label: {
                 Image(systemName: "link")
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
             }
             .accessibilityLabel("Attach link")
 
@@ -300,7 +300,7 @@ struct ComposeView: View {
             } label: {
                 Text("GIF")
                     .font(.syne(11, weight: .bold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))

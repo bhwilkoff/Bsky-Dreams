@@ -818,7 +818,7 @@ struct QuotedPostView: View {
                 HStack(spacing: 4) {
                     Text("GIF")
                         .font(.syne(10, weight: .bold))
-                        .foregroundStyle(Color.nbBlue)
+                        .foregroundStyle(Color.nbLinkColor)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
                         .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1))
@@ -828,10 +828,10 @@ struct QuotedPostView: View {
                     if let host = URL(string: card.uri)?.host {
                         Image(systemName: "link")
                             .font(.system(size: 10))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                         Text(host.lowercased())
                             .font(.inter(11))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                             .lineLimit(1)
                     }
                 }

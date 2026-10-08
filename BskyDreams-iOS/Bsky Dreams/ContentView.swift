@@ -509,7 +509,7 @@ struct SidebarChannelButton: View {
                       ? "calendar.day.timeline.leading"
                       : "number")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -661,7 +661,7 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                 Text("SETTINGS")
                     .font(.syne(22, weight: .bold))
                     .foregroundStyle(Color.nbBlack)
@@ -843,10 +843,10 @@ struct SettingsView: View {
                 Spacer()
                 Text("System")
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
             }
             .padding(14)
             .background(Color.nbWhite)
@@ -920,11 +920,11 @@ struct SettingsView: View {
                 Spacer()
                 Text(subtitle)
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .lineLimit(1)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
             }
             .padding(14)
             .background(Color.nbWhite)

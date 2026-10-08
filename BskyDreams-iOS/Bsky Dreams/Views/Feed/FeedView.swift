@@ -291,7 +291,7 @@ struct FeedView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40))
-                .foregroundStyle(Color.nbAccent)
+                .foregroundStyle(Color.nbAccentLegible)
             Text(message)
                 .font(.inter(14))
                 .multilineTextAlignment(.center)

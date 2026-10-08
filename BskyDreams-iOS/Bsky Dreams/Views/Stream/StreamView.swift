@@ -234,7 +234,7 @@ struct StreamView: View {
             HStack(spacing: 14) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("STREAM")
                         .font(.syne(22, weight: .bold))
@@ -294,10 +294,10 @@ struct StreamView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text("Streaming: \"\(q)\"")
                         .font(.inter(12))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Spacer()
                     Button { source = .discover; searchInput = "" } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -705,7 +705,7 @@ struct StreamView: View {
                 } label: {
                     Text("DONE")
                         .font(.syne(13, weight: .bold))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .overlay(Rectangle().strokeBorder(Color.nbAccent, lineWidth: 1.5))

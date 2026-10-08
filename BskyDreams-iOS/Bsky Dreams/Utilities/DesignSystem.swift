@@ -540,7 +540,7 @@ struct HintBanner: View {
         if hints.isVisible(id) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: icon)
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .accessibilityHidden(true)
                 Text(text)
                     .font(.inter(13))
@@ -680,5 +680,33 @@ struct CachedImage<Content: View>: View {
             guard target == url else { return }
             phase = .failure
         }
+    }
+}
+
+// MARK: - Dynamic Type for system-font text
+//
+// `Font.system(size:)` is a FIXED point size — it ignores the user's text-size
+// setting. Post bodies, names and chat use the system font for emoji/Unicode
+// coverage (see RichTextView), so they need this: a @ScaledMetric-backed size
+// that tracks Dynamic Type live. Icons in fixed-size controls stay fixed.
+private struct NBScaledSystemFont: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    let weight: Font.Weight
+
+    init(size: CGFloat, weight: Font.Weight, relativeTo style: Font.TextStyle) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: style)
+        self.weight = weight
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight))
+    }
+}
+
+extension View {
+    /// System font at `size` pt (at the default text size) that scales with Dynamic Type.
+    func scaledSystemFont(_ size: CGFloat, weight: Font.Weight = .regular,
+                          relativeTo style: Font.TextStyle = .body) -> some View {
+        modifier(NBScaledSystemFont(size: size, weight: weight, relativeTo: style))
     }
 }

@@ -91,7 +91,7 @@ struct TVView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "play.tv.fill")
                         .font(.system(size: 44))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text("BSKY TV")
                         .font(.syne(28, weight: .bold))
                         .foregroundStyle(Color.nbBlack)
@@ -270,7 +270,7 @@ struct TVView: View {
                     Button("← Back to Topics") { goToSelector() }
                         .font(.syne(13, weight: .bold))
                         .tracking(0.5)
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
                         .overlay(Rectangle().strokeBorder(Color.nbAccent, lineWidth: 2))

@@ -75,7 +75,7 @@ struct ReaderView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text(err)
                         .font(.inter(14))
                         .multilineTextAlignment(.center)
@@ -361,7 +361,7 @@ struct ArticleCardView: View {
                         if let host = URL(string: card.uri)?.host {
                             Text(host.uppercased())
                                 .font(.syne(10))
-                                .foregroundStyle(Color.nbAccent)
+                                .foregroundStyle(Color.nbAccentLegible)
                                 .tracking(1)
                         }
 

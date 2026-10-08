@@ -93,7 +93,7 @@ struct AnalyticsView: View {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 36))
-                            .foregroundStyle(Color.nbAccent)
+                            .foregroundStyle(Color.nbAccentLegible)
                         Text(err)
                             .font(.inter(14))
                             .multilineTextAlignment(.center)
@@ -424,7 +424,7 @@ struct AnalyticsView: View {
                         // Rank badge
                         Text("\(i + 1)")
                             .font(.syne(18, weight: .bold))
-                            .foregroundStyle(Color.nbAccent)
+                            .foregroundStyle(Color.nbAccentLegible)
                             .frame(width: 28, alignment: .center)
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -435,11 +435,11 @@ struct AnalyticsView: View {
 
                             HStack(spacing: 14) {
                                 Label("\(post.likeCount ?? 0)",   systemImage: "heart.fill")
-                                    .foregroundStyle(Color.nbAccent)
+                                    .foregroundStyle(Color.nbAccentLegible)
                                 Label("\(post.repostCount ?? 0)", systemImage: "arrow.2.squarepath")
                                     .foregroundStyle(Color.nbLime)
                                 Label("\(post.replyCount ?? 0)",  systemImage: "bubble.left.fill")
-                                    .foregroundStyle(Color.nbBlue)
+                                    .foregroundStyle(Color.nbLinkColor)
                             }
                             .font(.inter(11))
                         }

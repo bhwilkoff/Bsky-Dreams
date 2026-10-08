@@ -29,7 +29,7 @@ struct GalleryView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text(err)
                         .font(.inter(14))
                         .multilineTextAlignment(.center)

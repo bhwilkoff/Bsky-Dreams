@@ -25,7 +25,7 @@ struct DMsView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 36))
-                        .foregroundStyle(Color.nbAccent)
+                        .foregroundStyle(Color.nbAccentLegible)
                     Text(err)
                         .font(.inter(14))
                         .multilineTextAlignment(.center)
@@ -49,7 +49,7 @@ struct DMsView: View {
         .nbNavBar(title: "MESSAGES", leading: { NBHamburger() }, trailing: {
             Image(systemName: "square.and.pencil")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.nbAccent)
+                .foregroundStyle(Color.nbAccentLegible)
                 .frame(width: 36, height: 36)
                 .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                 .contentShape(Rectangle())
@@ -102,7 +102,7 @@ struct DMsView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "tray.and.arrow.down")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.nbAccent)
+                            .foregroundStyle(Color.nbAccentLegible)
                             .frame(width: 48, height: 48)
                             .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                         VStack(alignment: .leading, spacing: 3) {
@@ -446,7 +446,7 @@ struct ChatView: View {
                             } else {
                                 Text("Load earlier messages")
                                     .font(.inter(13))
-                                    .foregroundStyle(Color.nbBlue)
+                                    .foregroundStyle(Color.nbLinkColor)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -584,7 +584,7 @@ struct ChatView: View {
                     toggleReaction(msg, value)
                 } label: {
                     HStack(spacing: 3) {
-                        Text(value).font(.system(size: 12))
+                        Text(value).scaledSystemFont(12)
                         Text("\(group.count)")
                             .font(.inter(11, weight: .bold))
                             .foregroundStyle(mine ? Color.nbWhite : Color.nbBlack)
@@ -865,7 +865,7 @@ struct MessageBubbleView: View {
                         .nbBorder()
                 } else {
                     Text(message.text ?? "")
-                        .font(.system(size: 15))    // system font for emoji fallback
+                        .scaledSystemFont(15)    // system font for emoji fallback
                         .foregroundStyle(isOwn ? Color.white : Color.nbBlack)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -1298,7 +1298,7 @@ struct GroupSheetView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: "person.badge.plus")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Color.nbAccent)
+                                    .foregroundStyle(Color.nbAccentLegible)
                                     .frame(width: 36, height: 36)
                                     .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
                                 Text("Add People")
@@ -1404,7 +1404,7 @@ struct GroupSheetView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(link.shareURL)
                     .font(.inter(13))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.horizontal, 10)

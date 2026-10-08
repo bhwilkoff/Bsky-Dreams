@@ -109,6 +109,10 @@ helpers build fonts with `.custom(_, size:, relativeTo: .body)`. A custom font
 without `relativeTo:` ignores the user's text-size setting entirely. Never use
 bare `.custom(_, size:)`.
 
+4.3 **System-font text scales too.** `.system(size:)` is a fixed size. Reading text
+set in the system font (post bodies, names, bios, chat) uses `.scaledSystemFont(_:)`.
+SF Symbol icons inside fixed-size controls may stay fixed.
+
 ---
 
 ## 5. Haptics Taxonomy

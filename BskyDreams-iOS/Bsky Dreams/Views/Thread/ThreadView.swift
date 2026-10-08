@@ -168,7 +168,7 @@ struct ThreadView: View {
                     HStack {
                         Text("Continue this conversation →")
                             .font(.inter(13, weight: .semibold))
-                            .foregroundStyle(Color.nbBlue)
+                            .foregroundStyle(Color.nbLinkColor)
                         Spacer()
                     }
                     .padding(.horizontal, 20)

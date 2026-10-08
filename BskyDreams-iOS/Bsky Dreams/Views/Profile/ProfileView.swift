@@ -192,16 +192,16 @@ struct ProfileView: View {
             // Name / handle / bio / stats
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.name)
-                    .font(.system(size: 20, weight: .heavy))
+                    .scaledSystemFont(20, weight: .heavy)
                     .padding(.top, 4)
 
                 Text("@\(profile.handle)")
-                    .font(.system(size: 14))
+                    .scaledSystemFont(14)
                     .foregroundStyle(Color.nbTextSecondary)
 
                 if let desc = profile.description, !desc.isEmpty {
                     Text(desc)
-                        .font(.system(size: 14))
+                        .scaledSystemFont(14)
                         .lineSpacing(3)
                         .padding(.top, 6)
                 }

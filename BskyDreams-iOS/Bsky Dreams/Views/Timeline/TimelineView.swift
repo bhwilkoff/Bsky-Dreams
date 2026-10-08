@@ -338,7 +338,7 @@ struct TimelineScrubberView: View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 32, weight: .light))
-                .foregroundStyle(Color.nbAccent)
+                .foregroundStyle(Color.nbAccentLegible)
             Text(message)
                 .font(.inter(13))
                 .foregroundStyle(Color.nbTextSecondary)
@@ -743,7 +743,7 @@ struct TLPostCard: View {
                 AvatarView(url: post.author.avatar, size: 14)
                 Text("@\(post.author.handle)")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }

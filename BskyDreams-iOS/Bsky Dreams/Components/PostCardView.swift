@@ -166,11 +166,11 @@ struct PostCardView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // System font for author names — ensures emoji + full Unicode coverage
                 Text(post.author.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .scaledSystemFont(14, weight: .semibold)
                     .foregroundStyle(Color.nbBlack)
                     .lineLimit(1)
                 Text("@\(post.author.handle)")
-                    .font(.system(size: 13))
+                    .scaledSystemFont(13)
                     .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(1)
             }
@@ -379,7 +379,7 @@ struct ParentPreviewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("@\(post.author.handle)")
                     .font(.inter(12, weight: .semibold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                 Text(post.record.text)
                     .font(.inter(12))
                     .foregroundStyle(Color.nbTextSecondary)
@@ -640,7 +640,7 @@ struct InlineReplyView: View {
             Button { showGifPicker = true } label: {
                 Text("GIF")
                     .font(.syne(11, weight: .bold))
-                    .foregroundStyle(Color.nbBlue)
+                    .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
@@ -785,7 +785,7 @@ struct ShareOptionsView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: 22))
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                     .frame(width: 36)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)

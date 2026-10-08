@@ -5,7 +5,6 @@ import SwiftUI
 struct RichTextView: View {
     let text: String
     let facets: [RichTextFacet]?
-    var font: Font = .system(size: 15)
 
     @Environment(AppStore.self) private var store
     /// Link/mention/hashtag color — uses nbLinkColor token from DesignSystem,
@@ -17,7 +16,7 @@ struct RichTextView: View {
         // Default iOS line height ≈ 18pt → additional spacing ≈ 5pt.
         if let facets, !facets.isEmpty {
             Text(buildAttributedString())
-                .font(font)
+                .scaledSystemFont(15)
                 .lineSpacing(5)
                 .foregroundStyle(Color.nbBlack)
                 .environment(\.openURL, OpenURLAction { url in
@@ -25,7 +24,7 @@ struct RichTextView: View {
                 })
         } else {
             Text(text)
-                .font(font)
+                .scaledSystemFont(15)
                 .lineSpacing(5)
                 .foregroundStyle(Color.nbBlack)
         }

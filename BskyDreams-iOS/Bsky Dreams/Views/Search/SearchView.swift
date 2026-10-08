@@ -96,7 +96,7 @@ struct SearchView: View {
                         HStack(spacing: 4) {
                             Text("#")
                                 .font(.syne(11, weight: .bold))
-                                .foregroundStyle(Color.nbBlue)
+                                .foregroundStyle(Color.nbLinkColor)
                             Text(channel.name)
                                 .font(.inter(13, weight: .semibold))
                                 .foregroundStyle(Color.nbBlack)
@@ -424,13 +424,13 @@ struct ActorRowView: View {
             AvatarView(url: actor.avatar, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 Text(actor.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .scaledSystemFont(15, weight: .semibold)
                 Text("@\(actor.handle)")
-                    .font(.system(size: 13))
+                    .scaledSystemFont(13)
                     .foregroundStyle(Color.nbTextSecondary)
                 if let desc = actor.description, !desc.isEmpty {
                     Text(desc)
-                        .font(.system(size: 12))
+                        .scaledSystemFont(12)
                         .foregroundStyle(Color.nbTextSecondary)
                         .lineLimit(1)
                 }

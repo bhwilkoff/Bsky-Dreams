@@ -187,7 +187,7 @@ struct CloudLogoView: View {
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size * 0.675)
-            .foregroundStyle(Color.nbAccent)
+            .foregroundStyle(Color.nbAccentLegible)
             .overlay(
                 Image(systemName: "cloud")
                     .resizable()

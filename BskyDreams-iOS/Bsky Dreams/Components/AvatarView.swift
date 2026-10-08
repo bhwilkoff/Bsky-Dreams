@@ -39,7 +39,7 @@ struct AvatarView: View {
                     .resizable()
                     .scaledToFit()
                     .padding(size * 0.2)
-                    .foregroundStyle(Color.nbAccent)
+                    .foregroundStyle(Color.nbAccentLegible)
                     .background(Color.nbBorder.opacity(0.2))
             }
         }
