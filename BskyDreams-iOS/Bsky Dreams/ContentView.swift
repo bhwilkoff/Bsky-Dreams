@@ -4,13 +4,19 @@ import UserNotifications
 
 struct RootView: View {
     @Environment(AuthManager.self) private var auth
+    @Environment(AppStore.self) private var store
 
     var body: some View {
-        if auth.isLoggedIn {
-            MainAppView()
-        } else {
-            LoginView()
+        Group {
+            if auth.isLoggedIn {
+                MainAppView()
+            } else {
+                LoginView()
+            }
         }
+        #if DEBUG
+        .task { await DebugLaunchDoors.apply(auth: auth, store: store) }
+        #endif
     }
 }
 

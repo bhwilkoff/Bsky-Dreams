@@ -619,3 +619,31 @@ enum DiscoverEngine {
         return nil
     }
 }
+
+// MARK: - Debug launch doors (device testing)
+//
+// DEBUG builds only — compiled out of Release/App Store builds entirely. Lets an
+// agent reach any screen on a physical test device without tapping, by passing
+// environment variables to `devicectl device process launch --environment-variables`
+// (see tools/device_smoke.py). Same pattern as Archive Watch's AW_* doors.
+//   BSKY_TEST_HANDLE / BSKY_TEST_PASSWORD  sign in (test account, from tools/test-account.env)
+//   BSKY_START_VIEW                       an AppTab raw value: home, search, notifications, dms, …
+//   BSKY_OPEN_POST                        an at:// post URI to push as a conversation
+#if DEBUG
+enum DebugLaunchDoors {
+    @MainActor
+    static func apply(auth: AuthManager, store: AppStore) async {
+        let env = ProcessInfo.processInfo.environment
+        if !auth.isLoggedIn, let handle = env["BSKY_TEST_HANDLE"], let password = env["BSKY_TEST_PASSWORD"] {
+            await auth.login(handle: handle, appPassword: password)
+        }
+        guard auth.isLoggedIn else { return }
+        if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
+            store.selectedTab = tab
+        }
+        if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
+            store.navigationPath.append(PostDestination(uri: uri, post: nil))
+        }
+    }
+}
+#endif

@@ -74,3 +74,6 @@ tools/asc-credentials.env
 AuthKey_*.p8
 *.p12
 __pycache__/
+
+# Local device-testing account (also App Review's) — never commit
+tools/test-account.env
