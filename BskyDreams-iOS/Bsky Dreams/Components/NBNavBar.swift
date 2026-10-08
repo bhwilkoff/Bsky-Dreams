@@ -22,28 +22,39 @@ struct NBNavBar<Leading: View, Trailing: View>: View {
     var leading: Leading
     var trailing: Trailing
 
-    var body: some View {
-        ZStack(alignment: .center) {
-            // Title — centered absolutely, truncates before reaching buttons
-            if !title.isEmpty {
-                Text(title)
-                    .font(.syne(14, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(Color.nbBlack)
-                    .lineLimit(1)
-                    .padding(.horizontal, 56) // keep clear of 36pt buttons + 16pt padding
-            }
+    /// Measured widths of the side items. Both sides reserve the LARGER one so the
+    /// title stays truly centered and can never run under a wide trailing button
+    /// (MARK READ is ~90pt; the old fixed 56pt margin let NOTIFICATIONS overlap it).
+    @State private var leadingWidth: CGFloat = 36
+    @State private var trailingWidth: CGFloat = 36
+    private var side: CGFloat { max(leadingWidth, trailingWidth) }
 
-            // Leading / trailing buttons positioned at edges
-            HStack(spacing: 0) {
-                leading
-                    .padding(.leading, NBWindowControls.leadingInset)
-                Spacer()
-                trailing
-            }
+    var body: some View {
+        HStack(spacing: 8) {
+            leading
+                .padding(.leading, NBWindowControls.leadingInset)   // iPad window controls
+                .fixedSize()   // measure the NATURAL width, not the frame below (feedback loop)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
+                .frame(width: side, alignment: .leading)
+
+            Text(title)
+                .font(.syne(14, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(Color.nbBlack)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .frame(maxWidth: .infinity)
+                .opacity(title.isEmpty ? 0 : 1)
+
+            trailing
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { trailingWidth = $0 }
+                .frame(width: side, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, minHeight: 56)
+        // Chrome caps at the largest STANDARD size; content (posts, names) scales fully.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .background(Color.nbWhite)
         .overlay(alignment: .bottom) {
             Color.nbBorder.frame(height: 1)

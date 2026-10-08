@@ -12,6 +12,7 @@ struct PostCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var isLiked: Bool = false
 
@@ -154,8 +155,12 @@ struct PostCardView: View {
         }
     }
 
+    /// At accessibility sizes the trailing time column squeezed name/handle to
+    /// "Rebecca Mc…" (device run); there the time moves under the handle and the
+    /// name may wrap.
     private var authorHeader: some View {
-        HStack(alignment: .top, spacing: 10) {
+        let stacked = typeSize.isAccessibilitySize
+        return HStack(alignment: .top, spacing: 10) {
             Button {
                 store.navigationPath.append(ProfileDestination(actor: post.author.did))
             } label: {
@@ -168,28 +173,34 @@ struct PostCardView: View {
                 Text(post.author.name)
                     .scaledSystemFont(14, weight: .semibold)
                     .foregroundStyle(Color.nbBlack)
-                    .lineLimit(1)
+                    .lineLimit(stacked ? 2 : 1)
                 Text("@\(post.author.handle)")
                     .scaledSystemFont(13)
                     .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
+                if stacked { timeButton }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            // Tappable relative time — opens post in bsky.app
-            Button {
-                let urlStr = "https://bsky.app/profile/\(post.author.handle)/post/\(post.rkey)"
-                if let url = URL(string: urlStr) {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                Text(post.relativeTime)
-                    .font(.inter(11))
-                    .foregroundStyle(Color.nbTextSecondary)
-            }
-            .buttonStyle(.plain)
+            if !stacked { timeButton }
         }
+    }
+
+    /// Tappable relative time — opens the post in bsky.app.
+    private var timeButton: some View {
+        Button {
+            let urlStr = "https://bsky.app/profile/\(post.author.handle)/post/\(post.rkey)"
+            if let url = URL(string: urlStr) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            Text(post.relativeTime)
+                .font(.inter(11))
+                .foregroundStyle(Color.nbTextSecondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private var actionBar: some View {

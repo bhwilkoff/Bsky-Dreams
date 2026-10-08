@@ -62,6 +62,9 @@ def test_account_env():
 def launch_and_shoot(udid, outdir, key, view, extra_env):
     env = dict(ENV, **extra_env)
     name = view
+    # BSKY_TYPE_SIZE=accessibility3 in the CALLER's env → forwarded to the app.
+    if os.environ.get("BSKY_TYPE_SIZE"):
+        env["DEVICECTL_CHILD_BSKY_TYPE_SIZE"] = os.environ["BSKY_TYPE_SIZE"]
     if view.startswith("post="):
         env["DEVICECTL_CHILD_BSKY_OPEN_POST"] = view[5:]; name = "conversation"
     elif view.startswith("profile="):
@@ -72,7 +75,8 @@ def launch_and_shoot(udid, outdir, key, view, extra_env):
                         "--terminate-existing", BUNDLE], env=env, capture_output=True, text=True)
     print(f"launch {view or 'default'} → exit {r.returncode}")
     time.sleep(10)   # sign-in + first feed load on a real network
-    shot = os.path.join(outdir, f"{key}-{name or 'launch'}.png")
+    suffix = f"-{os.environ['BSKY_TYPE_SIZE']}" if os.environ.get("BSKY_TYPE_SIZE") else ""
+    shot = os.path.join(outdir, f"{key}-{name or 'launch'}{suffix}.png")
     run(["xcrun", "devicectl", "device", "capture", "screenshot", "--device", udid, "--destination", shot])
     print("screenshot:", shot)
 
@@ -88,7 +92,8 @@ def main():
     _, listing = run(["xcrun", "devicectl", "list", "devices"])
     line = next((l for l in listing.splitlines() if any(i in l for i in DEVICES[key])), "")
     udid = next((i for i in DEVICES[key] if i in line), DEVICES[key][0])
-    if "available" not in line or "unavailable" in line:
+    usable = ("available" in line or "connected" in line) and "unavailable" not in line
+    if not usable:
         sys.exit(f"{key} is not available (wake/unlock it, or check Wi-Fi/cable): {line.strip()}")
 
     ok, holder = devlease.try_lease(key, task="bsky-dreams device smoke", ttl=1500)

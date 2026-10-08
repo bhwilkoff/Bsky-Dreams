@@ -212,19 +212,27 @@ struct ProfileView: View {
                         .padding(.top, 6)
                 }
 
-                // Stats — horizontal inline
-                HStack(spacing: 0) {
-                    statView(count: profile.followersCount, label: "followers")
-                    Text("·")
-                        .font(.inter(13))
-                        .foregroundStyle(Color.nbTextTertiary)
-                        .padding(.horizontal, 8)
-                    statView(count: profile.followsCount, label: "following")
-                    Text("·")
-                        .font(.inter(13))
-                        .foregroundStyle(Color.nbTextTertiary)
-                        .padding(.horizontal, 8)
-                    statView(count: profile.postsCount, label: "posts")
+                // Stats — inline when they fit; stacked otherwise (at accessibility sizes
+                // the inline row wrapped "35.\n2M" / "follo/wer/s" letter by letter).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) {
+                        statView(count: profile.followersCount, label: "followers")
+                        Text("·")
+                            .font(.inter(13))
+                            .foregroundStyle(Color.nbTextTertiary)
+                            .padding(.horizontal, 8)
+                        statView(count: profile.followsCount, label: "following")
+                        Text("·")
+                            .font(.inter(13))
+                            .foregroundStyle(Color.nbTextTertiary)
+                            .padding(.horizontal, 8)
+                        statView(count: profile.postsCount, label: "posts")
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        statView(count: profile.followersCount, label: "followers")
+                        statView(count: profile.followsCount, label: "following")
+                        statView(count: profile.postsCount, label: "posts")
+                    }
                 }
                 .padding(.top, 10)
 
@@ -248,6 +256,8 @@ struct ProfileView: View {
                                 .background(Color.nbBlack.offset(x: 2, y: 2))
                             Text("ANALYTICS")
                                 .font(.syne(9, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                                 .tracking(0.5)
                                 .foregroundStyle(Color.nbTextSecondary)
                         }
@@ -271,6 +281,8 @@ struct ProfileView: View {
                                 .background(Color.nbBlack.offset(x: 2, y: 2))
                             Text("NETWORK")
                                 .font(.syne(9, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                                 .tracking(0.5)
                                 .foregroundStyle(Color.nbTextSecondary)
                         }
@@ -294,6 +306,8 @@ struct ProfileView: View {
                                 .background(Color.nbBlack.offset(x: 2, y: 2))
                             Text("TIMELINE")
                                 .font(.syne(9, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                                 .tracking(0.5)
                                 .foregroundStyle(Color.nbTextSecondary)
                         }
@@ -304,6 +318,7 @@ struct ProfileView: View {
                     Spacer()
                 }
                 .padding(.top, 10)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // 3 fixed tiles + captions = chrome
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
@@ -324,6 +339,7 @@ struct ProfileView: View {
                 .font(.inter(13))
                 .foregroundStyle(Color.nbTextSecondary)
         }
+        .fixedSize()   // never wrap inside a stat — ViewThatFits picks the stacked layout instead
     }
 
     private func formatCount(_ n: Int) -> String {

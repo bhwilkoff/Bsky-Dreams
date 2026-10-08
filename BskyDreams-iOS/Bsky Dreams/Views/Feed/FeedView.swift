@@ -251,8 +251,11 @@ struct FeedView: View {
                             .font(.syne(12, weight: .bold))
                             .tracking(0.3)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .minimumScaleFactor(0.5)
                     }
+                    // Three tabs share ~390pt: chrome caps below accessibility sizes,
+                    // where "CONVERSATIONS" truncated to "CONVE…" (device, accessibility3).
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(selected ? Color.white : Color.nbBlack)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
@@ -495,6 +498,7 @@ private struct FeedNavBar: View {
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, minHeight: 56)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // chrome cap (see NBNavBar)
         .background(Color.nbWhite)
         .overlay(alignment: .bottom) {
             Color.nbBorder.frame(height: 1)
@@ -523,7 +527,7 @@ struct DiscoverWhyChip: View {
                 .font(.system(size: 9, weight: .bold))
             Text(text)
                 .font(.inter(11, weight: .medium))
-                .lineLimit(1)
+                .lineLimit(2)   // wraps at large text instead of "37 rep…"
         }
         .foregroundStyle(Color.nbTextSecondary)
         .padding(.horizontal, 8)

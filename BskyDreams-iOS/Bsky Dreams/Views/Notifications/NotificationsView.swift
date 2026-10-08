@@ -69,7 +69,17 @@ struct NotificationsView: View {
                 .accessibilityLabel("Mark all as read")
                 .accessibilityAddTraits(.isButton)
         })
-        .task { await load() }
+        .task {
+            // Ask for notification permission HERE, in context (HIG): the person has
+            // just opened Notifications, so the prompt explains itself. It used to fire
+            // seconds after first sign-in, before the app had shown any reason.
+            // Load FIRST — requestAuthorization awaits the person's answer.
+            await load()
+            let center = UNUserNotificationCenter.current()
+            if await center.notificationSettings().authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+            }
+        }
     }
 
     private var notificationList: some View {

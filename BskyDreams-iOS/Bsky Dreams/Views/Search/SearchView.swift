@@ -12,7 +12,10 @@ struct SearchView: View {
     @State private var query: String = ""
     /// One height for every control in the search row (field, GO, save, filters) —
     /// they were 34/36/40pt with misaligned tops. Scales with Dynamic Type.
-    @ScaledMetric(relativeTo: .body) private var searchControlHeight: CGFloat = 40
+    /// Capped: uncapped at accessibility sizes the square buttons took ~55% of the row
+    /// and squeezed the field to "Search Blue…" (device run, accessibility3).
+    @ScaledMetric(relativeTo: .body) private var rawControlHeight: CGFloat = 40
+    private var searchControlHeight: CGFloat { min(rawControlHeight, 52) }
     @State private var mode: AppStore.SearchMode = .posts
     @State private var posts: [PostView] = []
     @State private var actors: [ActorProfile] = []
@@ -157,6 +160,7 @@ struct SearchView: View {
             Button(action: performSearch) {
                 Text("GO")
                     .font(.syne(12, weight: .bold))
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 10)
                     .frame(minWidth: searchControlHeight, minHeight: searchControlHeight)

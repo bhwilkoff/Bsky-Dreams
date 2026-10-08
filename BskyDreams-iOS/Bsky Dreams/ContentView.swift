@@ -16,6 +16,7 @@ struct RootView: View {
         }
         #if DEBUG
         .task { await DebugLaunchDoors.apply(auth: auth, store: store) }
+        .modifier(DebugTypeSizeOverride())
         #endif
     }
 }
@@ -200,12 +201,6 @@ struct MainAppView: View {
             await auth.refreshIfNeeded()
             // Pick up any share that arrived before auth was ready (cold-start from Share Extension)
             store.processPendingShare()
-            // Ask for notification permission once signed in — on the login screen
-            // the prompt arrived before the app had shown why it would notify.
-            let center = UNUserNotificationCenter.current()
-            if await center.notificationSettings().authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
-            }
             await refreshBadges()
             await fetchCurrentUserAvatar()
             // Merge cloud seen-posts into local SwiftData on every login/cold start
@@ -707,12 +702,19 @@ struct SettingsView: View {
                             Text(item.name)
                                 .font(.inter(10))
                                 .foregroundStyle(Color.nbTextSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .top)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(item.name) accent")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+            // Seven swatches across 390pt: names split mid-word ("Cor/al") at
+            // accessibility sizes (device run). Chrome caps; the labels stay readable.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
@@ -731,7 +733,9 @@ struct SettingsView: View {
                     Button { store.setColorScheme(value) } label: {
                         Text(label.uppercased())
                             .font(.syne(12, weight: .bold))
-                            .foregroundStyle(isSelected ? Color.white : Color.nbBlack)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .foregroundStyle(isSelected ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(isSelected ? Color.nbAccent : Color.nbWhite)
@@ -740,6 +744,7 @@ struct SettingsView: View {
                 }
             }
             .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // segmented chrome cap
         }
         .padding(14)
         .background(Color.nbWhite)
@@ -764,8 +769,9 @@ struct SettingsView: View {
                         Text(mode.rawValue.uppercased())
                             .font(.syne(11, weight: .bold))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .foregroundStyle(isSelected ? Color.white : Color.nbBlack)
+                            .minimumScaleFactor(0.5)
+                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // segmented chrome cap
+                            .foregroundStyle(isSelected ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .padding(.horizontal, 4)

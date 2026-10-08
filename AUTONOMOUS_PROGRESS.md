@@ -22,7 +22,7 @@ UniversalAppTemplate, fix + improve, and **submit new builds to the App Store**.
 ## Backlog — iOS
 - [x] Share Extension deployment target 26.2 → 18.6 (was invisible on iOS 18.6–26.1) — 396775a
 - [x] NBImageLoader.downsample read UIScreen off-main → scale captured on main, nonisolated
-- [ ] Accessibility-size layouts: ViewThatFits action bar, @ScaledMetric avatars, .isHeader on section titles (AW iOS-DESIGN §3.5c/§4.5a)
+- [x] Accessibility-size layouts: ViewThatFits action bar, @ScaledMetric avatars, .isHeader on section titles (AW iOS-DESIGN §3.5c/§4.5a)
 - [x] Liquid Glass decision on iOS 26 (behind #available) vs. rule 1.5 regularMaterial — DECISIONS entry first
 - [x] "Not affiliated with Bluesky Social PBC" line in Settings/About + review notes (4.1 copycat risk; BOBA rejection lesson)
 - [x] App-password login sanity on iPad sizes (2.1(a) BOBA lesson) — app is iPhone-only so low priority
@@ -163,3 +163,12 @@ P3
 
 ### Tick 15 — 2026-10-08 — independence disclaimer (iOS + web), skip link/main landmark, Liquid Glass decision, stale docs fixed
 - Build hung ~30 min: stale CoreSimulatorService after another session deleted Xcode-beta (ibtoold/actool in U state). Restarted service → 64s build. Memory saved.
+
+### Tick 16 — 2026-10-08 — accessibility-size layouts (device-verified at accessibility3) + permission timing
+- BSKY_TYPE_SIZE DEBUG door. 9 breakages found → all fixed + re-shot: nav title vs MARK READ overlap
+  (NBNavBar now measures both side items' NATURAL width (.fixedSize before onGeometryChange — a
+  first attempt measured inside the frame → feedback loop squeezed MARK READ to 1 letter wide),
+  reserves the larger on both sides); chrome capped at standard sizes (nav bars, segmented tabs,
+  tool tiles, swatch row, search buttons ≤52pt); profile stats ViewThatFits; post header stacks time
+  at AX sizes; why-chip 2 lines. Selected segments use Color.nbLabel(on:) (white-on-lime).
+- Notification permission asked on first Notifications visit, after the list loads (HIG in-context).

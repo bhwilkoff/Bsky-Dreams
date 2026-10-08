@@ -632,7 +632,27 @@ enum DiscoverEngine {
 //   BSKY_START_VIEW                       an AppTab raw value: home, search, notifications, dms, …
 //   BSKY_OPEN_POST                        an at:// post URI to push as a conversation
 //   BSKY_OPEN_PROFILE                     a handle or DID to push as a profile
+//   BSKY_TYPE_SIZE                        Dynamic Type override: large, xLarge, xxxLarge,
+//                                         accessibility1 … accessibility5
 #if DEBUG
+/// Forces a Dynamic Type size app-wide so accessibility layouts can be checked on a
+/// device without changing the phone's settings.
+struct DebugTypeSizeOverride: ViewModifier {
+    private static let sizes: [String: DynamicTypeSize] = [
+        "large": .large, "xLarge": .xLarge, "xxLarge": .xxLarge, "xxxLarge": .xxxLarge,
+        "accessibility1": .accessibility1, "accessibility2": .accessibility2,
+        "accessibility3": .accessibility3, "accessibility4": .accessibility4,
+        "accessibility5": .accessibility5,
+    ]
+    func body(content: Content) -> some View {
+        if let raw = ProcessInfo.processInfo.environment["BSKY_TYPE_SIZE"], let size = Self.sizes[raw] {
+            content.dynamicTypeSize(size)
+        } else {
+            content
+        }
+    }
+}
+
 enum DebugLaunchDoors {
     @MainActor
     static func apply(auth: AuthManager, store: AppStore) async {
