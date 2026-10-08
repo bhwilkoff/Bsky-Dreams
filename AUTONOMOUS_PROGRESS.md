@@ -148,3 +148,11 @@ P3
 - Web: PWA icons 192/512 + maskable, orientation any — deployed (PR #121), live-verified.
 - Tooling: Xcode-beta was deleted by another session mid-run → device_smoke uses release Xcode 27.1,
   which lists HARDWARE UDIDs (both id forms now supported).
+
+### Tick 13 — 2026-10-08 — iOS: error primitives, off-main compose work, paging stalls
+- Feed + Analytics first-load errors → NBErrorBanner + Haptics.error (last hand-rolled error screens).
+- resizeImageData nonisolated + run detached (Compose + inline reply); video size from file attributes,
+  read off-main (.mappedIfSafe); photo-load failures surfaced.
+- Gallery + Stream: a fully-filtered page no longer stalls paging (bounded auto-advance); Stream no
+  longer claims a connection failure for an all-seen page.
+- Compiles with release Xcode 27.1; Home + Gallery re-checked on iPhone 12.

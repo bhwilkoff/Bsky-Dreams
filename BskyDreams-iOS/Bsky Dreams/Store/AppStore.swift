@@ -373,7 +373,9 @@ struct ComposeImage: Identifiable {
 
     /// Resize image data to stay within AT Protocol's 1 MB blob limit.
     /// Shared by ComposeView and InlineReplyView.
-    static func resizeImageData(_ data: Data, maxBytes: Int = 950_000) -> Data {
+    /// Pure UIImage/CoreGraphics work — nonisolated so callers can run it OFF the main
+    /// actor (the project defaults to MainActor isolation; a 12MP photo resize stalled UI).
+    nonisolated static func resizeImageData(_ data: Data, maxBytes: Int = 950_000) -> Data {
         guard let image = UIImage(data: data) else { return data }
 
         // Step 1 — cap the long side at 2048px

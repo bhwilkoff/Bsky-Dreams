@@ -92,18 +92,9 @@ struct AnalyticsView: View {
                     ProgressView("Analyzing posts…")
                         .frame(maxWidth: .infinity, minHeight: 200)
                 } else if let err = errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 36))
-                            .foregroundStyle(Color.nbAccentLegible)
-                        Text(err)
-                            .font(.inter(14))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        Button("Retry") { Task { if lastActor.isEmpty { await loadSelf() } else { await load(actor: lastActor) } } }
-                            .nbButton()
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 200)
+                    NBErrorBanner(message: err, retry: {
+                        Task { if lastActor.isEmpty { await loadSelf() } else { await load(actor: lastActor) } }
+                    })
                 } else if posts.isEmpty && lastActor.isEmpty {
                     // Nothing requested yet: a prompt, not an empty RESULT (rule §2).
                     NBEmptyState(
@@ -518,6 +509,7 @@ struct AnalyticsView: View {
 
             posts = allPosts
         } catch {
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }

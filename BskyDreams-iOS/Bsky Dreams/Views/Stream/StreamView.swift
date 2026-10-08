@@ -989,7 +989,7 @@ struct StreamView: View {
 
     // MARK: - Feed Loading
 
-    private func loadMore() async {
+    private func loadMore(attempt: Int = 0) async {
         guard !isLoadingMore else { return }
         isLoadingMore = true
         defer { isLoadingMore = false }
@@ -1018,10 +1018,16 @@ struct StreamView: View {
             }
             slides.append(contentsOf: newSlides)
             feedCursor = nextCursor
-            // Surface a load failure only when there is nothing on screen yet;
-            // otherwise the user keeps browsing already-loaded slides silently.
-            if slides.isEmpty { errorMessage = "Couldn't load posts to stream. Check your connection and try again." }
-            else { errorMessage = nil }
+            // A page that is entirely seen/filtered isn't a failure — fetch the next one
+            // (bounded) instead of stalling or claiming the connection failed.
+            if newSlides.isEmpty, nextCursor != nil, attempt < 3 {
+                isLoadingMore = false
+                await loadMore(attempt: attempt + 1)
+                return
+            }
+            if slides.isEmpty {
+                errorMessage = "Nothing new to stream right now — try another source or come back later."
+            } else { errorMessage = nil }
         } catch {
             if slides.isEmpty {
                 errorMessage = "Couldn't load posts to stream. Check your connection and try again."

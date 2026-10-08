@@ -290,18 +290,12 @@ struct FeedView: View {
     }
 
     private func errorState(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.nbAccentLegible)
-            Text(message)
-                .font(.inter(14))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Button("Retry") { Task { await loadFeed() } }
-                .nbButton()
+        // Rule §2: one error primitive everywhere (coral banner + Retry).
+        VStack {
+            NBErrorBanner(message: "Couldn't load your feed. \(message)", retry: { Task { await loadFeed() } })
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 10)
     }
 
     // MARK: - Seen Posts
@@ -436,6 +430,7 @@ struct FeedView: View {
             }
         } catch {
             guard generation == loadGeneration else { return }
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }
