@@ -37,6 +37,7 @@ struct NBNavBar<Leading: View, Trailing: View>: View {
             // Leading / trailing buttons positioned at edges
             HStack(spacing: 0) {
                 leading
+                    .padding(.leading, NBWindowControls.leadingInset)
                 Spacer()
                 trailing
             }

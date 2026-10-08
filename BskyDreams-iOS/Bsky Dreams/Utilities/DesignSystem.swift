@@ -723,6 +723,16 @@ extension View {
     }
 }
 
+// MARK: - iPad window controls
+//
+// On iPadOS 26+ the app's window draws its controls (close/minimize/zoom) in the
+// window's top-LEADING corner, over our custom nav bars' leading button — measured
+// ~63pt on the iPad Pro 12.9 (device run 2026-10-08). The iPhone-only app runs in
+// compatibility mode there, so this keys on iPad hardware, not the idiom.
+enum NBWindowControls {
+    static let leadingInset: CGFloat = AppDelegate.isIPadHardware ? 56 : 0
+}
+
 // MARK: - Offline banner as a modifier
 //
 // One line per screen instead of hand-placing NBOfflineBanner in each layout branch
