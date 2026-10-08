@@ -850,7 +850,11 @@ struct AnimatedGifView: UIViewRepresentable {
             Task { [weak self] in
                 guard let self else { return }
                 guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
-                let (frames, delays) = Self.decode(data: data)
+                // Decode every frame OFF the main actor (this Task inherits MainActor).
+                let scale = imageView.traitCollection.displayScale
+                let (frames, delays) = await Task.detached(priority: .userInitiated) {
+                    Self.decode(data: data, scale: scale)
+                }.value
                 guard !frames.isEmpty else {
                     // Not an animated GIF — just show as a static image
                     await MainActor.run { imageView.image = UIImage(data: data) }
@@ -885,7 +889,7 @@ struct AnimatedGifView: UIViewRepresentable {
             frameIndex = 0
         }
 
-        private static func decode(data: Data) -> ([UIImage], [Double]) {
+        nonisolated private static func decode(data: Data, scale: CGFloat) -> ([UIImage], [Double]) {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return ([], []) }
             let count = CGImageSourceGetCount(source)
             guard count > 1 else { return ([], []) }  // single frame = not animated
@@ -896,7 +900,7 @@ struct AnimatedGifView: UIViewRepresentable {
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 400 * UIScreen.main.scale
+                kCGImageSourceThumbnailMaxPixelSize: 400 * scale
             ]
             var images: [UIImage] = []
             var delays: [Double] = []

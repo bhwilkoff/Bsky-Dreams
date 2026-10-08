@@ -172,3 +172,5 @@ P3
   tool tiles, swatch row, search buttons ≤52pt); profile stats ViewThatFits; post header stacks time
   at AX sizes; why-chip 2 lines. Selected segments use Color.nbLabel(on:) (white-on-lime).
 - Notification permission asked on first Notifications visit, after the list loads (HIG in-context).
+
+### Tick 17 — 2026-10-08 — Compose GIF frame decode off the main actor; SCRATCHPAD summary. Backlog clear → RELEASE next.
