@@ -872,6 +872,12 @@
     });
   }
 
+  // Skip link: jump keyboard focus past the sidebar to the active view.
+  $('skip-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelector('.view.active')?.focus();
+  });
+
   function showBanner(text, isError = false) {
     const banner = document.createElement('div');
     banner.className = 'report-success-banner' + (isError ? ' banner-error' : '');
@@ -3041,6 +3047,9 @@
     Object.entries(views).forEach(([n, el]) => {
       el.hidden  = n !== name;
       el.classList.toggle('active', n === name);
+      // Exactly one main landmark: whichever view is showing (skip link target).
+      if (n === name) { el.setAttribute('role', 'main'); el.tabIndex = -1; }
+      else el.removeAttribute('role');
     });
 
     Object.entries(navBtns).forEach(([n, btn]) => {

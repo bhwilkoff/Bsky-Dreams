@@ -52,7 +52,7 @@
 | NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
 | Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
 | Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
-| Analytics dashboard (post stats, heatmap) | ✅ | ⏳ | iOS view exists, content TBD |
+| Analytics dashboard (post stats, heatmap) | ✅ | ✅ | iOS: Swift Charts (engagement bars, posting heatmap, top posts) |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
 | Timeline scrubber (horizontal, time-offset) | ✅ | ✅ | iOS: full implementation (2026-03-19); sidebar tab, zoom levels, lane layout, profile button |
 | Settings (accent color, default feed, clear history) | ✅ | ✅ | |
@@ -143,7 +143,6 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Next for iOS
 
-- **Analytics view**: implement Canvas-equivalent charts using Swift Charts or Canvas (now has `NBEmptyState` for the no-data path; charts still TBD)
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions
 - **Cross-device channel/prefs sync**: read/write `app.bsky-dreams.prefs` via AT Protocol repo
@@ -171,9 +170,8 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 ### iOS
 1. Reader `readURLs` (`@State`) is separate from SwiftData `SeenPost` — needs reconciliation for persistent read-state display
 2. `app.bsky-dreams.prefs` sync not yet wired — iOS uses SwiftData `CachedPreferences` only
-3. Analytics view exists as a shell — Swift Charts implementation needed
-4. Notifications badge count from `refreshBadges()` only counts unread in first page (limit: 1) — may undercount
-5. Block: no unblock UI from post card (would need block record URI)
+4. ~~Notifications badge undercount~~ FIXED 2026-10-08: `getUnreadCount` + DM unread sum
+5. Block: unblock works from Profile (2026-10-08); still none from a post card
 
 ### Both
 1. AT Protocol OAuth: when it stabilizes, app-password auth should be revisited

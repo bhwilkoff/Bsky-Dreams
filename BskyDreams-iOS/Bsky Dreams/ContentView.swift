@@ -649,6 +649,12 @@ struct SettingsView: View {
                         externalLinkRow(title: "Web App", subtitle: "bskydreams.com", url: "https://bskydreams.com")
                         externalLinkRow(title: "Bluesky", subtitle: "@laserdiscleftist.bsky.social", url: "https://bsky.app/profile/laserdiscleftist.bsky.social")
                         externalLinkRow(title: "Contact Support", subtitle: "ben@bskydreams.com", url: "mailto:ben@bskydreams.com")
+                        // App Review 4.1: a brand name in the app name needs a clear independence line.
+                        Text("Bsky Dreams is an independent app and is not affiliated with or endorsed by Bluesky Social, PBC.")
+                            .font(.inter(12))
+                            .foregroundStyle(Color.nbTextSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
                     }
                 }
                 .padding(16)

@@ -737,3 +737,17 @@ Bluesky announced **Communities** (Reddit-style topic spaces — handles-as-URLs
 *2026-06-18*
 
 Non-English articles were leaking into the Reader because the filter used `isEnglish`, which checks the POST's `record.langs` and **treats a missing tag as English** — and most link-share/news/bot posts omit `langs`. It also judged the wrong thing: the Reader shows the linked *article*, whose language is independent of the post text. Fix: filter on the article's own card text (`title` + `description`). iOS uses Apple's on-device `NLLanguageRecognizer` (free, accurate for all languages; reject when the dominant language is non-English and English probability < 0.45). Web has no equivalent, so it uses a heuristic: honor explicit `langs` strictly, reject text that is >12% non-Latin-script letters (CJK/Cyrillic/Arabic/Hebrew/Thai/Devanagari/Greek), then an English function-word density check for Latin-script text (≥8 words, <5% stopwords → reject). Both err toward ALLOWING when genuinely ambiguous (don't over-filter English). The `langs`-only `isEnglish`/`_isEnglishPost` is still used by the feed views; only the Reader uses article-text detection.
+
+---
+
+## [iOS] Liquid Glass — Not Adopted; Neubrutalist Chrome Stays Opaque
+*2026-10-08*
+
+The app does not adopt iOS 26 Liquid Glass (`glassEffect`, glass toolbars/tab bars, `scrollEdgeEffectStyle`). Its identity is Neubrutalism: opaque fills, 2–3pt near-black borders, hard offset shadows — translucent, refractive chrome contradicts every one of those rules, and the custom `NBNavBar`/`FeedNavBar` would have to be rebuilt as system toolbars to get it. Floor stays iOS 18.6, so any glass would also need a parallel non-glass path. What iOS 26+ DOES require is honored: on iPad the window's controls sit in the top-leading corner, so custom nav bars inset their leading item there (`NBWindowControls.leadingInset`, iPad hardware only). Revisit if Apple makes glass mandatory for system chrome, or if the design language changes.
+
+---
+
+## [SHARED] Independence Disclaimer — App Review 4.1
+*2026-10-08*
+
+Settings → About (iOS) and the web auth footer state that Bsky Dreams is independent and not affiliated with or endorsed by Bluesky Social, PBC. A brand name inside an app's name is the trigger App Review uses for guideline 4.1 (copycats); the sibling BOBA app was rejected on exactly this in June 2026. The same sentence belongs in App Review notes on every submission.

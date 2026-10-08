@@ -8140,3 +8140,25 @@ html[data-theme="dark"] .theme-toggle-btn {
   outline: 3px solid var(--color-link);
   outline-offset: 2px;
 }
+
+.auth-disclaimer {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  text-align: center;
+}
+
+/* Skip link: off-screen until keyboard-focused (WCAG 2.4.1). */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 10000;
+  padding: 8px 12px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 2px solid var(--nb-black);
+  font-weight: 700;
+}
+.skip-link:focus { top: 8px; }
+.view:focus { outline: none; }
