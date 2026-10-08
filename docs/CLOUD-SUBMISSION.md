@@ -28,8 +28,25 @@ path + bundle id are STALE (it predates the current `app.bskydreams.ios` / space
    the repo-root **`BskyDreams.xcworkspace`** (the project path has spaces + is two levels deep, so the
    tooling quotes it and builds the workspace), creates App Store profiles for **both** embedded bundle
    ids — `app.bskydreams.ios` and `app.bskydreams.ios.ShareExtension` — and uploads to App Store Connect.
-3. **Finish in App Store Connect (web):** the build processes, then on the Bsky Dreams record
-   (id6760909675) → iOS platform → **select the build** → **Submit for Review**.
+3. **Submit for review — by API, no App Store Connect UI.** `tools/asc_release.py` (ported from
+   UniversalAppTemplate) opens/renames the App Store version to `MARKETING_VERSION`, waits for the
+   build to go VALID (10–30 min after upload), attaches it, sets What's New, and submits via the
+   `reviewSubmissions` → `reviewSubmissionItems` → `submitted:true` flow. Pure REST, so it runs fine
+   from the beta-OS dev Mac (needs PyJWT — `/usr/bin/python3` has it) or in the cloud:
+   ```
+   # local (team key already at ~/.appstoreconnect/private_keys; ids in Archive-Watch's env file)
+   set -a; . ../Archive-Watch/tools/asc-credentials.env; set +a
+   /usr/bin/python3 tools/asc_release.py status
+   /usr/bin/python3 tools/asc_release.py ship --platform ios --notes-file whats-new.txt \
+       --wait-build-minutes 40 --submit
+   # or cloud (ubuntu runner)
+   gh workflow run appstore-submit.yml -f mode=ship -f submit=true -f release_notes="…"
+   ```
+   Traps (all handled in the script): the obvious `appStoreVersionSubmissions` endpoint is deprecated
+   and answers a misleading 403; an uploaded build does not create a version; attaching an
+   unprocessed build fails with a confusing relationship error; Apple refuses review with no
+   What's New. Export compliance is answered in Info.plist (`ITSAppUsesNonExemptEncryption = NO`).
+   A failed build run may still have consumed its build number — bump before retrying.
 
 **Signing** is MANUAL via `.p12` secrets (cloud signing fails for this team's API key). They're shared
 across the team's apps (team `L2G756LY8N`) and already set: `APPLE_DIST_P12`, `APPLE_INSTALLER_P12`,

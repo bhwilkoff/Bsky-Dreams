@@ -1,0 +1,151 @@
+name: App Store submit (version, What's New, review)
+
+# Open the App Store version, attach the build, set What's New, and SUBMIT FOR REVIEW — every
+# Apple platform the app ships, no App Store Connect UI. The binary comes from appstore-build.yml,
+# which already runs `ship` itself when dispatched with notes; this is the finisher for a build
+# uploaded without them, and the read-only status/audit.
+#
+#   status  — read-only: per platform, the live version, the in-progress one, the build's state
+#   ship    — tools/asc_release.py: open/rename the version, wait for VALID, attach, notes, submit
+#
+# Ported from UniversalAppTemplate (iOS-only here). Runbook: docs/CLOUD-SUBMISSION.md. The trap worth repeating here: the obvious endpoint
+# (appStoreVersionSubmissions) is DEPRECATED and answers 403, which reads as "not permitted" rather
+# than "use the other one". And a build number exists once PER PLATFORM — any query that does not
+# filter by preReleaseVersion.platform attaches a random platform's build.
+#
+# INPUTS ARRIVE AS ENVIRONMENT, never pasted into the script. Pasted, a What's New containing a
+# double quote closes the shell string, --notes never reaches the tool, and Apple refuses every
+# submission for a missing whatsNew. Free text pasted into a shell line is also an injection route.
+#
+# REQUIRED SECRETS (already set for appstore-build.yml): ASC_KEY_P8 / ASC_KEY_ID / ASC_ISSUER_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to do'
+        required: true
+        default: status
+        type: choice
+        options: [status, ship]
+      platform:
+        description: 'Platform (Bsky Dreams ships iOS only)'
+        required: true
+        default: ios
+        type: choice
+        options: [ios]
+      version:
+        description: 'ship: App Store version string (blank = MARKETING_VERSION)'
+        required: false
+        type: string
+      build:
+        description: 'ship/status: build number (blank = CURRENT_PROJECT_VERSION)'
+        required: false
+        type: string
+      release_notes:
+        description: "ship: What's New (required with submit)"
+        required: false
+        type: string
+      release_type:
+        description: 'ship: how it goes live once approved (blank = leave it)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'AFTER_APPROVAL', 'MANUAL']
+      submit:
+        description: 'ship: actually send for review. Unchecked = prepare only.'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'ship/upload: print the plan, change nothing'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: appstore-submit
+  cancel-in-progress: false
+
+env:
+  APP_BUNDLE: app.bskydreams.ios
+  APP_STORE_PLATFORMS: ios
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest        # pure REST — no Xcode, no macOS runner needed
+    timeout-minutes: 60           # ship waits up to 40 min for the build to go VALID
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install --quiet PyJWT cryptography
+
+      # The secret is base64, exactly as appstore-build.yml treats it. Passing it through raw fails
+      # with "Unable to load PEM file ... MalformedFraming".
+      - name: Write the ASC API key
+        env:
+          ASC_KEY_P8_B64: ${{ secrets.ASC_KEY_P8 }}
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          for v in ASC_KEY_P8_B64 KID ISS; do
+            [ -n "${!v:-}" ] || { echo "::error::secret for $v is missing"; exit 1; }
+          done
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s' "$ASC_KEY_P8_B64" | base64 -d > ~/.appstoreconnect/private_keys/AuthKey_${KID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${KID}.p8
+          echo "ASC_KEY_ID=$KID" >> "$GITHUB_ENV"
+          echo "ASC_ISSUER_ID=$ISS" >> "$GITHUB_ENV"
+
+      - name: Status before
+        if: inputs.mode == 'status' || inputs.mode == 'ship'
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          args=(status)
+          if [ -n "$BUILD" ]; then args+=(--build "$BUILD"); fi
+          python3 tools/asc_release.py "${args[@]}"
+
+      - name: Ship
+        if: inputs.mode == 'ship'
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          NOTES: ${{ inputs.release_notes }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          SUBMIT: ${{ inputs.submit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        # Every optional flag is an `if … fi`, never `[ -n "$X" ] && args+=(…)`: that one-liner
+        # returns 1 when the input is empty, and as the last line of a `bash -e` step (or of a
+        # function) that status fails the step. Mid-script it is harmless, until someone reorders.
+        run: |
+          set -euo pipefail
+          args=(ship --platform "$PLATFORM" --wait-build-minutes 40)
+          if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi
+          if [ -n "$BUILD" ]; then args+=(--build "$BUILD"); fi
+          if [ -n "$NOTES" ]; then
+            printf '%s' "$NOTES" > "$RUNNER_TEMP/whats-new.txt"
+            args+=(--notes-file "$RUNNER_TEMP/whats-new.txt")
+          fi
+          if [ -n "$RELEASE_TYPE" ]; then args+=(--release-type "$RELEASE_TYPE"); fi
+          if [ "$SUBMIT" = "true" ]; then args+=(--submit); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 tools/asc_release.py "${args[@]}"
+
+      # The tool's own success message is not evidence — read the state back.
+      - name: Status after
+        if: always() && inputs.mode == 'ship'
+        env:
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          args=(status)
+          if [ -n "$BUILD" ]; then args+=(--build "$BUILD"); fi
+          python3 tools/asc_release.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
