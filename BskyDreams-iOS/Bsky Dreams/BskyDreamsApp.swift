@@ -79,6 +79,10 @@ struct BskyDreamsApp: App {
     /// migration-failed store can never hard-crash the app at launch: try the
     /// on-disk store, then fall back to an in-memory store (the app still runs;
     /// local seen/saved data just won't persist this session).
+    /// Built ONCE. `body` re-runs on every color-scheme change, so constructing the
+    /// container there opened a fresh store (and dropped @Query contexts) each time.
+    private static let sharedModelContainer = makeModelContainer()
+
     private static func makeModelContainer() -> ModelContainer {
         let schema = Schema([SeenPost.self, SavedSearch.self, CachedPreferences.self])
         do {
@@ -285,6 +289,6 @@ struct BskyDreamsApp: App {
                     }
                 }
         }
-        .modelContainer(BskyDreamsApp.makeModelContainer())
+        .modelContainer(BskyDreamsApp.sharedModelContainer)
     }
 }

@@ -447,20 +447,36 @@ struct ModerationPrefs {
     ]
 }
 
-enum DiscoverEngine {
-    private static let iso: ISO8601DateFormatter = {
+/// AT Protocol timestamps, parsed once-cached. Bluesky timestamps usually carry
+/// fractional seconds, which a default ISO8601DateFormatter REJECTS (returns nil) —
+/// that silently blanked notification + DM-list times. Formatters are expensive;
+/// never build them per render.
+enum ATDate {
+    private static let frac: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
-    private static let isoNoFrac: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
+    private static let plain = ISO8601DateFormatter()
+    private static let relativeFmt: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
         return f
     }()
 
+    static func parse(_ s: String) -> Date? { frac.date(from: s) ?? plain.date(from: s) }
+
+    /// "5 min. ago"-style relative label; empty when unparseable.
+    static func relative(_ s: String) -> String {
+        guard let d = parse(s) else { return "" }
+        return relativeFmt.localizedString(for: d, relativeTo: Date())
+    }
+}
+
+enum DiscoverEngine {
+
     static func date(_ s: String) -> Date {
-        iso.date(from: s) ?? isoNoFrac.date(from: s) ?? Date()
+        ATDate.parse(s) ?? Date()
     }
 
     /// Hashtags for a post — from the structured `tags` field plus any `#word` in the text.

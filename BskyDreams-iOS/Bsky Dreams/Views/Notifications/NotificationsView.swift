@@ -256,9 +256,9 @@ struct NotificationGroupRowView: View {
                         .lineLimit(2)
                 }
 
-                let formatter = RelativeDateTimeFormatter()
-                if let date = ISO8601DateFormatter().date(from: notification.indexedAt) {
-                    Text(formatter.localizedString(for: date, relativeTo: Date()))
+                let when = ATDate.relative(notification.indexedAt)
+                if !when.isEmpty {
+                    Text(when)
                         .font(.inter(12))
                         .foregroundStyle(Color.nbTextTertiary)
                 }

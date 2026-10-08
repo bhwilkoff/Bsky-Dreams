@@ -29,6 +29,8 @@ struct SearchView: View {
     @State private var filterUntil = ""
     @State private var filterLang = ""
     @State private var hideAdult = true
+    /// The "Hide adult content" toggle, actually applied (it used to be decorative).
+    private var visiblePosts: [PostView] { hideAdult ? posts.filter { !$0.isAdultContent } : posts }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -288,12 +290,12 @@ struct SearchView: View {
                 } else {
                     // Results
                     if mode == .posts {
-                        ForEach(posts) { post in
+                        ForEach(visiblePosts) { post in
                             PostCardView(post: post)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 4)
                                 .onAppear {
-                                    if post.uri == posts.last?.uri {
+                                    if post.uri == visiblePosts.last?.uri {
                                         Task { await searchMore() }
                                     }
                                 }

@@ -563,7 +563,6 @@ struct ComposeView: View {
         let capturedLinkEmbed = linkEmbed
         let capturedQuotePost = quotePost
 
-        let facets = buildFacets(from: capturedText)
         let replyRef: PostReplyRef? = replyTo.map { parent in
             let root = parent.record.reply?.root ?? StrongRef(uri: parent.uri, cid: parent.cid)
             return PostReplyRef(root: root, parent: StrongRef(uri: parent.uri, cid: parent.cid))
@@ -609,8 +608,7 @@ struct ComposeView: View {
                     videoAlt: videoAlt,
                     linkEmbed: effectiveLinkEmbed,
                     quoteUri: capturedQuotePost?.uri,
-                    quoteCid: capturedQuotePost?.cid,
-                    facets: facets
+                    quoteCid: capturedQuotePost?.cid
                 )
                 Haptics.success()
             } catch {
@@ -624,29 +622,6 @@ struct ComposeView: View {
                 try? await UNUserNotificationCenter.current().add(request)
             }
         }
-    }
-
-    private func buildFacets(from text: String) -> [[String: Any]] {
-        var facets: [[String: Any]] = []
-
-        // Detect URLs
-        let types: NSTextCheckingResult.CheckingType = [.link]
-        if let detector = try? NSDataDetector(types: types.rawValue) {
-            let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
-            for match in matches {
-                guard let range = Range(match.range, in: text), let url = match.url else { continue }
-                let preSlice = String(text[text.startIndex..<range.lowerBound])
-                let byteStart = Array(preSlice.utf8).count
-                let matchSlice = String(text[range])
-                let byteEnd = byteStart + Array(matchSlice.utf8).count
-                facets.append([
-                    "index": ["byteStart": byteStart, "byteEnd": byteEnd],
-                    "features": [["$type": "app.bsky.richtext.facet#link", "uri": url.absoluteString]]
-                ])
-            }
-        }
-
-        return facets
     }
 }
 

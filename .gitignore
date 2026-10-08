@@ -73,3 +73,4 @@ claude-epic-status-line/
 tools/asc-credentials.env
 AuthKey_*.p8
 *.p12
+__pycache__/

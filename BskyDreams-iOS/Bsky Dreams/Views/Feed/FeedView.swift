@@ -27,6 +27,9 @@ struct FeedView: View {
     @State private var scrollToTopTrigger = 0
     @State private var discoverLooped = false
     @State private var autoFetchCount = 0
+    /// Bumped on tab switch so an in-flight load for the OLD tab can't land its
+    /// results (or cursors) into the new one.
+    @State private var loadGeneration = 0
     /// Per-post "why this is in Discover" reason chips (Discover mode only).
     @State private var whyReasons: [String: String] = [:]
 
@@ -234,6 +237,8 @@ struct FeedView: View {
                         cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
                         discoverLooped = false
                         autoFetchCount = 0
+                        loadGeneration += 1
+                        isLoading = false
                         Task { await loadFeed() }
                     }
                 } label: {
@@ -325,9 +330,10 @@ struct FeedView: View {
 
     private func loadFeed(loadMore: Bool = false) async {
         guard !isLoading else { return }
+        let generation = loadGeneration
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
 
         do {
             let mergedFeed: [FeedItem]
@@ -347,6 +353,7 @@ struct FeedView: View {
                 // distinct from the ranked discovery feeds. Honors your moderation.
                 let fetchCursor = loadMore ? cursor : nil
                 let timeline = try await ATProtocolClient.shared.getTimeline(limit: 40, cursor: fetchCursor)
+                guard generation == loadGeneration else { return }
                 cursor = timeline.cursor
 
                 var seen = Set<String>()
@@ -369,6 +376,7 @@ struct FeedView: View {
 
                 let p = try await primary
                 let f = await friends
+                guard generation == loadGeneration else { return }
                 cursor = p.cursor
                 cursorWithFriends = f?.cursor
 
@@ -403,6 +411,7 @@ struct FeedView: View {
                 let hasMore = cursor != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
                 if newItems.isEmpty && hasMore && autoFetchCount < 3 {
                     autoFetchCount += 1
+                    isLoading = false   // release our own guard, or the recursion is a no-op
                     await loadFeed(loadMore: true)
                 } else {
                     autoFetchCount = 0
@@ -424,6 +433,7 @@ struct FeedView: View {
                 autoFetchCount = 0
             }
         } catch {
+            guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }

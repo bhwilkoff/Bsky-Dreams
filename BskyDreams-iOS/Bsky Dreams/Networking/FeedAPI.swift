@@ -111,6 +111,72 @@ extension ATProtocolClient {
         return try await postDict("com.atproto.repo.createRecord", body: body)
     }
 
+    /// Like (`on`) or unlike a post. Returns the like record URI to keep for the
+    /// NEXT toggle — `post.viewer.like` is a load-time snapshot, so a post liked
+    /// this session has no URI there and unliking it would like it again.
+    func setLiked(_ on: Bool, post: PostView, recordURI: String?, did: String) async throws -> String? {
+        if on { return try await likePost(uri: post.uri, cid: post.cid, did: did).uri }
+        if let recordURI { try await unlikePost(likeUri: recordURI, did: did) }
+        return nil
+    }
+
+    /// Repost counterpart of `setLiked` — same stale-snapshot reason.
+    func setReposted(_ on: Bool, post: PostView, recordURI: String?, did: String) async throws -> String? {
+        if on { return try await repost(uri: post.uri, cid: post.cid, did: did).uri }
+        if let recordURI { try await unrepost(repostUri: recordURI, did: did) }
+        return nil
+    }
+
+    /// AT Protocol rich-text facets for `text`, with UTF-8 BYTE offsets.
+    /// Mirrors the official client's detection: links, `@handle.domain` mentions
+    /// (skipped if the handle doesn't resolve), and `#tags` (trailing punctuation
+    /// trimmed, no all-digit tags, ≤64 chars).
+    func detectFacets(in text: String) async -> [[String: Any]] {
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+        func bytes(_ r: NSRange) -> (Int, Int) {
+            let start = ns.substring(to: r.location).utf8.count
+            return (start, start + ns.substring(with: r).utf8.count)
+        }
+        func facet(_ r: NSRange, _ feature: [String: Any]) -> [String: Any] {
+            let (s, e) = bytes(r)
+            return ["index": ["byteStart": s, "byteEnd": e], "features": [feature]]
+        }
+        var facets: [[String: Any]] = []
+
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            for m in detector.matches(in: text, range: whole) {
+                guard let url = m.url, url.scheme == "http" || url.scheme == "https" else { continue }
+                facets.append(facet(m.range, ["$type": "app.bsky.richtext.facet#link", "uri": url.absoluteString]))
+            }
+        }
+
+        if let re = try? NSRegularExpression(pattern: #"(?:^|[\s(])(@([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+))"#) {
+            for m in re.matches(in: text, range: whole) {
+                var handle = ns.substring(with: m.range(at: 2))
+                var range = m.range(at: 1)
+                while handle.hasSuffix(".") || handle.hasSuffix("-") {   // "@ben.bsky.social." at sentence end
+                    handle.removeLast(); range.length -= 1
+                }
+                guard let did = try? await resolveHandle(handle: handle) else { continue }
+                facets.append(facet(range, ["$type": "app.bsky.richtext.facet#mention", "did": did]))
+            }
+        }
+
+        if let re = try? NSRegularExpression(pattern: #"(?:^|\s)([#＃]([^\s#＃]+))"#) {
+            for m in re.matches(in: text, range: whole) {
+                var tag = ns.substring(with: m.range(at: 2))
+                var range = m.range(at: 1)
+                while let last = tag.unicodeScalars.last, CharacterSet.punctuationCharacters.contains(last) {
+                    tag.unicodeScalars.removeLast(); range.length -= (String(last) as NSString).length
+                }
+                guard !tag.isEmpty, tag.count <= 64, !tag.allSatisfy(\.isNumber) else { continue }
+                facets.append(facet(range, ["$type": "app.bsky.richtext.facet#tag", "tag": tag]))
+            }
+        }
+        return facets
+    }
+
     func unrepost(repostUri: String, did: String) async throws {
         let rkey = repostUri.components(separatedBy: "/").last ?? ""
         try await postVoid("com.atproto.repo.deleteRecord", body: [
@@ -131,8 +197,12 @@ extension ATProtocolClient {
         linkEmbed: ExternalCard? = nil,
         quoteUri: String? = nil,
         quoteCid: String? = nil,
-        facets: [[String: Any]] = []
+        facets explicitFacets: [[String: Any]]? = nil
     ) async throws -> CreateRecordResponse {
+        // Every compose surface gets links, @mentions (resolved to DIDs — without a
+        // mention facet the person is NOT notified) and #hashtags for free.
+        let facets: [[String: Any]]
+        if let explicitFacets { facets = explicitFacets } else { facets = await detectFacets(in: text) }
         var record: [String: Any] = [
             "$type": "app.bsky.feed.post",
             "text": text,

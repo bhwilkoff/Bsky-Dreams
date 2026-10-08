@@ -22,15 +22,8 @@ struct PostView: Identifiable, Hashable {
     var rkey: String { uri.components(separatedBy: "/").last ?? "" }
 
     var relativeTime: String {
-        let date: Date?
-        // AT Protocol timestamps often include fractional seconds — try both parsers
-        let withFractions = ISO8601DateFormatter()
-        withFractions.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        date = withFractions.date(from: indexedAt) ?? ISO8601DateFormatter().date(from: indexedAt)
-        guard let date else { return "now" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        let label = ATDate.relative(indexedAt)
+        return label.isEmpty ? "now" : label
     }
 
     static func == (lhs: PostView, rhs: PostView) -> Bool { lhs.uri == rhs.uri }

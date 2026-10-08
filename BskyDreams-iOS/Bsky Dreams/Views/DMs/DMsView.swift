@@ -313,10 +313,7 @@ struct ConversationRowView: View {
     }
 
     private func relativeTime(_ iso: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: iso) else { return "" }
-        let fmt = RelativeDateTimeFormatter()
-        fmt.unitsStyle = .abbreviated
-        return fmt.localizedString(for: date, relativeTo: Date())
+        ATDate.relative(iso)
     }
 }
 

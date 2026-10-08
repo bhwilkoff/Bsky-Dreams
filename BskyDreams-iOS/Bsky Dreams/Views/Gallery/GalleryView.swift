@@ -168,6 +168,8 @@ struct GalleryCardView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @State private var isLiked: Bool = false
+    @State private var likeURI: String?
+    @State private var repostURI: String?
     @State private var likeCount: Int = 0
     @State private var isReposted: Bool = false
     @State private var repostCount: Int = 0
@@ -324,6 +326,8 @@ struct GalleryCardView: View {
 
     private func syncState() {
         isLiked = post.viewer?.like != nil
+        likeURI = post.viewer?.like
+        repostURI = post.viewer?.repost
         likeCount = post.likeCount ?? 0
         isReposted = post.viewer?.repost != nil
         repostCount = post.repostCount ?? 0
@@ -337,11 +341,7 @@ struct GalleryCardView: View {
         likeCount += isLiked ? 1 : -1
         Task {
             do {
-                if wasLiked, let likeUri = post.viewer?.like {
-                    try await ATProtocolClient.shared.unlikePost(likeUri: likeUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.likePost(uri: post.uri, cid: post.cid, did: did)
-                }
+                likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
             } catch {
                 isLiked = wasLiked
                 likeCount = prevCount
@@ -357,11 +357,7 @@ struct GalleryCardView: View {
         repostCount += isReposted ? 1 : -1
         Task {
             do {
-                if wasReposted, let repostUri = post.viewer?.repost {
-                    try await ATProtocolClient.shared.unrepost(repostUri: repostUri, did: did)
-                } else {
-                    _ = try await ATProtocolClient.shared.repost(uri: post.uri, cid: post.cid, did: did)
-                }
+                repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
             } catch {
                 isReposted = wasReposted
                 repostCount = prevCount

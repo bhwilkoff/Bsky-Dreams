@@ -17,6 +17,7 @@ struct ProfileView: View {
     @State private var replyingToURI: String? = nil
     @State private var isMuted = false
     @State private var isBlocked = false
+    @State private var blockURI: String?
     @State private var showMuteConfirm = false
     @State private var showBlockConfirm = false
     @State private var showReportSheet = false
@@ -82,11 +83,12 @@ struct ProfileView: View {
             Button(isMuted ? "Unmute" : "Mute", role: isMuted ? .none : .destructive) { toggleMute() }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog("Block @\(profile?.handle ?? "")?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
-            Button("Block", role: .destructive) { performBlock() }
+        .confirmationDialog(isBlocked ? "Unblock @\(profile?.handle ?? "")?" : "Block @\(profile?.handle ?? "")?",
+                            isPresented: $showBlockConfirm, titleVisibility: .visible) {
+            Button(isBlocked ? "Unblock" : "Block", role: isBlocked ? .none : .destructive) { toggleBlock() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("They won't be able to interact with you.")
+            Text(isBlocked ? "You'll see each other's posts again." : "They won't be able to interact with you.")
         }
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(title: "Report Account") { reason in
@@ -397,16 +399,25 @@ struct ProfileView: View {
         }
     }
 
-    private func performBlock() {
+    private func toggleBlock() {
         guard let myDid = auth.session?.did, let did = profile?.did else { return }
+        let unblocking = isBlocked
         Task {
             do {
-                _ = try await ATProtocolClient.shared.blockActor(did: did, myDid: myDid)
-                isBlocked = true
+                if unblocking, let blockURI {
+                    try await ATProtocolClient.shared.unblockActor(blockUri: blockURI, myDid: myDid)
+                    self.blockURI = nil
+                    isBlocked = false
+                } else if !unblocking {
+                    blockURI = try await ATProtocolClient.shared.blockActor(did: did, myDid: myDid).uri
+                    isBlocked = true
+                }
                 Haptics.success()
             } catch {
                 Haptics.error()
-                errorMessage = "Couldn't block this account. \(error.localizedDescription)"
+                errorMessage = unblocking
+                    ? "Couldn't unblock this account. \(error.localizedDescription)"
+                    : "Couldn't block this account. \(error.localizedDescription)"
             }
         }
     }
@@ -422,6 +433,7 @@ struct ProfileView: View {
             followUri = p.viewer?.following
             isMuted = p.viewer?.muted == true
             isBlocked = p.viewer?.blocking != nil
+            blockURI = p.viewer?.blocking
             await loadPosts()
         } catch {
             errorMessage = "Couldn't load this profile. \(error.localizedDescription)"

@@ -303,7 +303,11 @@ final class ATProtocolClient {
             throw APIError.invalidResponse
         }
 
-        if httpResponse.statusCode == 401 {
+        // An expired access token is 401 — or 400 `ExpiredToken` from the PDS.
+        let tokenExpired = httpResponse.statusCode == 401
+            || (httpResponse.statusCode == 400
+                && (try? decoder.decode(ATError.self, from: data))?.error == "ExpiredToken")
+        if tokenExpired {
             // Refresh and retry once
             await authManager?.refreshSession()
             guard let auth = authManager, let newSession = auth.session else {
