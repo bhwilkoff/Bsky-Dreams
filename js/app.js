@@ -5,11 +5,6 @@
  * All API calls go through api.js. All auth operations go through auth.js.
  */
 
-// Apply saved theme immediately on load (before DOM ready, prevent flash)
-(function() {
-  const saved = localStorage.getItem('bsky_theme');
-  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-})();
 
 (function () {
   'use strict';
@@ -593,6 +588,12 @@
   const moonSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   const sunSVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 
+  /** Saved choice wins; otherwise follow the OS (mirrors js/theme-boot.js). */
+  function prefersDark() {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
   function applyTheme(isDark) {
     if (isDark) {
       document.documentElement.setAttribute('data-theme', 'dark');
@@ -606,7 +607,7 @@
   }
 
   // Apply saved theme on page load
-  applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+  applyTheme(prefersDark());
 
   /* --- Accent color --- */
   function applyAccentColor(accent, accentDark, accentLight) {
@@ -683,7 +684,7 @@
     }
 
     syncAccentSwatches();
-    applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+    applyTheme(prefersDark());
 
     settingsModal.hidden = false;
     closeSidebar();
@@ -803,6 +804,59 @@
     const fb = window._bskyAvatarFallback;
     if (fb && img.matches(AVATAR_IMG) && img.getAttribute('src') !== fb) img.src = fb;
   }, true);
+
+  /*
+   * Modal dialogs (keyboard + screen reader): on open, focus moves inside; Tab is
+   * trapped; Escape closes the ones without their own handler; on close, focus
+   * returns to whatever opened it. Watching `hidden` covers every open/close path.
+   */
+  (function manageDialogs() {
+    const ESCAPE_CLOSE = { 'settings-modal': 'settings-modal-close', 'quote-modal': 'quote-modal-close', 'engagers-overlay': 'engagers-back' };
+    const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const dialogs = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')];
+    const opener = new Map();
+    const observer = new MutationObserver((records) => {
+      for (const { target: d } of records) {
+        if (d.hidden) {
+          const back = opener.get(d);
+          opener.delete(d);
+          if (back && back.isConnected) back.focus();
+        } else if (!opener.has(d)) {
+          opener.set(d, document.activeElement);
+          requestAnimationFrame(() => { if (!d.contains(document.activeElement)) d.querySelector(FOCUSABLE)?.focus(); });
+        }
+      }
+    });
+    dialogs.forEach((d) => observer.observe(d, { attributes: true, attributeFilter: ['hidden'] }));
+    document.addEventListener('keydown', (e) => {
+      const top = dialogs.filter((d) => !d.hidden).pop();
+      if (!top) return;
+      if (e.key === 'Escape' && ESCAPE_CLOSE[top.id]) {
+        $(ESCAPE_CLOSE[top.id])?.click();
+      } else if (e.key === 'Tab') {
+        const items = [...top.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+  })();
+
+  /*
+   * Offline state (lime, matching iOS NBOfflineBanner): a fetch made offline used
+   * to surface only as a generic "Failed to fetch".
+   */
+  (function offlineBanner() {
+    const bar = document.createElement('div');
+    bar.className = 'offline-banner';
+    bar.setAttribute('role', 'status');
+    bar.textContent = 'You\'re offline — showing what\'s already loaded.';
+    bar.hidden = navigator.onLine;
+    document.body.appendChild(bar);
+    window.addEventListener('offline', () => { bar.hidden = false; });
+    window.addEventListener('online',  () => { bar.hidden = true; });
+  })();
 
   function showBanner(text, isError = false) {
     const banner = document.createElement('div');
@@ -3373,7 +3427,7 @@
             searchScrollObserver.disconnect();
           }
         } catch (err) {
-          console.error('Search infinite scroll error:', err.message);
+          console.error('Search infinite scroll error:', err.message); showBanner('Couldn\'t load more results.', true);
         } finally {
           searchScrollLoading = false;
         }
@@ -3532,7 +3586,7 @@
               btn.setAttribute('aria-label', `Unfollow @${actor.handle}`);
             }
           } catch (err) {
-            console.error('Follow error:', err.message);
+            console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true);
           } finally {
             btn.disabled = false;
           }
@@ -3592,7 +3646,7 @@
           try {
             if (nowFollow && curUri) { await API.unfollowActor(curUri); btn.classList.remove('following'); btn.textContent = 'Follow'; btn.dataset.followUri = ''; }
             else { const r = await API.followActor(actor.did); btn.classList.add('following'); btn.textContent = 'Following'; btn.dataset.followUri = r.uri || ''; }
-          } catch (err) { console.error('Follow error:', err.message); }
+          } catch (err) { console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true); }
           finally { btn.disabled = false; }
         });
         header.appendChild(followBtn);
@@ -4471,7 +4525,7 @@
             btn.setAttribute('aria-label', `Unfollow @${profile.handle}`);
           }
         } catch (err) {
-          console.error('Follow error:', err.message);
+          console.error('Follow error:', err.message); showBanner('Couldn\'t update follow.', true);
         } finally {
           btn.disabled = false;
         }
@@ -5121,7 +5175,7 @@
         tvQueue = tvQueue.concat(found);
         updateQueueCount();
       } catch (err) {
-        console.warn('TV fetch error:', err.message);
+        console.warn('TV fetch error:', err.message); showBanner('Couldn\'t load more videos.', true);
       }
     }
 
@@ -5475,7 +5529,7 @@
           tvLikeBtn.dataset.likeUri = r.uri || '';
           tvLikeCount.textContent = formatCount((tvCurrent.likeCount || 0) + 1);
         }
-      } catch (err) { console.error('TV like error:', err.message); }
+      } catch (err) { console.error('TV like error:', err.message); showBanner('Couldn\'t like video.', true); }
       tvLikeBtn.disabled = false;
     });
 
@@ -5496,7 +5550,7 @@
           tvRepostBtn.dataset.repostUri = r.uri || '';
           tvRepostCount.textContent = formatCount((tvCurrent.repostCount || 0) + 1);
         }
-      } catch (err) { console.error('TV repost error:', err.message); }
+      } catch (err) { console.error('TV repost error:', err.message); showBanner('Couldn\'t repost video.', true); }
       tvRepostBtn.disabled = false;
     });
 
@@ -6083,7 +6137,7 @@
           btn.dataset.repostUri = result.uri || '';
           countEl.textContent = formatCount(parseFmtCount(countEl.textContent) + 1);
         }
-      } catch (err) { console.error('Repost error:', err.message); }
+      } catch (err) { console.error('Repost error:', err.message); showBanner('Couldn\'t repost.', true); }
       btn.disabled = false;
     });
 
@@ -6681,7 +6735,7 @@
         }
         btn.dataset.likeUri = prevLikeUri;
         countEl.textContent = prevCount;
-        console.error('Like error:', err.message);
+        console.error('Like error:', err.message); showBanner('Couldn\'t update like.', true);
       } finally {
         btn.disabled = false;
       }
@@ -10009,7 +10063,7 @@
       }
     } catch (err) {
       loadingEl.hidden = true;
-      console.warn('DM load error:', err.message);
+      console.warn('DM load error:', err.message); showBanner('Couldn\'t load this conversation.', true);
     }
   }
 

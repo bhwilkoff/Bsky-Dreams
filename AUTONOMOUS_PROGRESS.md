@@ -45,11 +45,11 @@ P1 bugs
 - [ ] Constellation: any single word → profile mode (~10625); only @ / contains '.' / did:
 - [ ] 9 inline onerror= avatar fallbacks blocked by CSP → one delegated capture listener
 P2
-- [ ] Console-only errors → showBanner (follow 3501/3561/4440, repost 6056, like 6654, TV 5090/5444/5465, search scroll 3342, DM list 9942)
-- [ ] Offline banner (lime) via online/offline events
-- [ ] a11y: remove user-scalable=no (index.html:5); dark-mode legible link color; #888 text contrast; modal focus mgmt + Escape; keyboard-openable post cards; aria-live flooding; <main> + skip link
+- [x] Console-only errors → showBanner (follow 3501/3561/4440, repost 6056, like 6654, TV 5090/5444/5465, search scroll 3342, DM list 9942)
+- [x] Offline banner (lime) via online/offline events
+- [~] a11y (done: zoom, dark link color, contrast, modal focus/Esc/trap, link underline; TODO: keyboard-openable post cards, aria-live flooding, <main>+skip link): remove user-scalable=no (index.html:5); dark-mode legible link color; #888 text contrast; modal focus mgmt + Escape; keyboard-openable post cards; aria-live flooding; <main> + skip link
 P3
-- [ ] theme boot script in <head> + prefers-color-scheme default; analytics chart bg in dark
+- [x] theme boot script in <head> + prefers-color-scheme default; analytics chart bg in dark
 - [ ] manifest icons 192/512 + maskable; orientation conflict
 - [ ] defer d3/hls/Readability
 - [ ] dedupe OG-fetch/link-preview ×3, thumbnail upload ×3 (opt tick)
@@ -103,3 +103,5 @@ P3
 ### Tick 5 — 2026-10-08 — opt: -328 lines (dead test views, stale Info plist, unused triggers, preview harness)
 
 ### Tick 6 — 2026-10-08 — iOS logic bugs: paging, DM dupes, Stream moderation, background notif auth (Stream 1Hz timer kept: documented rotation fallback)
+
+### Tick 7 — 2026-10-08 — web a11y + states: zoom, link token, contrast, dialog manager, offline banner, visible errors, theme boot (browser smoke ✅)
