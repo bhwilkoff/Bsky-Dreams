@@ -45,6 +45,7 @@ struct LoginView: View {
                             label: "Handle"
                         )
                         .focused($focusedField, equals: .handle)
+                        .textContentType(.username)   // Password AutoFill
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.emailAddress)
@@ -58,6 +59,7 @@ struct LoginView: View {
                             isSecure: true
                         )
                         .focused($focusedField, equals: .password)
+                        .textContentType(.password)
                         .submitLabel(.done)
                         .onSubmit { signIn() }
 

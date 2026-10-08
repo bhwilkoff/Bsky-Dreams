@@ -449,7 +449,8 @@ struct ArticleCardView: View {
         Task {
             do {
                 likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
-            } catch { isLiked = wasLiked; likeCount = prevCount }
+            } catch { isLiked = wasLiked; likeCount = prevCount
+                store.showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.") }
         }
     }
 
@@ -460,7 +461,8 @@ struct ArticleCardView: View {
         Task {
             do {
                 repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
-            } catch { isReposted = wasReposted; repostCount = prevCount }
+            } catch { isReposted = wasReposted; repostCount = prevCount
+                store.showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.") }
         }
     }
 }
@@ -633,6 +635,20 @@ struct ArticleWebView: UIViewRepresentable {
         weak var mainWebView: WKWebView?
         // Keep extractor alive until JS finishes
         private var extractorWebView: WKWebView?
+        /// True while the main view shows OUR rebuilt Readable HTML. That HTML is the
+        /// article's own markup (inline handlers and all), so it renders with
+        /// JavaScript OFF; tapping a link out of it restores normal browsing.
+        private var renderingExtractedHTML = false
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     preferences: WKWebpagePreferences,
+                     decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+            if webView === mainWebView {
+                if navigationAction.navigationType == .linkActivated { renderingExtractedHTML = false }
+                preferences.allowsContentJavaScript = !renderingExtractedHTML
+            }
+            decisionHandler(.allow, preferences)
+        }
 
         init(url: URL, isReaderMode: Bool, onProgress: ((String?) -> Void)?) {
             self.url = url
@@ -800,6 +816,7 @@ struct ArticleWebView: UIViewRepresentable {
 
                 let styledHTML = self.buildReaderHTML(title: extractedTitle, content: extractedContent)
                 DispatchQueue.main.async { self.onProgress?("Rendering…") }
+                self.renderingExtractedHTML = true
                 self.mainWebView?.loadHTMLString(styledHTML, baseURL: self.url)
                 self.extractorWebView = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.onProgress?(nil) }
@@ -825,7 +842,11 @@ struct ArticleWebView: UIViewRepresentable {
         // MARK: Reader HTML template (matches web app reader style)
 
         private func buildReaderHTML(title: String, content: String) -> String {
-            """
+            let escapedTitle = title
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            return """
             <!DOCTYPE html>
             <html>
             <head>
@@ -908,7 +929,7 @@ struct ArticleWebView: UIViewRepresentable {
             </style>
             </head>
             <body>
-            \(title.isEmpty ? "" : "<h1 class=\"reader-title\">\(title)</h1>")
+            \(title.isEmpty ? "" : "<h1 class=\"reader-title\">\(escapedTitle)</h1>")
             \(content)
             </body>
             </html>

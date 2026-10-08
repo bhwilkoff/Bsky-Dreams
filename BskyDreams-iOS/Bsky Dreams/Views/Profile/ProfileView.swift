@@ -29,7 +29,7 @@ struct ProfileView: View {
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoading && profile == nil {   // pull-to-refresh keeps the profile on screen
                 ProgressView("Loading profile...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let profile {

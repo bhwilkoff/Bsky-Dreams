@@ -27,6 +27,7 @@ struct ComposeView: View {
     var quotePost: PostView? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var auth
+    @Environment(AppStore.self) private var store
 
     @State private var text: String
     @State private var images: [ComposeImage]
@@ -613,7 +614,12 @@ struct ComposeView: View {
                 Haptics.success()
             } catch {
                 Haptics.error()
-                // Sheet is already dismissed — notify the user via a local notification
+                // The sheet is gone: keep the post so the in-app banner can reopen it.
+                store.failedPost = AppStore.FailedPost(text: capturedText, images: capturedImages,
+                                                       video: capturedVideo, quote: capturedQuotePost,
+                                                       reason: error.localizedDescription)
+                // Also notify if the user has already left the app.
+                guard UIApplication.shared.applicationState != .active else { return }
                 let content = UNMutableNotificationContent()
                 content.title = "Post failed"
                 content.body = error.localizedDescription

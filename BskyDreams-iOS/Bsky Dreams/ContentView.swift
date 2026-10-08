@@ -164,6 +164,17 @@ struct MainAppView: View {
                     }
                 }
         )
+        .overlay(alignment: .bottom) {
+            if let failed = store.failedPost {
+                NBErrorBanner(message: "Your post didn't send — \(failed.reason)",
+                              retry: { store.retryFailedPost() },
+                              onDismiss: { store.failedPost = nil })
+                    .padding(.bottom, 24)
+            } else if let message = store.actionError {
+                NBErrorBanner(message: message, onDismiss: { store.actionError = nil })
+                    .padding(.bottom, 24)
+            }
+        }
         .sheet(isPresented: Bindable(store).showComposeSheet, onDismiss: {
             store.composeQuote = nil
             store.composeText = ""
@@ -251,11 +262,16 @@ struct MainAppView: View {
         }
     }
 
+    /// Badges are ambient, best-effort hints: a failed refresh keeps the last count
+    /// (no banner — the views themselves surface real failures).
     private func refreshBadges() async {
-        do {
-            let notifs = try await ATProtocolClient.shared.listNotifications(limit: 1)
-            store.unreadNotificationCount = notifs.notifications.filter { !$0.isRead }.count
-        } catch {}
+        async let notifs = try? ATProtocolClient.shared.unreadNotificationCount()
+        async let convos = try? ATProtocolClient.shared.listConversations(limit: 50)
+        if let n = await notifs { store.unreadNotificationCount = n }
+        if let c = await convos {
+            // Accepted conversations only — requests have their own inbox.
+            store.unreadDMCount = c.convos.filter { $0.status != "request" }.reduce(0) { $0 + $1.unreadCount }
+        }
     }
 
     private func fetchCurrentUserAvatar() async {
@@ -278,6 +294,7 @@ struct SidebarView: View {
 
     @State private var editingChannel: SavedSearch? = nil
     @State private var channelRenameText = ""
+    @State private var confirmSignOut = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -409,12 +426,18 @@ struct SidebarView: View {
             }
             Spacer()
             Button {
-                auth.logout()
+                confirmSignOut = true
             } label: {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(.system(size: 14))
                     .foregroundStyle(Color.red)
                     .padding(8)
+            }
+            .accessibilityLabel("Sign out")
+            // A small icon next to your avatar is easy to hit by accident.
+            .confirmationDialog("Sign out of Bsky Dreams?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+                Button("Sign Out", role: .destructive) { auth.logout() }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .padding(.horizontal, 16)
@@ -923,6 +946,7 @@ struct SettingsView: View {
 
     private func clearSeenPosts() {
         for post in seenPosts { modelContext.delete(post) }
+        if let did = auth.session?.did { Task { await store.clearSeenInCloud(did: did) } }
     }
 
     private func updateAccentColor(_ hex: String) {

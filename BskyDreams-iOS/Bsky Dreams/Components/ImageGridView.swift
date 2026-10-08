@@ -365,10 +365,15 @@ struct ZoomScrollImage: UIViewRepresentable {
             sv.lastResetID = resetID
             sv.clearAndResetZoom()
             guard let url = url else { return }
-            Task.detached(priority: .userInitiated) {
-                guard let data = try? Data(contentsOf: url),
-                      let img = UIImage(data: data) else { return }
-                await MainActor.run { sv.setImage(img) }
+            // URLSession (cached, cancellable) rather than synchronous Data(contentsOf:);
+            // after the await, drop the result if the user has already paged on.
+            Task {
+                guard let (data, _) = try? await URLSession.shared.data(from: url),
+                      let img = await Task.detached(priority: .userInitiated, operation: {
+                          UIImage(data: data)?.preparingForDisplay()
+                      }).value,
+                      sv.lastURL == url else { return }
+                sv.setImage(img)
             }
         } else if sv.lastResetID != resetID {
             // resetID changed (navigated away and back) — reset zoom only, keep image.

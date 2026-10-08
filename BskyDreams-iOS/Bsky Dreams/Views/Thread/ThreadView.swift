@@ -6,6 +6,7 @@ struct ThreadView: View {
 
     @State private var thread: ThreadViewPost?
     @State private var isLoading = true
+    @Environment(NetworkMonitor.self) private var network
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
     @State private var replyingToPost: PostView? = nil
@@ -13,13 +14,28 @@ struct ThreadView: View {
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("Loading conversation...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Full-screen loading only on FIRST load — pull-to-refresh keeps content.
+            if isLoading && thread == nil {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        if network.isOffline { NBOfflineBanner() }
+                        ForEach(0..<3, id: \.self) { _ in NBSkeletonPostRow() }
+                    }
+                    .padding(12)
+                }
+                .accessibilityLabel("Loading conversation")
             } else if let thread {
                 threadContent(thread)
-            } else if let error = errorMessage {
-                ContentUnavailableView(error, systemImage: "bubble.left.and.exclamationmark.bubble.right")
+            } else if errorMessage != nil {
+                VStack(spacing: 12) {
+                    if network.isOffline { NBOfflineBanner() }
+                    NBErrorBanner(message: network.isOffline
+                                    ? "You're offline — this conversation will load when you reconnect."
+                                    : "Couldn't load this conversation.",
+                                  retry: network.isOffline ? nil : { Task { await loadThread() } })
+                    Spacer()
+                }
+                .padding(12)
             }
         }
         .nbNavBar(title: "CONVERSATION", leading: { NBBackButton() })
@@ -169,6 +185,7 @@ struct ThreadView: View {
         do {
             thread = try await ATProtocolClient.shared.getPostThread(uri: uri, depth: 6).thread
         } catch {
+            Haptics.error()
             errorMessage = error.localizedDescription
         }
     }

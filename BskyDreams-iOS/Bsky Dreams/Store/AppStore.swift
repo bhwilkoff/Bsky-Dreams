@@ -44,6 +44,42 @@ final class AppStore {
     var composeQuote: PostView?
     var composeIsPosting = false
     var showComposeSheet = false
+    /// A post whose background upload failed AFTER the sheet closed. Held so the
+    /// user can reopen it intact — the old local-notification-only path lost the
+    /// post silently whenever notifications were off.
+    var failedPost: FailedPost?
+
+    struct FailedPost {
+        let text: String
+        let images: [ComposeImage]
+        let video: ComposeVideo?
+        let quote: PostView?
+        let reason: String
+    }
+
+    /// A short-lived app-level error for actions taken in surfaces without their own
+    /// banner slot (gallery/reader cards). Shown by MainAppView; clears itself.
+    var actionError: String?
+
+    func showActionError(_ message: String) {
+        Haptics.error()
+        actionError = message
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if actionError == message { actionError = nil }
+        }
+    }
+
+    /// Reopen the composer with a failed post's content.
+    func retryFailedPost() {
+        guard let f = failedPost else { return }
+        composeText = f.text
+        composeImages = f.images
+        composeVideo = f.video
+        composeQuote = f.quote
+        failedPost = nil
+        showComposeSheet = true
+    }
 
     // Notifications
     var notifications: [BskyNotification] = []
@@ -232,12 +268,22 @@ final class AppStore {
 
     /// Read-merge-write: fetch cloud record, union with local URIs, write merged result.
     /// This prevents one platform from overwriting the other's seen posts.
+    /// The record holds bare URIs (no timestamps), so the 7-day window can't be
+    /// applied in the cloud — a pure union grew it forever until putRecord failed.
+    /// Local (recent) URIs go first and the list is capped, so old ones age out.
+    static let seenCloudCap = 5000
+
     func saveSeenToCloud(uris: [String], did: String) async {
-        do {
-            let cloudURIs = (try? await ATProtocolClient.shared.getSeenRecord(repo: did)) ?? []
-            let merged = Array(Set(uris).union(cloudURIs))
-            try await ATProtocolClient.shared.putSeenRecord(repo: did, uris: merged)
-        } catch {}
+        let cloudURIs = (try? await ATProtocolClient.shared.getSeenRecord(repo: did)) ?? []
+        var seen = Set<String>()
+        let merged = (uris + cloudURIs).filter { seen.insert($0).inserted }.prefix(Self.seenCloudCap)
+        // Background sync: a miss is retried on the next debounce/background flush.
+        try? await ATProtocolClient.shared.putSeenRecord(repo: did, uris: Array(merged))
+    }
+
+    /// "Clear seen posts" must clear the cloud copy too, or the next merge restores it.
+    func clearSeenInCloud(did: String) async {
+        try? await ATProtocolClient.shared.putSeenRecord(repo: did, uris: [])
     }
 
     /// Fetch the cloud seen-posts record and return the URI list for merging into SwiftData.

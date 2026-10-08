@@ -340,8 +340,14 @@ struct TVView: View {
         }
         .ignoresSafeArea()
         .onAppear { playVideo(at: currentIndex) }
-        .onDisappear { player.pause() }
-        .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)) { _ in
+        .onDisappear {
+            player.pause()
+            // Hand audio back: otherwise music/podcasts the TV interrupted stay paused.
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+        // Only OUR item finishing advances TV — inline feed videos post the same notification.
+        .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)) { note in
+            guard let item = note.object as? AVPlayerItem, item === player.currentItem else { return }
             // Auto-advance to the next video when the current one finishes
             let next = currentIndex + 1
             if next < videos.count {

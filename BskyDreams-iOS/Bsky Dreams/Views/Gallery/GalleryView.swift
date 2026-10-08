@@ -343,8 +343,8 @@ struct GalleryCardView: View {
             do {
                 likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
             } catch {
-                isLiked = wasLiked
-                likeCount = prevCount
+                isLiked = wasLiked; likeCount = prevCount
+                store.showActionError(wasLiked ? "Couldn't remove like." : "Couldn't like post.")
             }
         }
     }
@@ -359,8 +359,8 @@ struct GalleryCardView: View {
             do {
                 repostURI = try await ATProtocolClient.shared.setReposted(!wasReposted, post: post, recordURI: repostURI, did: did)
             } catch {
-                isReposted = wasReposted
-                repostCount = prevCount
+                isReposted = wasReposted; repostCount = prevCount
+                store.showActionError(wasReposted ? "Couldn't undo repost." : "Couldn't repost.")
             }
         }
     }

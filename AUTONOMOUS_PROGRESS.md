@@ -8,8 +8,10 @@ UniversalAppTemplate, fix + improve, and **submit new builds to the App Store**.
   push → `gh workflow run appstore-build.yml -f platform=ios` (cloud = the compile gate).
 - Submit: `tools/asc_release.py ship --platform ios --notes-file … --wait-build-minutes 40 --submit`
   (local, `/usr/bin/python3`, creds from `../Archive-Watch/tools/asc-credentials.env`).
-- Only ONE version can be in review at a time → batch iOS fixes into a release; while a version is
-  WAITING_FOR_REVIEW / IN_REVIEW, keep working (web, next iOS batch) and ship the next build after.
+- **Submit for review ONCE, at loop end** (Ben, 2026-10-08: "You shouldn't submit an interim build
+  for review"). Cloud builds mid-loop are fine as the compile gate / TestFlight. 1.48 (49) was
+  submitted by mistake and withdrawn → version 1.48 is DEVELOPER_REJECTED (editable); `ship` will
+  rename it to the final MARKETING_VERSION and attach the final build.
 - **No local simulators** (Ben, 2026-10-08). Real devices only; cloud build is the compile gate.
 - Web deploys from `main` (GitHub Pages). `main` is stale since 2026-04-01 — all June web work is
   only on the default branch. Merging to main = deploying the live site → needs Ben's go-ahead.
@@ -18,7 +20,6 @@ UniversalAppTemplate, fix + improve, and **submit new builds to the App Store**.
 `tick % 5`: 1,2,4 = iOS · 3 = web · 0 = opt (net-remove lines). Release when an iOS batch is ready.
 
 ## Backlog — iOS
-(iOS surface audit pending — see below when added)
 - [x] Share Extension deployment target 26.2 → 18.6 (was invisible on iOS 18.6–26.1) — 396775a
 - [x] NBImageLoader.downsample read UIScreen off-main → scale captured on main, nonisolated
 - [ ] Accessibility-size layouts: ViewThatFits action bar, @ScaledMetric avatars, .isHeader on section titles (AW iOS-DESIGN §3.5c/§4.5a)
@@ -60,3 +61,38 @@ P3
 - Shipped: `tools/asc_release.py` + `appstore-submit.yml` (17444f0); Share Extension floor fix (396775a).
 - ASC status: live 1.46; build 48 (1.47) uploaded 2026-06-30 never submitted (TestFlight-expired).
 - Next: fold in iOS audit, ship iOS batch 1 → build 49 → submit.
+
+### Tick 1 — 2026-10-08 — iOS batch 1 (built as 1.48/49; review submission withdrawn)
+- Facet crash, offline logout + refresh races, mention/hashtag facets, like/repost URI, unblock,
+  timestamps, feed auto-fetch + tab race, search adult filter, ModelContainer once. Cloud build ✅.
+
+### Tick 2 — 2026-10-08 — web P0 + P1 (873b15c, 0fb8ede)
+- safeUrl/sanitizer/escaping, single signOut; shared refresh, cursor-on-failure, paging re-arm,
+  video pause, DM poll races, CSP-safe avatar fallback, constellation mode.
+
+### Tick 3 — 2026-10-08 — iOS batch 2 (uncommitted→committed below, local compile ✅)
+- Reader Readable mode renders with JS off + escaped title; lightbox loader via URLSession +
+  stale-URL guard; sign-out confirm + label; Password AutoFill; real badge counts (getUnreadCount,
+  DM unread); failed posts kept + retry banner; app-level action-error banner (gallery/reader);
+  TV hands audio back + ignores foreign end notifications; PTR keeps content (thread/profile);
+  thread skeleton/error per contract; seen-cloud record capped + clear clears cloud.
+
+## Remaining iOS backlog (from 2026-10-08 audit)
+- [ ] Dynamic Type: ~120 `.system(size:)` don't scale (RichTextView body!) — DECISIONS claims they do
+- [ ] Dark mode: static nbBlue/raw nbAccent as foreground (~49 sites) → nbAccentLegible/nbLinkColor
+- [ ] Offline banner missing: DMs/Chat, Gallery, TV, Stream, Analytics, Constellation, Timeline
+- [ ] Hand-rolled error states → NBErrorBanner (Feed 285, Gallery 28, DMs 24, Analytics 91)
+- [ ] AsyncImage in churn lists: ImageGridView 57/849/934, Reader 346, TV 518, Stream ×4, Profile 165
+- [ ] Background notif fetch never refreshes token; saveDeliveredIDs keeps random 500
+- [ ] Notifications getPosts >25 URIs not chunked; loadMore w/o cursor refetches page 1 (also Profile)
+- [ ] DMs: optimistic bubble + poll duplicate; poller not cancelled on re-appear
+- [ ] Stream: no moderation filter; 1Hz Timer.publish in body
+- [ ] Gallery duplicate SeenPost inserts; Gallery/Stream pagination stall on all-filtered page
+- [ ] Heavy main-thread work (MainActor default isolation): compose resize/video read/GIF decode
+- [ ] Analytics Retry loads signed-in user instead of viewed account
+- [ ] Notification permission prompt on login screen → after sign-in
+- [ ] VoiceOver: video buttons, retry button, gallery like/repost counts, MARK READ trait
+- [ ] Contrast: white on lime (channel badge, repost icon)
+- [ ] Dead code: SidebarHeaderTest.swift, PostButtonTest.swift, Bsky-Dreams-Info.plist, scrollToTopTrigger×4, Analytics test harness
+- [ ] Share Extension PrivacyInfo.xcprivacy (App Group UserDefaults)
+- [ ] Docs: Analytics is a working Swift Charts view (SCRATCHPAD says shell); link cards are 160pt vertical
