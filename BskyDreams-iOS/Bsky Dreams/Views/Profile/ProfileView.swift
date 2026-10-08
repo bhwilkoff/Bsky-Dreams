@@ -441,7 +441,7 @@ struct ProfileView: View {
     }
 
     private func loadPosts(loadMore: Bool = false) async {
-        guard !postsLoading else { return }
+        guard !postsLoading, !(loadMore && cursor == nil) else { return }   // no cursor = end of feed
         postsLoading = true
         defer { postsLoading = false }
         do {
@@ -450,7 +450,9 @@ struct ProfileView: View {
                 actor: actor, cursor: fetchCursor
             )
             if loadMore {
-                posts.append(contentsOf: response.feed)
+                // Dedupe: duplicate ids in a ForEach render unpredictably.
+                let have = Set(posts.map(\.id))
+                posts.append(contentsOf: response.feed.filter { !have.contains($0.id) })
             } else {
                 posts = response.feed
             }

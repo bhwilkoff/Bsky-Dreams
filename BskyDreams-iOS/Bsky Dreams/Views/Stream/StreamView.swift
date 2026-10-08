@@ -1000,14 +1000,19 @@ struct StreamView: View {
             switch source {
             case .discover:
                 let r = try await ATProtocolClient.shared.getFeed(uri: discoverURI, limit: 20, cursor: feedCursor)
-                posts = r.feed.map { $0.post }; nextCursor = r.cursor
+                posts = r.feed.filter { !DiscoverEngine.shouldHide($0, prefs: store.moderationPrefs) }.map { $0.post }
+                nextCursor = r.cursor
             case .following:
                 let r = try await ATProtocolClient.shared.getTimeline(limit: 20, cursor: feedCursor)
-                posts = r.feed.map { $0.post }; nextCursor = r.cursor
+                posts = r.feed.filter { !DiscoverEngine.shouldHide($0, prefs: store.moderationPrefs) }.map { $0.post }
+                nextCursor = r.cursor
             case .search(let q):
                 let r = try await ATProtocolClient.shared.searchPosts(q: q, sort: "latest", limit: 20, cursor: feedCursor)
                 posts = r.posts; nextCursor = r.cursor
             }
+            // A full-screen, unattended slideshow must never surface adult-labelled
+            // posts or muted/blocked authors — the feeds filter these; Stream didn't.
+            posts = posts.filter { !$0.isAdultContent && $0.author.viewer?.isHidden != true }
             let newSlides = posts.enumerated().flatMap { i, post in
                 buildSlidesFromPost(post, postIndex: nextPostIdx + i)
             }

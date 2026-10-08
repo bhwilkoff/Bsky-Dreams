@@ -9,6 +9,10 @@ struct GalleryView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @State private var seenURISet: Set<String> = []
+    /// URIs marked seen this session. A reference type on purpose: cards insert into
+    /// it without invalidating every card (the value-type snapshot never learned of
+    /// inserts, so a card scrolled back into view inserted a duplicate SeenPost).
+    @State private var markedSeen = SeenURIBox()
 
     @State private var posts: [FeedItem] = []
     @State private var timelineCursor: String?
@@ -65,7 +69,7 @@ struct GalleryView: View {
             LazyVStack(spacing: 0) {
                 Color.clear.frame(height: 0).id("gallery-top")
                 ForEach(posts) { item in
-                    GalleryCardView(post: item.post, seenURIs: seenURISet)
+                    GalleryCardView(post: item.post, seenURIs: seenURISet, markedSeen: markedSeen)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .onAppear {
@@ -156,9 +160,12 @@ struct GalleryView: View {
 
 // MARK: - Gallery Card
 
+final class SeenURIBox { var uris = Set<String>() }
+
 struct GalleryCardView: View {
     let post: PostView
     let seenURIs: Set<String>
+    let markedSeen: SeenURIBox
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
@@ -316,7 +323,7 @@ struct GalleryCardView: View {
     }
 
     private func markSeen() {
-        guard !seenURIs.contains(post.uri) else { return }
+        guard !seenURIs.contains(post.uri), markedSeen.uris.insert(post.uri).inserted else { return }
         modelContext.insert(SeenPost(uri: post.uri, likeCount: post.likeCount ?? 0, repostCount: post.repostCount ?? 0))
     }
 

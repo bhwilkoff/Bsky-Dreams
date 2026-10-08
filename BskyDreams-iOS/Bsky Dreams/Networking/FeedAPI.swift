@@ -72,12 +72,24 @@ extension ATProtocolClient {
         return try await get("app.bsky.feed.searchPosts", params: params)
     }
 
+    /// getPosts accepts at most 25 URIs per call — more fails the whole request,
+    /// so chunk (in parallel, order preserved).
     func getPosts(uris: [String]) async throws -> [PostView] {
         guard !uris.isEmpty else { return [] }
         struct PostsResponse: Decodable { let posts: [PostView] }
-        let items = uris.map { URLQueryItem(name: "uris", value: $0) }
-        let resp: PostsResponse = try await get("app.bsky.feed.getPosts", queryItems: items)
-        return resp.posts
+        let chunks = stride(from: 0, to: uris.count, by: 25).map { Array(uris[$0..<min($0 + 25, uris.count)]) }
+        return try await withThrowingTaskGroup(of: (Int, [PostView]).self) { group in
+            for (i, chunk) in chunks.enumerated() {
+                group.addTask {
+                    let items = chunk.map { URLQueryItem(name: "uris", value: $0) }
+                    let resp: PostsResponse = try await self.get("app.bsky.feed.getPosts", queryItems: items)
+                    return (i, resp.posts)
+                }
+            }
+            var results = [[PostView]](repeating: [], count: chunks.count)
+            for try await (i, posts) in group { results[i] = posts }
+            return results.flatMap { $0 }
+        }
     }
 
     // MARK: - Post Actions

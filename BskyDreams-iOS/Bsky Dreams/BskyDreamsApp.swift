@@ -144,18 +144,22 @@ struct BskyDreamsApp: App {
         return Set(arr)
     }
 
-    /// Persists a set of delivered IDs, keeping only the newest 500.
+    /// Persists delivered IDs, keeping the NEWEST 500. (Trimming `Array(Set)` kept a
+    /// random 500, so recent IDs were dropped and their notifications re-delivered.)
     private static func saveDeliveredIDs(_ ids: Set<String>) {
-        let trimmed = Array(ids).suffix(500)
-        UserDefaults.standard.set(Array(trimmed), forKey: deliveredIDsKey)
+        let existing = UserDefaults.standard.stringArray(forKey: deliveredIDsKey) ?? []
+        let added = ids.subtracting(existing)
+        UserDefaults.standard.set(Array((existing + added).suffix(500)), forKey: deliveredIDsKey)
     }
 
     // MARK: - Background notification check
 
     static func performNotificationCheck() async {
-        // Retrieve session from Keychain for background use
-        let keychain = KeychainManager()
-        guard let session = keychain.loadSession(key: "bsky_session") else { return }
+        // Refresh first: the stored access token expires ~2h after the app was last
+        // opened, after which every background check silently 401'd.
+        let auth = await MainActor.run { AuthManager() }
+        await auth.refreshIfNeeded()
+        guard let session = await MainActor.run(body: { auth.session }) else { return }
         let accessJwt = session.accessJwt
 
         let center = UNUserNotificationCenter.current()
@@ -279,14 +283,6 @@ struct BskyDreamsApp: App {
                 }
                 .onAppear {
                     BskyDreamsApp.scheduleBackgroundRefresh()
-                    // Request notification permission on first launch
-                    Task {
-                        let center = UNUserNotificationCenter.current()
-                        let settings = await center.notificationSettings()
-                        if settings.authorizationStatus == .notDetermined {
-                            _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
-                        }
-                    }
                 }
         }
         .modelContainer(BskyDreamsApp.sharedModelContainer)

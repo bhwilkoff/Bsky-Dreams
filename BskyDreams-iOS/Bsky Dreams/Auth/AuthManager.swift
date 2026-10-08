@@ -77,7 +77,10 @@ final class AuthManager {
     }
 
     private func performRefreshFlow() async {
-        guard let s = session else { return }
+        // Start from the NEWEST tokens in the Keychain: the background notification
+        // check refreshes with its own AuthManager, which rotates the refresh token
+        // out from under this instance's in-memory copy.
+        guard let s = keychain.loadSession(key: sessionKey) ?? session else { return }
         do {
             let refreshed = try await performRefresh(refreshJwt: s.refreshJwt)
             session = refreshed

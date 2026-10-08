@@ -194,6 +194,12 @@ struct MainAppView: View {
             await auth.refreshIfNeeded()
             // Pick up any share that arrived before auth was ready (cold-start from Share Extension)
             store.processPendingShare()
+            // Ask for notification permission once signed in — on the login screen
+            // the prompt arrived before the app had shown why it would notify.
+            let center = UNUserNotificationCenter.current()
+            if await center.notificationSettings().authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+            }
             await refreshBadges()
             await fetchCurrentUserAvatar()
             // Merge cloud seen-posts into local SwiftData on every login/cold start

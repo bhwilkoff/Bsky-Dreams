@@ -140,7 +140,7 @@ struct NotificationsView: View {
         guard !subjectURIs.isEmpty else { return }
         let uniqueURIs = Array(Set(subjectURIs))
         guard let posts = try? await ATProtocolClient.shared.getPosts(uris: uniqueURIs) else { return }
-        let textMap = Dictionary(uniqueKeysWithValues: posts.map { ($0.uri, $0.record.text) })
+        let textMap = Dictionary(posts.map { ($0.uri, $0.record.text) }, uniquingKeysWith: { a, _ in a })
         for i in groups.indices {
             if let subject = groups[i].primary.reasonSubject,
                let text = textMap[subject], !text.isEmpty {
@@ -175,7 +175,7 @@ struct NotificationsView: View {
     }
 
     private func loadMore() async {
-        guard !isLoading else { return }
+        guard !isLoading, cursor != nil else { return }   // nil cursor = end (or not loaded): don't refetch page 1
         isLoading = true
         defer { isLoading = false }
         do {

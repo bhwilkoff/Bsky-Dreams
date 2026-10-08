@@ -83,14 +83,15 @@ P3
 - [ ] Offline banner missing: DMs/Chat, Gallery, TV, Stream, Analytics, Constellation, Timeline
 - [ ] Hand-rolled error states → NBErrorBanner (Feed 285, Gallery 28, DMs 24, Analytics 91)
 - [ ] AsyncImage in churn lists: ImageGridView 57/849/934, Reader 346, TV 518, Stream ×4, Profile 165
-- [ ] Background notif fetch never refreshes token; saveDeliveredIDs keeps random 500
-- [ ] Notifications getPosts >25 URIs not chunked; loadMore w/o cursor refetches page 1 (also Profile)
-- [ ] DMs: optimistic bubble + poll duplicate; poller not cancelled on re-appear
-- [ ] Stream: no moderation filter; 1Hz Timer.publish in body
-- [ ] Gallery duplicate SeenPost inserts; Gallery/Stream pagination stall on all-filtered page
+- [x] Background notif fetch never refreshes token; saveDeliveredIDs keeps random 500
+- [x] Notifications getPosts >25 URIs not chunked; loadMore w/o cursor refetches page 1 (also Profile)
+- [x] DMs: optimistic bubble + poll duplicate; poller not cancelled on re-appear
+- [x] Stream: no moderation filter; 1Hz Timer.publish in body
+- [x] Gallery duplicate SeenPost inserts
+- [ ] Gallery/Stream pagination stall on all-filtered page
 - [ ] Heavy main-thread work (MainActor default isolation): compose resize/video read/GIF decode
-- [ ] Analytics Retry loads signed-in user instead of viewed account
-- [ ] Notification permission prompt on login screen → after sign-in
+- [x] Analytics Retry loads signed-in user instead of viewed account
+- [x] Notification permission prompt on login screen → after sign-in
 - [ ] VoiceOver: video buttons, retry button, gallery like/repost counts, MARK READ trait
 - [ ] Contrast: white on lime (channel badge, repost icon)
 - [x] Dead code removed (-328 lines): test views, stale plist, scrollToTopTrigger ×4, Analytics harness
@@ -100,3 +101,5 @@ P3
 ### Tick 4 — 2026-10-08 — iOS a11y: Dynamic Type for system-font text + dark-mode foregrounds
 
 ### Tick 5 — 2026-10-08 — opt: -328 lines (dead test views, stale Info plist, unused triggers, preview harness)
+
+### Tick 6 — 2026-10-08 — iOS logic bugs: paging, DM dupes, Stream moderation, background notif auth (Stream 1Hz timer kept: documented rotation fallback)

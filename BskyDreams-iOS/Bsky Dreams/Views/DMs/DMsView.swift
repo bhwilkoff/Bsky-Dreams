@@ -692,7 +692,16 @@ struct ChatView: View {
             let existingIds = Set(messages.map { $0.id })
             let incoming = Array(resp.messages.reversed()).filter { !existingIds.contains($0.id) }
             guard !incoming.isEmpty else { return }
-            messages.append(contentsOf: incoming)
+            for msg in incoming {
+                // A send whose echo couldn't be decoded left a "sending-" bubble; the
+                // real message replaces it instead of appearing a second time.
+                if msg.sender?.did == myDid,
+                   let idx = messages.firstIndex(where: { $0.id.hasPrefix("sending-") && $0.text == msg.text }) {
+                    messages[idx] = msg
+                } else {
+                    messages.append(msg)
+                }
+            }
             if let newestId = resp.messages.first?.id {
                 try? await ATProtocolClient.shared.updateRead(
                     convoId: conversation.id,
@@ -707,6 +716,7 @@ struct ChatView: View {
     }
 
     private func startPolling() {
+        pollingTask?.cancel()   // onAppear can fire again (e.g. returning from a sheet)
         pollingTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))

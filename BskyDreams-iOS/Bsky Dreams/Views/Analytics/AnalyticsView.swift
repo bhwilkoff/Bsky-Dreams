@@ -15,6 +15,8 @@ struct AnalyticsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var searchActor = ""
+    /// The account the last load was for — Retry must reload THAT one, not you.
+    @State private var lastActor = ""
     @State private var sortBy: SortOption = .likes
 
     enum SortOption: String, CaseIterable {
@@ -98,7 +100,7 @@ struct AnalyticsView: View {
                             .font(.inter(14))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        Button("Retry") { Task { await loadSelf() } }
+                        Button("Retry") { Task { if lastActor.isEmpty { await loadSelf() } else { await load(actor: lastActor) } } }
                             .nbButton()
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
@@ -475,6 +477,7 @@ struct AnalyticsView: View {
 
     private func load(actor: String) async {
         guard !actor.isEmpty else { return }
+        lastActor = actor
         isLoading = true
         errorMessage = nil
         posts = []
