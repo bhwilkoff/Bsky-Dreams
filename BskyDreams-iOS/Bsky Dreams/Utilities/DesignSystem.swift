@@ -222,14 +222,13 @@ struct NeubrutalistButtonStyle: ButtonStyle {
             // "click" feel more dramatic and unmistakably Neubrutalist.
             let offset: CGFloat = isPressed ? 1 : -3
             let shadowSize: CGFloat = isPressed ? 1 : 4
-            // Buttons always have a bright accent background, so text is always near-black
-            // regardless of color scheme — never near-white on lime/yellow buttons.
             let shadowColor = colorScheme == .dark
                 ? Color.nbBlack.opacity(0.35)  // soft white glow on dark bg
                 : Color.nbShadowColor
             return configuration.label
                 .font(.syne(14))
-                .foregroundStyle(Color(red: 0.04, green: 0.04, blue: 0.04))  // always #0A0A0A
+                .textCase(.uppercase)   // §4.1: buttons are Syne, uppercase
+                .foregroundStyle(Self.labelColor(on: color))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(color)
@@ -237,6 +236,18 @@ struct NeubrutalistButtonStyle: ButtonStyle {
                 .background(shadowColor.offset(x: shadowSize, y: shadowSize))
                 .offset(x: offset, y: offset)
                 .animation(.easeOut(duration: 0.08), value: isPressed)
+        }
+
+        /// Near-black OR white, whichever contrasts more with the fill. Near-black was
+        /// hard-coded for "bright" accents, but the iOS DEFAULT accent is #0047FF:
+        /// black on it is ~3.35:1 (fails AA); white is ~6.3:1. Lime/coral/teal keep black.
+        static func labelColor(on fill: Color) -> Color {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(fill).getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ c: CGFloat) -> CGFloat { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+            let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+            let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
+            return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
         }
     }
 }
@@ -356,6 +367,7 @@ struct NBEmptyState: View {
             VStack(spacing: 6) {
                 Text(title)
                     .font(.syne(20))
+                    .textCase(.uppercase)   // every empty-state title reads the same
                     .foregroundStyle(Color.nbBlack)
                     .multilineTextAlignment(.center)
                 if let message {

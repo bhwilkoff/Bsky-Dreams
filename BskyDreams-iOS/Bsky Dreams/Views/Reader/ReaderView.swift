@@ -359,7 +359,7 @@ struct ArticleCardView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         if let host = URL(string: card.uri)?.host {
-                            Text(host.uppercased())
+                            Text((host.hasPrefix("www.") ? String(host.dropFirst(4)) : host).uppercased())
                                 .font(.syne(10))
                                 .foregroundStyle(Color.nbAccentLegible)
                                 .tracking(1)

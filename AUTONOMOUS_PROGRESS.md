@@ -116,3 +116,12 @@ P3
   UISupportedInterfaceOrientations~ipad made no difference (reverted). OPEN: asked Ben whether the
   physical screen is sideways or only the devicectl capture. App Review tests on iPad → must resolve.
 - iPhone 12 Wi-Fi: `transport None` (Mac can't discover it; same as AW's ATV note) — cable works.
+
+### Tick 10 — 2026-10-08 — device-review fixes (iPhone 12, signed in as test account) ✅ device
+- Adversarial screenshot review of 6 screens. Fixed + re-shot: NeubrutalistButtonStyle label color
+  from fill luminance (black on #0047FF was 3.35:1 → white 6.3:1; all 7 accents handled) + uppercase;
+  empty-state titles uppercase; Search row one ScaledMetric height + shadows; sort toggle joins the
+  mode toggle's component family; Reader strips "www.".
+- Backlog (polish): notifications end-of-list cue; Reader hint banner inset vs cards; nav→content top
+  gap varies 5–11pt; toolbar box heights (MARK READ vs hamburger); notification permission asked
+  seconds after first sign-in → ask at a meaningful moment (HIG).

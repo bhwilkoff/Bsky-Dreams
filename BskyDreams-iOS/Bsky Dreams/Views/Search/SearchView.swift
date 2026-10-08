@@ -10,6 +10,9 @@ struct SearchView: View {
     @Query(sort: \SavedSearch.createdAt) private var savedSearches: [SavedSearch]
 
     @State private var query: String = ""
+    /// One height for every control in the search row (field, GO, save, filters) —
+    /// they were 34/36/40pt with misaligned tops. Scales with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var searchControlHeight: CGFloat = 40
     @State private var mode: AppStore.SearchMode = .posts
     @State private var posts: [PostView] = []
     @State private var actors: [ActorProfile] = []
@@ -146,18 +149,20 @@ struct SearchView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .frame(height: searchControlHeight)
             .background(Color.nbWhite)
             .nbBorder()
+            .nbShadow()
 
             Button(action: performSearch) {
                 Text("GO")
                     .font(.syne(12, weight: .bold))
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
+                    .frame(minWidth: searchControlHeight, minHeight: searchControlHeight)
                     .background(Color.nbAccent)
                     .nbBorder()
+                    .nbShadow()
             }
             .buttonStyle(.plain)
 
@@ -167,10 +172,11 @@ struct SearchView: View {
                     showSaveChannelAlert = true
                 } label: {
                     Image(systemName: "bookmark")
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 10)
+                        .foregroundStyle(Color.nbBlack)
+                        .frame(width: searchControlHeight, height: searchControlHeight)
                         .background(Color.nbWhite)
                         .nbBorder()
+                        .nbShadow()
                 }
                 .accessibilityLabel("Save as channel")
             }
@@ -180,10 +186,11 @@ struct SearchView: View {
                 showFilters.toggle()
             } label: {
                 Image(systemName: "slider.horizontal.3")
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
+                    .foregroundStyle(showFilters ? Color.white : Color.nbBlack)
+                    .frame(width: searchControlHeight, height: searchControlHeight)
                     .background(showFilters ? Color.nbAccent : Color.nbWhite)
                     .nbBorder()
+                    .nbShadow()
             }
             .accessibilityLabel(showFilters ? "Hide filters" : "Show filters")
         }
@@ -261,6 +268,9 @@ struct SearchView: View {
                         .buttonStyle(.plain)
                     }
                     .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    // Same component family as the Posts/People toggle above (border +
+                    // offset shadow); the black fill marks it as the secondary control.
+                    .background(Color.nbBlack.offset(x: 3, y: 3))
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
                 }
