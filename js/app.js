@@ -858,6 +858,20 @@
     window.addEventListener('online',  () => { bar.hidden = true; });
   })();
 
+  /**
+   * Cards open a conversation/profile on click; without this they were
+   * unreachable by keyboard. Enter or Space on the focused card (not on a
+   * button/link inside it) activates it.
+   */
+  function makeActivatable(el) {
+    el.tabIndex = 0;
+    el.addEventListener('keydown', (e) => {
+      if (e.target !== el || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      el.click();
+    });
+  }
+
   function showBanner(text, isError = false) {
     const banner = document.createElement('div');
     banner.className = 'report-success-banner' + (isError ? ' banner-error' : '');
@@ -1832,6 +1846,7 @@
     card.appendChild(strip);
 
     // Clicking the card (not on an image or button) opens the thread
+    makeActivatable(card);
     card.addEventListener('click', () => openThread(post.uri, post.cid || '', author.handle || ''));
 
     // Mark seen immediately at render time — unified cross-interface registry
@@ -2325,6 +2340,7 @@
     card.appendChild(strip);
 
     // Clicking the card (body, not strip buttons) opens the article
+    makeActivatable(card);
     card.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       // Mark as seen on open
@@ -3653,6 +3669,7 @@
       }
       card.appendChild(header);
       if (actor.description) { const bio = document.createElement('p'); bio.className = 'post-text'; bio.textContent = actor.description; card.appendChild(bio); }
+      makeActivatable(card);
       card.addEventListener('click', () => openProfile(actor.handle));
       searchResults.appendChild(card);
     });
@@ -6669,6 +6686,7 @@
     const targetCid = opts.openCid || post.cid;
 
     if (opts.clickable) {
+      makeActivatable(card);
       card.addEventListener('click', (e) => {
         // Hashtag links → trigger search instead of following href="#"
         const hashEl = e.target.closest('[data-hashtag]');
@@ -7095,6 +7113,7 @@
     // Click opens thread from root (or parent if no root)
     const navUri = rootUri || parentPost.uri;
     const navCid = rootCid || parentPost.cid;
+    makeActivatable(card);
     card.addEventListener('click', (e) => {
       e.stopPropagation();
       openThread(navUri, navCid, pAuthor.handle);
@@ -9636,6 +9655,7 @@
           </span>
         </div>
       `;
+      makeActivatable(card);
       card.addEventListener('click', () => openThread(post.uri, post.cid, author.handle));
       scrollInner.appendChild(card);
     });
@@ -11030,6 +11050,7 @@
     });
 
     // Prevent taps inside card from bubbling to SVG background dismiss handler
+    makeActivatable(card);
     card.addEventListener('click', e => e.stopPropagation());
   }
 

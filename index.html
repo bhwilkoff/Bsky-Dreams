@@ -269,7 +269,7 @@
           </label>
           <div id="feed-filter-count" class="feed-filter-count" hidden></div>
         </div>
-        <div id="feed-results" class="feed" aria-live="polite" aria-label="Home feed">
+        <div id="feed-results" class="feed" aria-label="Home feed">
           <div class="feed-empty">
             <p>Your following feed will appear here.</p>
           </div>
@@ -369,7 +369,7 @@
           </button>
         </div>
 
-        <div id="search-results" class="feed" aria-live="polite" aria-label="Search results">
+        <div id="search-results" class="feed" aria-label="Search results">
           <div class="feed-empty">
             <p>Search for posts, people, or topics on BlueSky.</p>
           </div>
@@ -473,7 +473,7 @@
                      multiple aria-label="Choose images to attach">
               <input type="file" id="compose-video-input" class="sr-only"
                      accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach">
-              <span class="char-count" id="compose-char-count" aria-live="polite">300</span>
+              <span class="char-count" id="compose-char-count">300</span>
             </div>
             <div class="compose-actions">
               <div id="compose-error" class="error-banner" hidden role="alert"></div>
@@ -497,8 +497,8 @@
           </button>
           <h2 id="profile-heading" class="thread-heading">Profile</h2>
         </div>
-        <div id="profile-header" class="profile-header" aria-live="polite"></div>
-        <div id="profile-feed" class="feed" aria-live="polite" aria-label="Posts by this person"></div>
+        <div id="profile-header" class="profile-header"></div>
+        <div id="profile-feed" class="feed" aria-label="Posts by this person"></div>
         <div id="profile-load-sentinel" class="gallery-load-sentinel" aria-hidden="true"></div>
       </div>
     </section>
@@ -775,7 +775,7 @@
             Refresh
           </button>
         </div>
-        <div id="notif-list" class="feed" aria-live="polite" aria-label="Notifications">
+        <div id="notif-list" class="feed" aria-label="Notifications">
           <div class="feed-empty"><p>Your notifications will appear here.</p></div>
         </div>
         <div id="notif-load-sentinel" class="gallery-load-sentinel" aria-hidden="true"></div>
@@ -793,7 +793,7 @@
           <h2 id="thread-heading" class="thread-heading">Conversation</h2>
         </div>
 
-        <div id="thread-content" class="thread-content" aria-live="polite">
+        <div id="thread-content" class="thread-content">
           <!-- Thread root + replies rendered here by app.js -->
         </div>
 
@@ -814,7 +814,7 @@
                   aria-label="Reply text"
                 ></textarea>
                 <div class="compose-footer">
-                  <span class="char-count" id="reply-char-count" aria-live="polite">300</span>
+                  <span class="char-count" id="reply-char-count">300</span>
                   <div class="compose-actions">
                     <div id="reply-error" class="error-banner" hidden role="alert"></div>
                     <button type="submit" class="btn btn-primary" id="reply-submit">Reply</button>
@@ -833,7 +833,7 @@
         <div class="feed-header">
           <h2 id="gallery-heading" class="view-heading">Gallery</h2>
         </div>
-        <div id="gallery-feed" class="gallery-feed" aria-live="polite" aria-label="Image gallery"></div>
+        <div id="gallery-feed" class="gallery-feed" aria-label="Image gallery"></div>
         <div id="gallery-load-sentinel" class="gallery-load-sentinel" aria-hidden="true"></div>
         <div id="gallery-loading" class="gallery-loading" hidden>
           <span class="loading-dots">Loading…</span>
@@ -1011,7 +1011,7 @@
           </div>
         </div>
 
-        <div id="reader-feed" class="reader-feed" aria-live="polite" aria-label="Article reader feed"></div>
+        <div id="reader-feed" class="reader-feed" aria-label="Article reader feed"></div>
         <div id="reader-load-sentinel" class="reader-load-sentinel" aria-hidden="true"></div>
         <div id="reader-loading" class="reader-loading" hidden>
           <span class="loading-dots">Loading…</span>
@@ -1287,7 +1287,7 @@
             <input type="file" id="quote-video-input" class="sr-only"
                    accept="video/mp4,video/webm,video/quicktime" aria-label="Choose video to attach to quote">
           </div>
-          <span class="char-count" id="quote-modal-count" aria-live="polite">300</span>
+          <span class="char-count" id="quote-modal-count">300</span>
         </div>
         <!-- Row 2: error + submit actions -->
         <div class="compose-actions quote-footer-actions">
