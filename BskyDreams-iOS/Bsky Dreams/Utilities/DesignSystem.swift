@@ -604,9 +604,11 @@ enum NBImageLoader {
     static func load(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
         if let hit = cached(url) { return hit }
         guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        // UIScreen is main-actor-only; read the scale here, before hopping off-main.
+        let scale = await MainActor.run { UIScreen.main.scale }
         return await Task.detached(priority: .utility) { () -> UIImage? in
             let image: UIImage?
-            if let maxPixel, let downsampled = NBImageLoader.downsample(data, maxPixel: maxPixel) {
+            if let maxPixel, let downsampled = NBImageLoader.downsample(data, maxPixel: maxPixel * scale) {
                 image = downsampled
             } else {
                 image = UIImage(data: data)?.preparingForDisplay()
@@ -620,15 +622,15 @@ enum NBImageLoader {
     }
 
     /// ImageIO thumbnail decode — never inflates the full bitmap into memory.
-    private static func downsample(_ data: Data, maxPixel: CGFloat) -> UIImage? {
+    /// `maxPixel` is in PIXELS (callers multiply by screen scale). ImageIO is thread-safe.
+    nonisolated private static func downsample(_ data: Data, maxPixel: CGFloat) -> UIImage? {
         let srcOpts = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let src = CGImageSourceCreateWithData(data as CFData, srcOpts) else { return nil }
-        let scale = UIScreen.main.scale
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixel * scale
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
         return UIImage(cgImage: cg)
