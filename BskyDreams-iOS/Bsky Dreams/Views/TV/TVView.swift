@@ -683,6 +683,7 @@ struct TVOverlayView: View {
 
                     // Like
                     Button {
+                        Haptics.medium()
                         withAnimation { isLiked.toggle() }
                     } label: {
                         VStack(spacing: 4) {
@@ -694,7 +695,6 @@ struct TVOverlayView: View {
                                 .foregroundStyle(.white)
                         }
                     }
-                    .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
                 }
             }
             .padding(.horizontal, 16)

@@ -843,11 +843,19 @@ enum DebugLaunchDoors {
             await auth.login(handle: handle, appPassword: password)
         }
         guard auth.isLoggedIn else { return }
+        // Let the shell report its layout first (open Duo → split), as it has by the
+        // time a person taps; otherwise openPost falls back to a push.
+        try? await Task.sleep(for: .seconds(1.5))
         if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
             store.select(tab)
         }
+        // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
+        if let col = env["BSKY_SECOND_COLUMN"] {
+            if let tab = AppStore.AppTab(rawValue: col) { store.openSecondColumn(tab) } else { store.closeSecondColumn() }
+        }
         if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
-            store.navigationPath.append(PostDestination(uri: uri, post: nil))
+            // Through openPost so the open Duo shows it in the detail pane, as a tap would.
+            store.openPost(uri: uri, post: nil)
         }
         if let actor = env["BSKY_OPEN_PROFILE"], !actor.isEmpty {
             store.navigationPath.append(ProfileDestination(actor: actor))

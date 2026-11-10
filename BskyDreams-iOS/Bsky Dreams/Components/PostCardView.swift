@@ -241,7 +241,6 @@ struct PostCardView: View {
                     .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
-            .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
             .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
             .accessibilityValue("\(repostCount)")
             .accessibilityAddTraits(.isButton)
@@ -255,7 +254,6 @@ struct PostCardView: View {
                     .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
-            .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
             .accessibilityLabel(isLiked ? "Unlike" : "Like")
             .accessibilityValue("\(likeCount)")
             .accessibilityAddTraits(.isButton)

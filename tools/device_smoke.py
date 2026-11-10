@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build Bsky Dreams for a TEST device, install, launch, screenshot — under one device lease.
 
-    /usr/bin/python3 tools/device_smoke.py [iphone|ipad] [outdir] [view,view,…] [--no-build]
+    /usr/bin/python3 tools/device_smoke.py [iphone|ipad|duo] [outdir] [view,view,…] [--no-build]
 
 Views are AppTab raw values (home, search, notifications, dms, gallery, reader, …),
 or post=<at:// uri> / profile=<handle> to push a conversation or profile.
@@ -25,6 +25,7 @@ import devlease  # noqa: E402
 DEVICES = {
     "iphone": ["00008101-000339320188801E", "B4E756E2-CBFA-5F63-8CEE-21D226637AF7"],   # iPhone 12
     "ipad":   ["00008103-0019388E3CF1001E", "AC5377E9-6053-51DE-8E65-D88A4E9345FA"],   # iPad Pro 12.9"
+    "duo":    ["00008160-001814623AA00036"],                                           # iPhone Duo (owner-attached for Duo testing)
 }
 BUNDLE = "app.bskydreams.ios"
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -59,12 +60,41 @@ def test_account_env():
     return child
 
 
+def active_display(udid):
+    """uniqueId of the active display when the device has more than one (iPhone Duo)."""
+    import json, tempfile
+    with tempfile.NamedTemporaryFile(suffix=".json") as f:
+        r = subprocess.run(["xcrun", "devicectl", "device", "info", "displays", "--device", udid,
+                            "--json-output", f.name, "--quiet"], env=ENV, capture_output=True, text=True)
+        if r.returncode:
+            return None
+        try:
+            data = json.load(open(f.name))
+        except Exception:
+            return None
+    found = []
+    def walk(o):
+        if isinstance(o, dict):
+            if "uniqueId" in o and "active" in o:
+                found.append(o)
+            for v in o.values(): walk(v)
+        elif isinstance(o, list):
+            for v in o: walk(v)
+    walk(data)
+    if len(found) < 2:
+        return None
+    act = next((d for d in found if d.get("active")), None)
+    return str(act["uniqueId"]) if act else None
+
+
 def launch_and_shoot(udid, outdir, key, view, extra_env):
     env = dict(ENV, **extra_env)
     name = view
     # BSKY_TYPE_SIZE=accessibility3 in the CALLER's env → forwarded to the app.
     if os.environ.get("BSKY_TYPE_SIZE"):
         env["DEVICECTL_CHILD_BSKY_TYPE_SIZE"] = os.environ["BSKY_TYPE_SIZE"]
+    if os.environ.get("BSKY_SECOND_COLUMN"):
+        env["DEVICECTL_CHILD_BSKY_SECOND_COLUMN"] = os.environ["BSKY_SECOND_COLUMN"]
     if view.startswith("post="):
         env["DEVICECTL_CHILD_BSKY_OPEN_POST"] = view[5:]; name = "conversation"
     elif view.startswith("profile="):
@@ -77,7 +107,11 @@ def launch_and_shoot(udid, outdir, key, view, extra_env):
     time.sleep(10)   # sign-in + first feed load on a real network
     suffix = f"-{os.environ['BSKY_TYPE_SIZE']}" if os.environ.get("BSKY_TYPE_SIZE") else ""
     shot = os.path.join(outdir, f"{key}-{name or 'launch'}{suffix}.png")
-    run(["xcrun", "devicectl", "device", "capture", "screenshot", "--device", udid, "--destination", shot])
+    cmd = ["xcrun", "devicectl", "device", "capture", "screenshot", "--device", udid, "--destination", shot]
+    disp = active_display(udid)
+    if disp:   # iPhone Duo: capture the display that's on (inner when open), not the primary
+        cmd += ["--display-unique-id", disp]
+    run(cmd)
     print("screenshot:", shot)
 
 

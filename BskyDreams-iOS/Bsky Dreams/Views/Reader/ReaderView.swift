@@ -414,7 +414,6 @@ struct ArticleCardView: View {
                 }
                 .buttonStyle(.plain)
                     .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
-                .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                 Button { toggleLike() } label: {
                     Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
@@ -425,7 +424,6 @@ struct ArticleCardView: View {
                 }
                 .buttonStyle(.plain)
                     .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
-                .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                 Spacer()
             }
@@ -456,6 +454,7 @@ struct ArticleCardView: View {
     private func toggleLike() {
         guard let did = auth.session?.did else { return }
         let wasLiked = isLiked; let prevCount = likeCount
+        Haptics.medium()
         isLiked.toggle(); likeCount += isLiked ? 1 : -1
         Task {
             do {
@@ -468,6 +467,7 @@ struct ArticleCardView: View {
     private func toggleRepost() {
         guard let did = auth.session?.did else { return }
         let wasReposted = isReposted; let prevCount = repostCount
+        Haptics.light()
         isReposted.toggle(); repostCount += isReposted ? 1 : -1
         Task {
             do {
