@@ -5,6 +5,7 @@ struct SearchView: View {
     var initialQuery: String = ""
 
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.modelContext) private var modelContext
     @Environment(NetworkMonitor.self) private var network
     @Query(sort: \SavedSearch.createdAt) private var savedSearches: [SavedSearch]
@@ -68,14 +69,14 @@ struct SearchView: View {
             if !initialQuery.isEmpty {
                 query = initialQuery
                 performSearch()
-            } else if let q = store.pendingChannelQuery {
+            } else if navColumn == .primary, let q = store.pendingChannelQuery {
                 query = q
                 performSearch()
                 store.pendingChannelQuery = nil
             }
         }
         .onChange(of: store.pendingChannelQuery) { _, newQuery in
-            if let q = newQuery {
+            if navColumn == .primary, let q = newQuery {   // sidebar channels target the primary column
                 query = q
                 performSearch()
                 store.pendingChannelQuery = nil
@@ -316,7 +317,7 @@ struct SearchView: View {
                     } else {
                         ForEach(actors) { actor in
                             Button {
-                                store.navigationPath.append(ProfileDestination(actor: actor.did))
+                                store.push(ProfileDestination(actor: actor.did), column: navColumn)
                             } label: {
                                 ActorRowView(actor: actor)
                                     .frame(maxWidth: .infinity, alignment: .leading)

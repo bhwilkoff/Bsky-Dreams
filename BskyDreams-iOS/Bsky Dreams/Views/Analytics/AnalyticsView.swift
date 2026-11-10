@@ -9,6 +9,7 @@ struct AnalyticsView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     @State private var posts: [PostView] = []
     @State private var profile: ActorProfile? = nil
@@ -131,7 +132,7 @@ struct AnalyticsView: View {
                 // Pushed from a profile page — actor is known at init, load immediately.
                 searchActor = actor
                 await load(actor: actor)
-            } else if let actor = store.pendingAnalyticsActor {
+            } else if navColumn == .primary, let actor = store.pendingAnalyticsActor {
                 // Sidebar tab appeared with a pending actor set by pendingAnalyticsActor.
                 store.pendingAnalyticsActor = nil
                 searchActor = actor
@@ -143,7 +144,7 @@ struct AnalyticsView: View {
         // Safety net: fires when the sidebar tab is already visible and
         // pendingAnalyticsActor is set (e.g. user taps Analytics twice from different profiles).
         .onChange(of: store.pendingAnalyticsActor) { _, newActor in
-            guard initialActor == nil, let actor = newActor else { return }
+            guard initialActor == nil, navColumn == .primary, let actor = newActor else { return }
             store.pendingAnalyticsActor = nil
             searchActor = actor
             Task { await load(actor: actor) }
@@ -422,7 +423,7 @@ struct AnalyticsView: View {
 
             ForEach(Array(sortedPosts.prefix(15).enumerated()), id: \.offset) { i, post in
                 Button {
-                    store.openPost(uri: post.uri, post: post)
+                    store.openPost(uri: post.uri, post: post, column: navColumn)
                 } label: {
                     HStack(spacing: 10) {
                         // Rank badge

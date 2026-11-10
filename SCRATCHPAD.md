@@ -51,7 +51,7 @@
 | Hybrid feeds (multi-source merging + trending score) | ✅ | ✅ | Both Following and Discover merge 3 feeds; Gallery merges 4 |
 | NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
 | Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
-| iPhone Duo (foldable) layout | — | ✅ | 2026-11-10, 1.49: persistent sidebar + conversation/chat detail pane on the open Duo; iOS-DESIGN §10. Web equivalent = desktop sidebar (already) — a web two-pane conversation view is a possible parity follow-up |
+| iPhone Duo (foldable) layout | — | ✅ | 2026-11-10, 1.49: collapsible sidebar column; second column of ANY view (Search + Home, two feeds, Gallery + Reader…); conversation/chat detail pane when single-column; iOS-DESIGN §10. Web equivalent = desktop sidebar (already) — a web two-pane conversation view is a possible parity follow-up |
 | Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
 | Analytics dashboard (post stats, heatmap) | ✅ | ✅ | iOS: Swift Charts (engagement bars, posting heatmap, top posts) |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
@@ -146,7 +146,7 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Next for iOS
 
-- **iPhone Duo — verify on device (1.49 (51) uploaded to TestFlight 2026-11-10; built on the `xcode-27` runner with the iOS 27.2 SDK → edge-to-edge on Duo)**: portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
+- **iPhone Duo — verify on device** (build 51 verified the open-Duo sidebar on device 2026-11-10; build 52 adds the collapsible sidebar + two columns; `xcode-27` runner, iOS 27.2 SDK): portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
 
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions

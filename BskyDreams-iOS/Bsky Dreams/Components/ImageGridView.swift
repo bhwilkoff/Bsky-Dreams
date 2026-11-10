@@ -793,7 +793,7 @@ struct YouTubeLinkCardView: View {
 struct QuotedPostView: View {
     let post: PostView
     @Environment(AppStore.self) private var store
-    @Environment(\.isDetailPane) private var inDetailPane
+    @Environment(\.navColumn) private var navColumn
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -846,7 +846,7 @@ struct QuotedPostView: View {
         .nbBorder()
         .contentShape(Rectangle())
         .onTapGesture {
-            store.openPost(uri: post.uri, post: post, fromDetailPane: inDetailPane)
+            store.openPost(uri: post.uri, post: post, column: navColumn)
         }
     }
 

@@ -52,6 +52,7 @@ func tlParseDate(_ str: String) -> Date {
 
 struct TimelineScrubberView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(AuthManager.self) private var auth
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SavedSearch.createdAt) private var savedSearches: [SavedSearch]
@@ -91,7 +92,7 @@ struct TimelineScrubberView: View {
             Text("Give this timeline search a name to save it as a channel.")
         }
         .onAppear {
-            if let pending = store.pendingTimelineQuery {
+            if navColumn == .primary, let pending = store.pendingTimelineQuery {
                 query = pending
                 store.pendingTimelineQuery = nil
                 Task { await doSearch() }
@@ -102,7 +103,7 @@ struct TimelineScrubberView: View {
             }
         }
         .onChange(of: store.pendingTimelineQuery) { _, newVal in
-            guard let q = newVal else { return }
+            guard navColumn == .primary, let q = newVal else { return }
             query = q
             store.pendingTimelineQuery = nil
             Task { await doSearch() }
@@ -416,7 +417,7 @@ struct TimelineScrubberView: View {
                             .frame(width: 158, height: 72)
                             .offset(x: card.left, y: card.top)
                             .onTapGesture {
-                                store.openPost(uri: card.post.uri, post: card.post)
+                                store.openPost(uri: card.post.uri, post: card.post, column: navColumn)
                             }
                     }
 

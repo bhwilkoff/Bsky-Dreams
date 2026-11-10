@@ -12,15 +12,15 @@ this doc is the practical checklist.
 
 ## 1. Navigation & Information Architecture
 
-1.1 **One navigation stack.** All push navigation goes through the single
+1.1 **One navigation stack per column.** All push navigation goes through the single
 `NavigationStack(path: store.navigationPath)` at the app root. Never nest a
 second `NavigationStack` for push flows (DMs proved `NavigationSplitView`
 collapses poorly on compact iPhone — it was replaced with `NavigationStack` +
 `NavigationLink`).
-**One exception:** the iPhone Duo detail pane (§10.3) is the detail column of a
-list/detail split and owns a small stack (`store.detailPanePath`) for drilling
-into replies — exactly what `NavigationSplitView`'s detail column would own.
-Only `DetailPaneView` may create it.
+**The only exceptions are the open iPhone Duo's columns (§10.3):** the second column
+(`store.secondaryPath`) and the detail pane (`store.detailPanePath`) each own a stack —
+exactly what a split view's columns would own. Only `MainAppView.secondaryStack` and
+`DetailPaneView` may create them.
 
 1.2 **Destinations are `Hashable` structs.** Push `PostDestination(uri:post:)`,
 `ProfileDestination(actor:)`, or `HashtagDestination(tag:)`. `PostDestination.post`
@@ -201,27 +201,39 @@ so it keeps the phone layout. The iPhone-only app runs phone-sized on iPad, so i
 never sees regular/regular there.) Width-only decisions (e.g. Gallery's second
 column) key on the view's MEASURED width, never the screen's.
 
-10.2 **Persistent sidebar.** On the open Duo the sidebar is an always-visible 260pt
-column (web desktop parity: the web sidebar is always open ≥768px); the hamburger
-hides (`\.sidebarIsPersistent`). Everywhere else it is the slide-in drawer, unchanged.
+10.2 **Collapsible sidebar column.** On the open Duo the sidebar is a 260pt column
+(web desktop parity). The hamburger becomes a show/hide-sidebar toggle (`sidebar.left`
+icon; `\.sidebarIsColumn`) so content can take the whole width; the choice is
+remembered (`store.sidebarCollapsed`). When a right column is open on the portrait
+inner display (~670pt) the sidebar can't fit as a column, so it is the drawer and the
+hamburger opens it. Everywhere else it is the slide-in drawer, unchanged.
 
-10.3 **List / detail — conversations and chats open BESIDE the list.** On the open Duo,
-a post tapped in a reading surface (`AppTab.hostsPostPane`: Home, Search,
-Notifications, Gallery, Reader, Analytics, Timeline) opens its conversation in a
-right-hand detail pane; a chat tapped in Messages opens in the pane too. The list
-keeps its scroll position and marks the open post (accent outline, `.isSelected`).
-- **Views never append `PostDestination` / `Conversation` themselves** — they call
-  `store.openPost(uri:post:fromDetailPane:)` / `store.openChat(_:)`, which push onto
-  the main stack whenever the pane is off. A tap INSIDE the pane drills down within
-  it (`\.isDetailPane`).
-- At the pane's root, `NBBackButton` becomes a close (✕) button.
-- **Continuity:** closing the Duo with a conversation open pushes it onto the main
-  stack, so the outer display continues where the inner one was.
-- **Geometry.** Landscape inner (~950pt): sidebar + two equal panes. Portrait inner
-  (~670pt): while a conversation is open the sidebar returns to the drawer and the two
-  panes split the screen exactly in half — on the center line, where the fold runs
-  when the device is half-open like a book, so neither pane bends across it.
-- TV, Stream, Constellation and Settings push as before (full-screen or tool surfaces).
+10.3 **Columns — two views side by side.** The open Duo shows the PRIMARY column
+(`selectedTab`, picked in the sidebar) and, on the right, either:
+- **A second column (`store.secondaryTab`) showing ANY sidebar view** — Search beside
+  Home, Following beside Trending, Gallery beside Reader, Notifications beside
+  Messages… Added from the sidebar's COLUMNS section ("Add Right Column") or any
+  sidebar row's context menu ("Open in Right Column"); changed or closed from the
+  column's own leading button (`NBColumnMenu`, which takes the hamburger's place in
+  that column). Remembered across launches; hidden (not lost) on the closed Duo.
+  Each column has its OWN stack (`secondaryPath`): whatever you open in a column
+  opens in that column. Home keeps a per-column feed (`store.secondaryFeedMode`,
+  default Following) so two home feeds can differ.
+- **Otherwise, a detail pane:** a post tapped in a reading surface of the primary
+  column (`AppTab.hostsPostPane`: Home, Search, Notifications, Gallery, Reader,
+  Analytics, Timeline) opens its conversation beside the list; a chat tapped in
+  Messages opens there too. The list keeps its scroll position and marks the open
+  post (accent outline, `.isSelected`). At the pane's root `NBBackButton` is ✕.
+  **Continuity:** closing the Duo pushes the open conversation onto the main stack.
+- **Routing rule:** views never append to a path themselves — they call
+  `store.openPost(…, column:)` / `store.openChat(_:column:)` / `store.push(_:column:)`
+  with their `@Environment(\.navColumn)`. One-shot handoffs from the sidebar or a
+  notification (`pending*`) are consumed only by the primary column.
+- **Geometry.** Landscape inner (~950pt): sidebar (unless hidden) + two equal columns.
+  Portrait inner (~670pt): two columns split the screen exactly in half — on the
+  center line, where the fold runs when the device is half-open like a book.
+- **Shared destinations:** every stack registers the same destinations via
+  `.withAppDestinations(myDid:)`.
 
 10.4 **No screen references.** Never `UIScreen.main` (ambiguous on two displays,
 slated for deprecation) — measure the container (`onGeometryChange`) and use
@@ -268,8 +280,8 @@ iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 - ❌ Ad-hoc `UIImpactFeedbackGenerator` — use the `Haptics` taxonomy.
 - ❌ Disabling Constellation physics/gestures for Reduce Motion (decorative only).
 - ❌ A new standalone `.swift` file when the type can be inlined into a compiled file.
-- ❌ A second `NavigationStack` for push flows (the Duo detail pane, §10.3, is the one exception).
-- ❌ `store.navigationPath.append(PostDestination…)` / `.append(convo)` in a view — use `store.openPost` / `store.openChat` (§10.3).
+- ❌ A second `NavigationStack` for push flows (the Duo columns, §10.3, are the only exceptions).
+- ❌ `store.navigationPath.append(…)` in a view — use `store.openPost` / `openChat` / `push` with `\.navColumn` (§10.3).
 - ❌ `UIScreen.main` anywhere — measure the container; use `displayScale` (§10.4).
 - ❌ Branching on device / idiom / orientation for layout — size classes and measured width only (§10.1).
 
@@ -290,5 +302,5 @@ For any new/changed feature surface:
 - [ ] Haptics use the semantic taxonomy.
 - [ ] Default accent is blue, not coral.
 - [ ] New types inlined into compiled files (synchronized-group gotcha).
-- [ ] Open iPhone Duo (regular/regular): works beside the persistent sidebar and, if it opens posts/chats, through `openPost`/`openChat` (§10).
+- [ ] Open iPhone Duo (regular/regular): works as a primary AND a second column, at ~335pt wide; opens go through `openPost`/`openChat`/`push` with `\.navColumn`; any shared store state it reads is per-column or primary-only (§10).
 - [ ] Feature serves human learning/agency (see CLAUDE.md "Why We Build").

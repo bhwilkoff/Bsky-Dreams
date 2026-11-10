@@ -613,6 +613,7 @@ struct TVOverlayView: View {
 
     @State private var isLiked = false
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -629,7 +630,7 @@ struct TVOverlayView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Spacer()
                     Button {
-                        store.navigationPath.append(ProfileDestination(actor: post.author.did))
+                        store.push(ProfileDestination(actor: post.author.did), column: navColumn)
                     } label: {
                         HStack(spacing: 8) {
                             AvatarView(url: post.author.avatar, size: 36)
@@ -661,7 +662,7 @@ struct TVOverlayView: View {
 
                     // Pop-out: open post thread
                     Button {
-                        store.openPost(uri: post.uri, post: post)
+                        store.openPost(uri: post.uri, post: post, column: navColumn)
                     } label: {
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 24))

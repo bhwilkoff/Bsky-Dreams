@@ -49,14 +49,18 @@ struct MainAppView: View {
     private var isSplitLayout: Bool {
         horizontalSizeClass == .regular && verticalSizeClass == .regular
     }
-    private var detailPaneVisible: Bool { isSplitLayout && store.detailPane != nil }
-    /// Portrait inner display (~670pt) can't fit sidebar + two readable panes, so while a
-    /// conversation is open the sidebar folds back into the drawer and the two panes
-    /// split the screen exactly in half — at the center line, where the fold runs.
-    /// Landscape (~950pt) keeps the sidebar: sidebar + two iPhone-width panes.
-    private var sidebarPersistent: Bool {
-        isSplitLayout && !(detailPaneVisible && containerWidth < 900)
+    private var secondaryVisible: Bool { isSplitLayout && store.secondaryTab != nil }
+    private var detailPaneVisible: Bool { isSplitLayout && !secondaryVisible && store.detailPane != nil }
+    private var rightPaneVisible: Bool { secondaryVisible || detailPaneVisible }
+    /// Portrait inner display (~670pt) can't fit sidebar + two readable columns, so while
+    /// a right column is open the sidebar becomes the drawer and the two columns split
+    /// the screen exactly in half — on the center line, where the fold runs. Landscape
+    /// (~950pt) can keep the sidebar.
+    private var sidebarColumnAllowed: Bool {
+        isSplitLayout && !(rightPaneVisible && containerWidth < 900)
     }
+    /// The sidebar is on screen as a column (allowed, and not collapsed by the person).
+    private var sidebarPersistent: Bool { sidebarColumnAllowed && !store.sidebarCollapsed }
     private let persistentSidebarWidth: CGFloat = 260
     private let paneDivider: CGFloat = 2
     private var paneWidth: CGFloat {
@@ -78,10 +82,16 @@ struct MainAppView: View {
             sidebarDragOffset = 0
         }
     }
+    /// The hamburger. On the open Duo (when a sidebar column fits) it shows/hides the
+    /// sidebar column for more room; everywhere else it opens the drawer.
     private func toggleSidebarAnimated() {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            sidebarOpen.toggle()
-            sidebarDragOffset = 0
+            if sidebarColumnAllowed {
+                store.sidebarCollapsed.toggle()
+            } else {
+                sidebarOpen.toggle()
+                sidebarDragOffset = 0
+            }
         }
     }
 
@@ -128,10 +138,13 @@ struct MainAppView: View {
     var body: some View {
         shellLayout
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: detailPaneVisible)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: rightPaneVisible)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: sidebarPersistent)
         .onChange(of: isSplitLayout, initial: true) { _, split in
-            store.setDetailPaneEnabled(split)
+            store.setSplitLayoutActive(split)
+        }
+        .onChange(of: store.secondaryTab) { _, _ in
+            store.secondaryPath = NavigationPath()
         }
         .onChange(of: sidebarPersistent) { _, persistent in
             if persistent { sidebarOpen = false; sidebarDragOffset = 0 }
@@ -255,18 +268,24 @@ struct MainAppView: View {
                 }
 
                 mainStack
-                    .frame(width: detailPaneVisible ? paneWidth : nil)
-                    .frame(maxWidth: detailPaneVisible ? nil : CGFloat.infinity)
+                    .frame(width: rightPaneVisible ? paneWidth : nil)
+                    .frame(maxWidth: rightPaneVisible ? nil : CGFloat.infinity)
 
-                // Open Duo: the conversation / chat sits beside the list it came from.
-                if detailPaneVisible, let item = store.detailPane {
+                // Open Duo, right side: a second column of any view, or — with one
+                // column — the conversation/chat opened from the list.
+                if secondaryVisible, let tab = store.secondaryTab {
+                    paneSeparator
+                    secondaryStack(tab)
+                        .frame(width: paneWidth)
+                        .transition(.move(edge: .trailing))
+                } else if detailPaneVisible, let item = store.detailPane {
                     paneSeparator
                     DetailPaneView(item: item)
                         .frame(width: paneWidth)
                         .transition(.move(edge: .trailing))
                 }
             }
-            .environment(\.sidebarIsPersistent, sidebarPersistent)
+            .environment(\.sidebarIsColumn, sidebarColumnAllowed)
 
             if !sidebarPersistent {
                 // Dim overlay — opacity tracks sidebar position 1:1 during drag
@@ -291,35 +310,23 @@ struct MainAppView: View {
         }
     }
 
+    /// The open Duo's second column: any sidebar view, with its own small stack so
+    /// what you open there stays there (iOS-DESIGN §10.3).
+    private func secondaryStack(_ tab: AppStore.AppTab) -> some View {
+        NavigationStack(path: Bindable(store).secondaryPath) {
+            DetailView(tab: tab, toggleSidebar: { toggleSidebarAnimated() })
+                .id(tab)
+                .withAppDestinations(myDid: auth.session?.did ?? "")
+        }
+        .environment(\.navColumn, .secondary)
+    }
+
     /// The single app-wide push stack (iOS-DESIGN §1.1).
     private var mainStack: some View {
         NavigationStack(path: Bindable(store).navigationPath) {
-            DetailView(toggleSidebar: { toggleSidebarAnimated() })
+            DetailView(tab: store.selectedTab ?? .home, toggleSidebar: { toggleSidebarAnimated() })
                 .environment(\.toggleSidebar, { toggleSidebarAnimated() })
-                .navigationDestination(for: PostDestination.self) { dest in
-                    ThreadView(uri: dest.uri, initialPost: dest.post)
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: ProfileDestination.self) { dest in
-                    ProfileView(actor: dest.actor)
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: HashtagDestination.self) { dest in
-                    SearchView(initialQuery: "#\(dest.tag)")
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: Conversation.self) { convo in
-                    ChatView(conversation: convo, myDid: auth.session?.did ?? "")
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: AnalyticsDestination.self) { dest in
-                    AnalyticsView(initialActor: dest.actor)
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: ConstellationDestination.self) { dest in
-                    ConstellationView(initialActor: dest.actor)
-                        .enableNavigationBackSwipe()
-                }
+                .withAppDestinations(myDid: auth.session?.did ?? "")
         }
     }
 
@@ -365,6 +372,40 @@ struct MainAppView: View {
     }
 }
 
+// MARK: - Shared push destinations
+
+extension View {
+    /// Every push destination, for each stack: the main stack, and on the open iPhone
+    /// Duo the second column's and the detail pane's (iOS-DESIGN §1.1, §10.3).
+    func withAppDestinations(myDid: String) -> some View {
+        self
+            .navigationDestination(for: PostDestination.self) { dest in
+                ThreadView(uri: dest.uri, initialPost: dest.post)
+                    .enableNavigationBackSwipe()
+            }
+            .navigationDestination(for: ProfileDestination.self) { dest in
+                ProfileView(actor: dest.actor)
+                    .enableNavigationBackSwipe()
+            }
+            .navigationDestination(for: HashtagDestination.self) { dest in
+                SearchView(initialQuery: "#\(dest.tag)")
+                    .enableNavigationBackSwipe()
+            }
+            .navigationDestination(for: Conversation.self) { convo in
+                ChatView(conversation: convo, myDid: myDid)
+                    .enableNavigationBackSwipe()
+            }
+            .navigationDestination(for: AnalyticsDestination.self) { dest in
+                AnalyticsView(initialActor: dest.actor)
+                    .enableNavigationBackSwipe()
+            }
+            .navigationDestination(for: ConstellationDestination.self) { dest in
+                ConstellationView(initialActor: dest.actor)
+                    .enableNavigationBackSwipe()
+            }
+    }
+}
+
 // MARK: - iPhone Duo detail pane (iOS-DESIGN §10)
 
 /// The right-hand pane on the open iPhone Duo: the conversation or chat opened from the
@@ -379,20 +420,9 @@ struct DetailPaneView: View {
     var body: some View {
         NavigationStack(path: Bindable(store).detailPanePath) {
             paneRoot
-                .navigationDestination(for: PostDestination.self) { dest in
-                    ThreadView(uri: dest.uri, initialPost: dest.post)
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: ProfileDestination.self) { dest in
-                    ProfileView(actor: dest.actor)
-                        .enableNavigationBackSwipe()
-                }
-                .navigationDestination(for: HashtagDestination.self) { dest in
-                    SearchView(initialQuery: "#\(dest.tag)")
-                        .enableNavigationBackSwipe()
-                }
+                .withAppDestinations(myDid: auth.session?.did ?? "")
         }
-        .environment(\.isDetailPane, true)
+        .environment(\.navColumn, .detail)
         .environment(\.closeDetailPane, { store.closeDetailPane() })
         .id(item.id)   // a new conversation gets fresh view state, not the last one's
     }
@@ -438,6 +468,24 @@ struct SidebarView: View {
                             store.selectedTab = tab
                             onNavigate()
                         }
+                        .contextMenu {
+                            if store.splitLayoutActive {
+                                Button {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        store.openSecondColumn(tab)
+                                    }
+                                    onNavigate()
+                                } label: {
+                                    Label("Open in Right Column", systemImage: "rectangle.righthalf.inset.filled")
+                                }
+                            }
+                        }
+                    }
+
+                    // Open iPhone Duo: a second column of any view beside the first —
+                    // Search beside Home, two home feeds, Gallery beside Reader (§10.3).
+                    if store.splitLayoutActive {
+                        columnsSection
                     }
 
                     if !savedSearches.isEmpty {
@@ -496,6 +544,74 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) { editingChannel = nil }
         } message: {
             Text("Enter a new name for this channel")
+        }
+    }
+
+    private var columnsSection: some View {
+        VStack(spacing: 0) {
+            Divider().background(Color.nbBlack).padding(.vertical, 8)
+            HStack {
+                Text("COLUMNS")
+                    .font(.syne(10, weight: .bold))
+                    .tracking(2)
+                    .foregroundStyle(Color.nbTextTertiary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
+
+            if let right = store.secondaryTab {
+                HStack(spacing: 12) {
+                    Image(systemName: "rectangle.righthalf.inset.filled")
+                        .font(.system(size: 16))
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Right column")
+                            .font(.inter(11))
+                            .foregroundStyle(Color.nbTextSecondary)
+                        Text(right.label)
+                            .font(.syne(14, weight: .bold))
+                    }
+                    Spacer()
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 32, height: 32)
+                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            Haptics.light()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
+                        }
+                        .accessibilityLabel("Close right column")
+                        .accessibilityAddTraits(.isButton)
+                }
+                .foregroundStyle(Color.nbBlack)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .accessibilityElement(children: .contain)
+            } else {
+                Button {
+                    Haptics.light()
+                    let pick: AppStore.AppTab = (store.selectedTab ?? .home) == .home ? .search : .home
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.openSecondColumn(pick) }
+                    onNavigate()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "rectangle.split.2x1")
+                            .font(.system(size: 16))
+                            .frame(width: 20)
+                        Text("Add Right Column")
+                            .font(.syne(14, weight: .bold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Color.nbBlack)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows a second view beside this one. Change it from the column's menu button.")
+            }
         }
     }
 
@@ -671,13 +787,14 @@ struct SidebarChannelButton: View {
 // MARK: - Detail Router
 
 struct DetailView: View {
+    /// Which view this column shows (the primary column passes `selectedTab`).
+    let tab: AppStore.AppTab
     let toggleSidebar: () -> Void
-    @Environment(AppStore.self) private var store
 
     var body: some View {
         Group {
-            switch store.selectedTab {
-            case .home, nil:
+            switch tab {
+            case .home:
                 // FeedView manages its own custom nav bar (hides UIKit toolbar to eliminate
                 // system rounded-rect on POST button), so it owns the hamburger button too.
                 FeedView(toggleSidebar: toggleSidebar)

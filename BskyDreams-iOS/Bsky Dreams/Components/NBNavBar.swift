@@ -15,27 +15,27 @@ extension EnvironmentValues {
 
 // MARK: - iPhone Duo layout environment (iOS-DESIGN §10)
 
-private struct SidebarIsPersistentKey: EnvironmentKey {
+private struct SidebarIsColumnKey: EnvironmentKey {
     static let defaultValue = false
 }
-private struct IsDetailPaneKey: EnvironmentKey {
-    static let defaultValue = false
+private struct NavColumnKey: EnvironmentKey {
+    static let defaultValue: AppStore.NavColumn = .primary
 }
 private struct CloseDetailPaneKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
 
 extension EnvironmentValues {
-    /// True when the sidebar is an always-visible column (open iPhone Duo), so the
-    /// hamburger that opens the drawer has nothing to do and hides.
-    var sidebarIsPersistent: Bool {
-        get { self[SidebarIsPersistentKey.self] }
-        set { self[SidebarIsPersistentKey.self] = newValue }
+    /// True on the open iPhone Duo when the sidebar is (or can be) a column beside the
+    /// content: the hamburger then shows/hides that column instead of opening a drawer.
+    var sidebarIsColumn: Bool {
+        get { self[SidebarIsColumnKey.self] }
+        set { self[SidebarIsColumnKey.self] = newValue }
     }
-    /// True inside the Duo detail pane — post taps there drill down within the pane.
-    var isDetailPane: Bool {
-        get { self[IsDetailPaneKey.self] }
-        set { self[IsDetailPaneKey.self] = newValue }
+    /// Which column a view sits in — opens and pushes stay in that column.
+    var navColumn: AppStore.NavColumn {
+        get { self[NavColumnKey.self] }
+        set { self[NavColumnKey.self] = newValue }
     }
     /// Closes the Duo detail pane. Set only inside the pane; nil everywhere else.
     var closeDetailPane: (() -> Void)? {
@@ -159,28 +159,72 @@ extension View {
 // MARK: - Reusable NB Buttons
 
 /// Neubrutalist hamburger menu button. Reads toggleSidebar from environment.
+/// Open iPhone Duo: in the primary column it shows/hides the sidebar column; in the
+/// second column it becomes that column's view picker (`NBColumnMenu`).
 struct NBHamburger: View {
     @Environment(\.toggleSidebar) private var toggleSidebar
-    @Environment(\.sidebarIsPersistent) private var sidebarIsPersistent
+    @Environment(\.sidebarIsColumn) private var sidebarIsColumn
+    @Environment(\.navColumn) private var navColumn
+    @Environment(AppStore.self) private var store
 
     var body: some View {
-        if !sidebarIsPersistent { button }
+        if navColumn == .secondary {
+            NBColumnMenu()
+        } else {
+            button
+        }
     }
 
     private var button: some View {
-        Image(systemName: "line.3.horizontal")
+        Image(systemName: sidebarIsColumn ? "sidebar.left" : "line.3.horizontal")
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.nbBlack)
             .frame(width: 36, height: 36)
             .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
             .contentShape(Rectangle())
             .onTapGesture { toggleSidebar() }
-            .accessibilityLabel("Open sidebar")
+            .accessibilityLabel(sidebarIsColumn
+                                ? (store.sidebarCollapsed ? "Show sidebar" : "Hide sidebar")
+                                : "Open sidebar")
             .accessibilityAddTraits(.isButton)
     }
 }
 
-/// Neubrutalist back button. Calls dismiss() from environment.
+/// The second column's leading control on the open iPhone Duo: pick which view the
+/// column shows (any sidebar destination), or close the column.
+struct NBColumnMenu: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        Menu {
+            Section("Right column") {
+                ForEach(AppStore.AppTab.allCases, id: \.self) { tab in
+                    Button {
+                        Haptics.selection()
+                        store.openSecondColumn(tab)
+                    } label: {
+                        Label(tab.label, systemImage: store.secondaryTab == tab ? "checkmark" : tab.icon)
+                    }
+                }
+            }
+            Button(role: .destructive) {
+                Haptics.light()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
+            } label: {
+                Label("Close Column", systemImage: "xmark.rectangle")
+            }
+        } label: {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.nbBlack)
+                .frame(width: 36, height: 36)
+                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Right column: \(store.secondaryTab?.label ?? "none"). Change view or close")
+    }
+}
+
 /// At the ROOT of the Duo detail pane there is nothing to go back to, so it becomes
 /// a close button that collapses the pane (`isPresented` is false only at a stack root).
 struct NBBackButton: View {

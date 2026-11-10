@@ -12,7 +12,7 @@ struct PostCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
-    @Environment(\.isDetailPane) private var inDetailPane
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var isLiked: Bool = false
@@ -103,18 +103,18 @@ struct PostCardView: View {
         // Open Duo: the post whose conversation is open in the detail pane is marked in
         // the list beside it — the list/detail "you are here".
         .overlay {
-            if !inDetailPane, store.detailPane?.id == "post:\(post.uri)" {
+            if navColumn != .detail, store.detailPane?.id == "post:\(post.uri)" {
                 Rectangle()
                     .strokeBorder(Color.nbAccent, lineWidth: 3)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
         }
-        .accessibilityAddTraits(!inDetailPane && store.detailPane?.id == "post:\(post.uri)" ? AccessibilityTraits.isSelected : [])
+        .accessibilityAddTraits(navColumn != .detail && store.detailPane?.id == "post:\(post.uri)" ? AccessibilityTraits.isSelected : [])
         .contentShape(Rectangle())
         .onTapGesture {
             guard !suppressNavigation else { return }
-            store.openPost(uri: post.uri, post: post, fromDetailPane: inDetailPane)
+            store.openPost(uri: post.uri, post: post, column: navColumn)
         }
         .confirmationDialog("Repost Options", isPresented: $showRepostSheet) {
             Button(isReposted ? "Undo Repost" : "Repost") { toggleRepost() }
@@ -174,7 +174,7 @@ struct PostCardView: View {
         let stacked = typeSize.isAccessibilitySize
         return HStack(alignment: .top, spacing: 10) {
             Button {
-                store.navigationPath.append(ProfileDestination(actor: post.author.did))
+                store.push(ProfileDestination(actor: post.author.did), column: navColumn)
             } label: {
                 AvatarView(url: post.author.avatar, size: 40)
             }

@@ -5,6 +5,7 @@ struct ProfileView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.dismiss) private var dismiss
     @State private var profile: ActorProfile?
     @State private var posts: [FeedItem] = []
@@ -245,7 +246,7 @@ struct ProfileView: View {
                         // Clear the full navigation stack first (removes profile, thread, etc.)
                         // then push the analytics destination so the back button goes to root.
                         store.navigationPath = NavigationPath()
-                        store.navigationPath.append(AnalyticsDestination(actor: profile.handle))
+                        store.push(AnalyticsDestination(actor: profile.handle), column: navColumn)
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: "chart.bar")
@@ -270,7 +271,7 @@ struct ProfileView: View {
 
                     Button {
                         store.navigationPath = NavigationPath()
-                        store.navigationPath.append(ConstellationDestination(actor: profile.handle))
+                        store.push(ConstellationDestination(actor: profile.handle), column: navColumn)
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: "network")

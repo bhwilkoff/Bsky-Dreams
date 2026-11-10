@@ -330,6 +330,7 @@ struct ArticleCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     @State private var isLiked: Bool = false
 
@@ -392,7 +393,7 @@ struct ArticleCardView: View {
             // Action bar — same layout as GalleryCardView
             HStack(spacing: 20) {
                 Button {
-                    store.openPost(uri: post.uri, post: post)
+                    store.openPost(uri: post.uri, post: post, column: navColumn)
                 } label: {
                     Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
                         .font(.inter(12))

@@ -179,6 +179,7 @@ struct GalleryCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.modelContext) private var modelContext
     @State private var isLiked: Bool = false
     @State private var likeURI: String?
@@ -247,7 +248,7 @@ struct GalleryCardView: View {
             .padding(12)
             .contentShape(Rectangle())
             .onTapGesture {
-                store.openPost(uri: post.uri, post: post)
+                store.openPost(uri: post.uri, post: post, column: navColumn)
             }
         }
         .background(Color.nbWhite)

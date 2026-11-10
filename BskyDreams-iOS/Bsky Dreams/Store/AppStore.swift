@@ -13,16 +13,34 @@ final class AppStore {
     var selectedTab: AppTab? = .home
     var navigationPath = NavigationPath()
 
-    // MARK: iPhone Duo — detail pane (iOS-DESIGN §10)
+    // MARK: iPhone Duo — columns + detail pane (iOS-DESIGN §10)
     //
-    // On the OPEN iPhone Duo (regular width AND regular height) a conversation or chat
-    // opens in a pane beside the list instead of replacing it — the book-shaped
-    // list/detail layout. Everywhere else (every other iPhone, the closed Duo, Split
-    // View) the pane is disabled and these calls push onto `navigationPath` exactly
-    // as before. Views open posts/chats ONLY through `openPost` / `openChat`.
-    var detailPaneEnabled = false
+    // On the OPEN iPhone Duo (regular width AND regular height) the app is a set of
+    // columns: the sidebar (collapsible), the PRIMARY column (`selectedTab`), and on the
+    // right either a SECOND COLUMN showing any other view (`secondaryTab` — e.g. Search
+    // beside Home, Following beside Trending, Gallery beside Reader) or, when there is no
+    // second column, a DETAIL PANE showing the conversation/chat opened from the list.
+    // Everywhere else (every other iPhone, the closed Duo, Split View) only the primary
+    // column exists and every open pushes onto `navigationPath` exactly as before.
+    // Views open posts/chats/profiles ONLY through `openPost` / `openChat` / `push`,
+    // passing the `\.navColumn` they sit in.
+    var splitLayoutActive = false
     var detailPane: DetailPaneItem? = nil
     var detailPanePath = NavigationPath()
+    /// The second column's view, or nil for one column. Remembered across launches.
+    var secondaryTab: AppTab? = AppTab(rawValue: UserDefaults.standard.string(forKey: "duo_secondary_tab") ?? "") {
+        didSet { UserDefaults.standard.set(secondaryTab?.rawValue, forKey: "duo_secondary_tab") }
+    }
+    var secondaryPath = NavigationPath()
+    /// Home's feed in the second column — independent of the primary column's, so two
+    /// home feeds can sit side by side. Defaults to Following (primary defaults to Conversations).
+    var secondaryFeedMode: FeedMode = .following
+    /// The open Duo's sidebar column, hidden for more room. Remembered across launches.
+    var sidebarCollapsed: Bool = UserDefaults.standard.bool(forKey: "duo_sidebar_collapsed") {
+        didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "duo_sidebar_collapsed") }
+    }
+
+    enum NavColumn: Hashable { case primary, secondary, detail }
 
     enum DetailPaneItem: Hashable, Identifiable {
         case post(PostDestination)
@@ -36,31 +54,41 @@ final class AppStore {
     }
 
     private var currentTab: AppTab { selectedTab ?? .home }
+    /// A second column is on screen (open Duo + one chosen).
+    var secondaryColumnVisible: Bool { splitLayoutActive && secondaryTab != nil }
+    /// Posts from the primary column open in the detail pane (open Duo, one column).
+    private var detailPaneAvailable: Bool { splitLayoutActive && secondaryTab == nil }
 
-    /// Open a conversation. `fromDetailPane` = the tap came from inside the pane
-    /// (a reply in an open conversation), so it drills down within the pane.
-    func openPost(uri: String, post: PostView?, fromDetailPane: Bool = false) {
-        let dest = PostDestination(uri: uri, post: post)
-        guard detailPaneEnabled, currentTab.hostsPostPane else {
-            navigationPath.append(dest)
-            return
+    /// Push any destination in the column the tap came from.
+    func push<D: Hashable>(_ value: D, column: NavColumn = .primary) {
+        switch column {
+        case .secondary where secondaryColumnVisible: secondaryPath.append(value)
+        case .detail where detailPane != nil:          detailPanePath.append(value)
+        default:                                       navigationPath.append(value)
         }
-        if fromDetailPane, detailPane != nil {
-            detailPanePath.append(dest)
-        } else {
+    }
+
+    /// Open a conversation. From the primary column on the open Duo (one column) it
+    /// opens in the detail pane beside the list; inside a column or the pane it drills
+    /// down in place; everywhere else it pushes as before.
+    func openPost(uri: String, post: PostView?, column: NavColumn = .primary) {
+        let dest = PostDestination(uri: uri, post: post)
+        if column == .primary, detailPaneAvailable, currentTab.hostsPostPane {
             detailPanePath = NavigationPath()
             detailPane = .post(dest)
+        } else {
+            push(dest, column: column)
         }
     }
 
     /// Open a DM conversation — in the pane on the open Duo's Messages tab.
-    func openChat(_ convo: Conversation) {
-        guard detailPaneEnabled, currentTab == .dms else {
-            navigationPath.append(convo)
-            return
+    func openChat(_ convo: Conversation, column: NavColumn = .primary) {
+        if column == .primary, detailPaneAvailable, currentTab == .dms {
+            detailPanePath = NavigationPath()
+            detailPane = .chat(convo)
+        } else {
+            push(convo, column: column)
         }
-        detailPanePath = NavigationPath()
-        detailPane = .chat(convo)
     }
 
     func closeDetailPane() {
@@ -68,19 +96,33 @@ final class AppStore {
         detailPanePath = NavigationPath()
     }
 
+    /// Show `tab` in the second column (replaces the detail pane).
+    func openSecondColumn(_ tab: AppTab) {
+        closeDetailPane()
+        secondaryPath = NavigationPath()
+        secondaryTab = tab
+    }
+
+    func closeSecondColumn() {
+        secondaryTab = nil
+        secondaryPath = NavigationPath()
+    }
+
     /// Called by MainAppView when the layout changes (Duo opens/closes, Split View).
     /// Closing the Duo with a conversation open CONTINUES it on the outer display:
     /// the pane's item is pushed onto the main stack, so the person keeps their place.
-    func setDetailPaneEnabled(_ enabled: Bool) {
-        guard enabled != detailPaneEnabled else { return }
-        detailPaneEnabled = enabled
-        if !enabled, let item = detailPane {
+    /// The second column's choice is kept (hidden) and returns when the Duo reopens.
+    func setSplitLayoutActive(_ active: Bool) {
+        guard active != splitLayoutActive else { return }
+        splitLayoutActive = active
+        if !active, let item = detailPane {
             switch item {
             case .post(let d): navigationPath.append(d)
             case .chat(let c): navigationPath.append(c)
             }
             closeDetailPane()
         }
+        if !active { secondaryPath = NavigationPath() }
     }
 
     /// Tab switch: keep the pane only if the new tab can host what it shows.

@@ -7,6 +7,7 @@ struct RichTextView: View {
     let facets: [RichTextFacet]?
 
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     /// Link/mention/hashtag color — uses nbLinkColor token from DesignSystem,
     /// which adapts: #0047FF (blue) in light mode, #5DB8D0 (muted teal) in dark mode.
     private var linkColor: Color { Color.nbLinkColor }
@@ -37,7 +38,7 @@ struct RichTextView: View {
         case "profile":
             if let did = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "did" })?.value {
-                store.navigationPath.append(ProfileDestination(actor: did))
+                store.push(ProfileDestination(actor: did), column: navColumn)
                 return .handled
             }
         case "search":
@@ -45,7 +46,7 @@ struct RichTextView: View {
                 .queryItems?.first(where: { $0.name == "q" })?.value {
                 // Strip leading # for hashtag navigation
                 let tag = q.hasPrefix("#") ? String(q.dropFirst()) : q
-                store.navigationPath.append(HashtagDestination(tag: tag))
+                store.push(HashtagDestination(tag: tag), column: navColumn)
                 return .handled
             }
         default:

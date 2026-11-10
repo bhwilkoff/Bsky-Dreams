@@ -234,6 +234,7 @@ struct NotificationsView: View {
 struct NotificationGroupRowView: View {
     let group: NotificationGroup
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     private var notification: BskyNotification { group.primary }
 
@@ -302,7 +303,7 @@ struct NotificationGroupRowView: View {
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(avatars.enumerated().reversed()), id: \.element.id) { idx, notif in
                         Button {
-                            store.navigationPath.append(ProfileDestination(actor: notif.author.did))
+                            store.push(ProfileDestination(actor: notif.author.did), column: navColumn)
                         } label: {
                             AvatarView(url: notif.author.avatar, size: 36)
                         }
@@ -314,7 +315,7 @@ struct NotificationGroupRowView: View {
                 .frame(width: 56, height: 50)
             } else {
                 Button {
-                    store.navigationPath.append(ProfileDestination(actor: notification.author.did))
+                    store.push(ProfileDestination(actor: notification.author.did), column: navColumn)
                 } label: {
                     AvatarView(url: notification.author.avatar, size: 44)
                 }
@@ -359,19 +360,19 @@ struct NotificationGroupRowView: View {
     private func navigate() {
         switch notification.reason {
         case .follow, .starterpackJoined:
-            store.navigationPath.append(ProfileDestination(actor: notification.author.did))
+            store.push(ProfileDestination(actor: notification.author.did), column: navColumn)
         case .like, .repost, .likeViaRepost, .repostViaRepost:
             if let subject = notification.reasonSubject {
-                store.openPost(uri: subject, post: nil)
+                store.openPost(uri: subject, post: nil, column: navColumn)
             }
         case .reply, .mention, .quote:
-            store.openPost(uri: notification.uri, post: nil)
+            store.openPost(uri: notification.uri, post: nil, column: navColumn)
         case .unknown:
             // Best-effort: try reasonSubject first, fall back to notification URI, then profile
             if let subject = notification.reasonSubject {
-                store.openPost(uri: subject, post: nil)
+                store.openPost(uri: subject, post: nil, column: navColumn)
             } else {
-                store.openPost(uri: notification.uri, post: nil)
+                store.openPost(uri: notification.uri, post: nil, column: navColumn)
             }
         }
     }

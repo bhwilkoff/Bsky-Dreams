@@ -791,3 +791,22 @@ compact layout to gain the regular one), and it collapsed poorly here before.
 ArrangementView attempt); hinge effects; tabletop-specific layouts; a second window
 (app-global `AppStore` state would mirror across windows). Built and shipped without a
 Duo or the 27.1 simulator: first verification is the TestFlight build on the owner's device.
+
+**Update 2026-11-10 (1.49 build 52) — collapsible sidebar + two columns.** Owner, after
+seeing build 51 on the device: *"You should be able to collapse the sidebar and provide
+more room for content. You should also be able to add two columns on the inner screen
+… a search and one of the home feeds or two of the home feeds simultaneously. Or …
+gallery and reader (or any other view that provides a feed of posts next to another)."*
+- The hamburger on the open Duo now shows/hides the sidebar column (remembered).
+- A **second column hosts any sidebar view**, independently navigable — the TweetDeck
+  model rather than a fixed list/detail split. It replaces the detail pane while open
+  (a third pane would not fit a ~950pt display); with one column the detail pane
+  behaves as before.
+- Making it possible was mostly routing: every open/push now names its column
+  (`\.navColumn`). The audit found only ONE piece of tab state shared through the store
+  that two instances of a view would fight over — Home's feed mode — now per column;
+  the sidebar's one-shot handoffs (`pending*`) are primary-only. Every other tab view
+  keeps its own `@State`, so it already works twice.
+- Rejected: a "focused column" model where the sidebar targets whichever column was
+  last touched — invisible state that makes the sidebar unpredictable. The sidebar
+  always drives the left column; the right column has its own menu.

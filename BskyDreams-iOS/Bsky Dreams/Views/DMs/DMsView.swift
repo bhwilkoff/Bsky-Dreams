@@ -5,6 +5,7 @@ import SwiftUI
 struct DMsView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @State private var conversations: [Conversation] = []
     @State private var isLoading = false
     @State private var loadError: String? = nil
@@ -54,16 +55,16 @@ struct DMsView: View {
         .task { await loadConversations() }
         .task { await loadRequests() }
         .onChange(of: store.pendingDMConvoId) { _, convoId in
-            guard let convoId else { return }
+            guard navColumn == .primary, let convoId else { return }   // deep links target the primary column
             store.pendingDMConvoId = nil
             if let convo = conversations.first(where: { $0.id == convoId }) {
-                store.openChat(convo)
+                store.openChat(convo, column: navColumn)
             }
         }
         .sheet(isPresented: $showNewConvo, onDismiss: {
             // Navigate after the sheet is fully dismissed to avoid presentation conflicts
             if let created = justCreatedConvo {
-                store.openChat(created)
+                store.openChat(created, column: navColumn)
                 justCreatedConvo = nil
             }
         }) {
@@ -128,7 +129,7 @@ struct DMsView: View {
             }
 
             ForEach(conversations) { convo in
-                Button { store.openChat(convo) } label: {
+                Button { store.openChat(convo, column: navColumn) } label: {
                     ConversationRowView(conversation: convo, myDid: myDid)
                         .contentShape(Rectangle())
                 }
@@ -176,10 +177,10 @@ struct DMsView: View {
             let resp = try await ATProtocolClient.shared.listConversations()
             conversations = resp.convos
             // If a DM deep-link is pending and the convo is now loaded, open it
-            if let convoId = store.pendingDMConvoId,
+            if navColumn == .primary, let convoId = store.pendingDMConvoId,
                let convo = conversations.first(where: { $0.id == convoId }) {
                 store.pendingDMConvoId = nil
-                store.openChat(convo)
+                store.openChat(convo, column: navColumn)
             }
         } catch {
             if conversations.isEmpty {

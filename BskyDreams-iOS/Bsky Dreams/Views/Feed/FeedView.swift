@@ -10,6 +10,16 @@ struct FeedView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(NetworkMonitor.self) private var network
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.navColumn) private var navColumn
+
+    /// This column's feed. The open Duo's second column keeps its own, so two home
+    /// feeds (e.g. Following beside Trending) can sit side by side (iOS-DESIGN §10).
+    private var feedMode: AppStore.FeedMode {
+        get { navColumn == .secondary ? store.secondaryFeedMode : store.feedMode }
+        nonmutating set {
+            if navColumn == .secondary { store.secondaryFeedMode = newValue } else { store.feedMode = newValue }
+        }
+    }
 
     // Discovery sources (Conversations + Trending). Following uses getTimeline only.
     private let discoverFeedURI  = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
@@ -147,7 +157,7 @@ struct FeedView: View {
 
                     ForEach(items) { item in
                         VStack(alignment: .leading, spacing: 4) {
-                            if store.feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
+                            if feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
                                 DiscoverWhyChip(text: why)
                             } else if let reposted = item.repostAttribution {
                                 DiscoverWhyChip(text: reposted)
@@ -229,11 +239,11 @@ struct FeedView: View {
     private var feedModeToggle: some View {
         HStack(spacing: 0) {
             ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
-                let selected = store.feedMode == mode
+                let selected = feedMode == mode
                 Button {
                     if !selected {
                         Haptics.selection()
-                        store.feedMode = mode
+                        feedMode = mode
                         items = []
                         whyReasons.removeAll()
                         cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
@@ -345,7 +355,7 @@ struct FeedView: View {
             }
             let prefs = store.moderationPrefs
 
-            switch store.feedMode {
+            switch feedMode {
             case .following:
                 // Following = your follows, chronological. Pure getTimeline (reverse-chron
                 // of the people you follow) — a clean "catch up on your people" feed,
@@ -383,7 +393,7 @@ struct FeedView: View {
                 if let f { all.append(contentsOf: f.feed) }
 
                 let tags = store.interestTags
-                let conversational = store.feedMode == .conversations
+                let conversational = feedMode == .conversations
                 var seen = Set<String>()
                 mergedFeed = all
                     .filter { seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs) }
@@ -397,14 +407,14 @@ struct FeedView: View {
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
-                if store.feedMode.isDiscovery {
+                if feedMode.isDiscovery {
                     for it in newItems { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
 
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
 
-                if store.feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
+                if feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
                     discoverLooped = true
                 }
                 let hasMore = cursor != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
@@ -421,7 +431,7 @@ struct FeedView: View {
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
-                if store.feedMode.isDiscovery {
+                if feedMode.isDiscovery {
                     whyReasons.removeAll()
                     for it in items { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
@@ -447,7 +457,6 @@ private struct FeedNavBar: View {
     let onToggleSidebar: () -> Void
     let onScrollToTop: () -> Void
     let onCompose: () -> Void
-    @Environment(\.sidebarIsPersistent) private var sidebarIsPersistent
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -470,19 +479,10 @@ private struct FeedNavBar: View {
 
             // Hamburger and compose icon at edges — both 36×36 bordered squares
             HStack(spacing: 0) {
-                // Hamburger — hidden when the sidebar is a persistent column (open Duo)
-                if !sidebarIsPersistent {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.nbBlack)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        .contentShape(Rectangle())
-                        .onTapGesture { onToggleSidebar() }
-                        .accessibilityLabel("Open sidebar")
-                        .accessibilityAddTraits(.isButton)
-                        .padding(.leading, NBWindowControls.leadingInset)
-                }
+                // Hamburger — on the open Duo: sidebar show/hide (primary column) or the
+                // column's view picker (second column). See NBHamburger.
+                NBHamburger()
+                    .padding(.leading, NBWindowControls.leadingInset)
 
                 Spacer()
 
