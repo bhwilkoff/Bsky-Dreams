@@ -47,6 +47,12 @@ path + bundle id are STALE (it predates the current `app.bskydreams.ios` / space
    unprocessed build fails with a confusing relationship error; Apple refuses review with no
    What's New. Export compliance is answered in Info.plist (`ITSAppUsesNonExemptEncryption = NO`).
    A failed build run may still have consumed its build number — bump before retrying.
+   **Age-rating questions Apple adds later block submission** (409 `ENTITY_STATE_INVALID`, then
+   `ageRatingDeclarations … ATTRIBUTE.REQUIRED`). 2026-11-10: `socialMedia` +
+   `socialMediaAgeRestricted` were new and unanswered. PATCH them on the EDITABLE appInfo's
+   declaration (`v1/appInfos/<id>/ageRatingDeclaration` — `GET` on the declaration itself is 403),
+   then re-run `ship`. Bsky Dreams: `socialMedia: true`, `socialMediaAgeRestricted: false`
+   (owner-confirmed; rating stays 13+).
 
 **Signing** is MANUAL via `.p12` secrets (cloud signing fails for this team's API key). They're shared
 across the team's apps (team `L2G756LY8N`) and already set: `APPLE_DIST_P12`, `APPLE_INSTALLER_P12`,

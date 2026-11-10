@@ -100,6 +100,8 @@
 ## iOS App Status
 
 **All primary views implemented.** App is live on the App Store (v1.26).
+
+**2026-11-10: 1.49 (56) submitted for App Review (WAITING_FOR_REVIEW, auto-release on approval)** — the iPhone Duo release, device-verified on the owner's Duo.
 App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Completed
