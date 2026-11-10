@@ -961,4 +961,10 @@ screen. Device: left root 350 → 434pt.
   `AppTab.isFullScreenExperience` — removed from Right Side, no right side beside it, a
   remembered `.stream` second column is dropped on launch. TV stays a column choice (it
   works as a feed in a column) — revisit if the owner sees it the same way.
+- **TV: full screen OR with its conversation, by choice** (owner: *"You should be able to
+  do TV as a full screen experience, but I really like the side-by-side view of it as
+  well."*). Not `isFullScreenExperience` (that removes the choice): a remembered
+  `tvFullScreen` toggle on the video, default with-conversation. Full screen hides the
+  right side too. Device check caught the overlay's like/mute buttons under the vertical
+  bar once the video reached the edge — padded by the window's trailing inset.
 

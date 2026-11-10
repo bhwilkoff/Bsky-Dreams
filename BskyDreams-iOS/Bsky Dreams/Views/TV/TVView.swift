@@ -61,6 +61,13 @@ struct TVView: View {
         return max(safeTop + 8, 16)
     }
 
+    /// Full screen, the video runs under the Duo's vertical bar — keep the toggle clear of it.
+    private var windowTrailingInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?.safeAreaInsets.right ?? 0
+    }
+
     var body: some View {
         Group {
             if showSelector {
@@ -102,7 +109,7 @@ struct TVView: View {
     /// conversation, so watching leads into the discussion rather than the next clip.
     private var showsCompanion: Bool {
         horizontalSizeClass == .regular && verticalSizeClass == .regular
-            && !store.secondaryColumnVisible && !videos.isEmpty
+            && !store.secondaryColumnVisible && !videos.isEmpty && !store.tvFullScreen
     }
 
     /// Wider than tall (book pose) → side by side; taller than wide (upright, tabletop) →
@@ -349,7 +356,9 @@ struct TVView: View {
                                 index: i,
                                 currentIndex: currentIndex,
                                 player: player,
-                                isMuted: $isMuted
+                                isMuted: $isMuted,
+                                // Beside its conversation the video doesn't reach the bar.
+                                trailingInset: showsCompanion ? 0 : windowTrailingInset
                             )
                             .id(i)
                             .containerRelativeFrame([.horizontal, .vertical])
@@ -401,6 +410,35 @@ struct TVView: View {
                 .padding(.leading, 16)
                 .padding(.top, backButtonTopPadding)
                 Spacer()
+                // Open Duo: full screen ⇄ with the conversation (§10.13). Remembered.
+                if horizontalSizeClass == .regular && verticalSizeClass == .regular {
+                    Button {
+                        Haptics.selection()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            store.tvFullScreen.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: store.tvFullScreen ? "rectangle.split.2x1"
+                                                                 : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(store.tvFullScreen ? "CONVERSATION" : "FULL SCREEN")
+                                .font(.syne(11, weight: .bold))
+                                .tracking(0.5)
+                        }
+                        .foregroundStyle(Color.nbBlack)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.nbWhite)
+                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        .background(Color.nbBlack.offset(x: 2, y: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(store.tvFullScreen ? "Show the conversation beside the video"
+                                                           : "Watch full screen")
+                    .padding(.trailing, store.tvFullScreen ? windowTrailingInset + 16 : 16)
+                    .padding(.top, backButtonTopPadding)
+                }
             }
         }
         .ignoresSafeArea()
@@ -569,6 +607,9 @@ struct TVVideoCell: View {
     let currentIndex: Int
     let player: AVPlayer
     @Binding var isMuted: Bool
+    /// The window's trailing inset when the video reaches that edge (the Duo's vertical
+    /// bar) — keeps the overlay's buttons clear of it.
+    var trailingInset: CGFloat = 0
 
     @State private var showOverlay = true
     @State private var is2xSpeed = false
@@ -598,6 +639,7 @@ struct TVVideoCell: View {
 
             if showOverlay {
                 TVOverlayView(post: post, isMuted: $isMuted, player: player, isActive: isActive)
+                    .padding(.trailing, trailingInset)
             }
 
             // 2x speed indicator

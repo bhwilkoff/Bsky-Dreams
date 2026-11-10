@@ -75,6 +75,11 @@ final class AppStore {
     var columnsSideBySideWhenTall: Bool = UserDefaults.standard.bool(forKey: "duo_tall_side_by_side") {
         didSet { UserDefaults.standard.set(columnsSideBySideWhenTall, forKey: "duo_tall_side_by_side") }
     }
+    /// Open Duo TV: the video alone on the whole display (true) or with its conversation
+    /// (false, default). The person's choice; remembered (§10.13).
+    var tvFullScreen: Bool = UserDefaults.standard.bool(forKey: "duo_tv_full_screen") {
+        didSet { UserDefaults.standard.set(tvFullScreen, forKey: "duo_tv_full_screen") }
+    }
     /// The open Duo's columns are taller than wide (rotated) — shows the Layout choice.
     var columnsAreTall = false
     /// Home's feed in the second column — independent of the primary column's, so two
@@ -900,6 +905,7 @@ enum DebugLaunchDoors {
             store.select(tab)
         }
         if let q = env["BSKY_TIMELINE_QUERY"] { store.openChannel(query: q, isTimeline: true) }
+        if let v = env["BSKY_TV_FULL_SCREEN"] { store.tvFullScreen = (v == "1") }
         if let v = env["BSKY_TALL_SIDE_BY_SIDE"] { store.columnsSideBySideWhenTall = (v == "1") }
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
         if let col = env["BSKY_SECOND_COLUMN"] {

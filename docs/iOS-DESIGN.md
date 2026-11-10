@@ -341,7 +341,12 @@ already inside its tab's stack, and a NavigationStack nested in a NavigationStac
 ignored (device: its title surfaced in TV's hidden bar). Opening a reply or profile
 from it pushes onto TV's stack, full width; Back returns to the video. Rule: a
 companion stack is only valid as a SIBLING of the content's stack (the article cover),
-never inside it.
+never inside it. **Full screen is the person's choice:** a FULL SCREEN / CONVERSATION
+button (top-right of the video, open Duo only; `store.tvFullScreen`, remembered) gives
+the video the whole display — no conversation and no right side. Full screen, the
+video's overlay buttons pad by the window's trailing inset so the vertical bar doesn't
+cover them. Owner: "You should be able to do TV as a full screen experience, but I
+really like the side-by-side view of it as well."
 
 10.14 **Timeline takes the whole display** (like Constellation; not a pane host). At
 ≥700pt measured width: 220×100 cards with readable type, controls in one row, and a
