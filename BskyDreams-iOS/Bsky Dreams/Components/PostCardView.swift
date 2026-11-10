@@ -216,13 +216,15 @@ struct PostCardView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 22) {   // 22 (was 28) keeps reply/repost/like/… on one line in a ~310pt Duo column
             // Reply
             Button {
                 onReply?(post)
             } label: {
-                Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
@@ -232,8 +234,10 @@ struct PostCardView: View {
 
             // Repost
             Button { showRepostSheet = true } label: {
-                Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
@@ -244,8 +248,10 @@ struct PostCardView: View {
 
             // Like
             Button { toggleLike() } label: {
-                Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())

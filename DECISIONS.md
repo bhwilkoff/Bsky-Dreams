@@ -810,3 +810,14 @@ gallery and reader (or any other view that provides a feed of posts next to anot
 - Rejected: a "focused column" model where the sidebar targets whichever column was
   last touched — invisible state that makes the sidebar unpredictable. The sidebar
   always drives the left column; the right column has its own menu.
+
+**Update 2026-11-10 (1.49 build 53) — column formatting.** From device screenshots of
+build 52: in a ~310pt column the reply count "398" wrapped to two lines and only
+"CONVERSATIONS" shrank in the feed toggle; in landscape with the sidebar hidden the
+nav bar's corner button sat inside the display's rounded corner and post lines ran
+~860pt. Fixes (iOS-DESIGN §10.6, §10.9): compact counts everywhere (`nbCompactCount`,
+one line); the toggle derives ONE label size from its width and drops icons first;
+custom bars add corner clearance when the top safe-area inset is ~0; reading lists cap
+at 680pt and centre. Rejected: `ConcentricRectangle`/`containerCornerInsets` for the
+corner — the bars are square neubrutalist chrome, so moving the buttons clear of the
+corner keeps the design language where reshaping the bar would not.

@@ -1177,7 +1177,7 @@ private struct LandscapeTextSlide: View {
     private func statChip(icon: String, count: Int?, color: Color) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon).font(.system(size: 11))
-            Text("\(count ?? 0)").font(.inter(12))
+            Text(nbCompactCount(count ?? 0)).font(.inter(12)).lineLimit(1).fixedSize()
         }
         .foregroundStyle(color.opacity(0.55))
         .padding(.horizontal, 12)
@@ -1340,7 +1340,7 @@ private struct LandscapeImageSlide: View {
     private func metricChip(icon: String, count: Int?) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon).font(.system(size: 10))
-            Text("\(count ?? 0)").font(.inter(11))
+            Text(nbCompactCount(count ?? 0)).font(.inter(11)).lineLimit(1).fixedSize()
         }
         .foregroundStyle(textColor.opacity(0.55))
     }
@@ -1454,7 +1454,7 @@ private struct LandscapeCombinedSlide: View {
     private func metricChip(icon: String, count: Int?) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon).font(.system(size: 10))
-            Text("\(count ?? 0)").font(.inter(11))
+            Text(nbCompactCount(count ?? 0)).font(.inter(11)).lineLimit(1).fixedSize()
         }
         .foregroundStyle(textColor.opacity(0.55))
     }

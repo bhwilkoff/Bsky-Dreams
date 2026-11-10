@@ -160,6 +160,7 @@ struct ProfileView: View {
                     ProgressView().frame(maxWidth: .infinity).padding()
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
@@ -344,11 +345,7 @@ struct ProfileView: View {
         .fixedSize()   // never wrap inside a stat — ViewThatFits picks the stacked layout instead
     }
 
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
-    }
+    private func formatCount(_ n: Int) -> String { nbCompactCount(n) }
 
     private var followButton: some View {
         Button(action: toggleFollow) {

@@ -167,6 +167,7 @@ struct ReaderView: View {
                         .padding()
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .refreshable {
@@ -200,6 +201,7 @@ struct ReaderView: View {
                         .padding(.vertical, 4)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -395,15 +397,19 @@ struct ArticleCardView: View {
                 Button {
                     store.openPost(uri: post.uri, post: post, column: navColumn)
                 } label: {
-                    Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                    Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
 
                 Button { showRepostSheet = true } label: {
-                    Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                    Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
@@ -411,8 +417,10 @@ struct ArticleCardView: View {
                 .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                 Button { toggleLike() } label: {
-                    Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                    Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)

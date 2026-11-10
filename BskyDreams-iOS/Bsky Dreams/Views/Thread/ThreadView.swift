@@ -96,6 +96,7 @@ struct ThreadView: View {
                         }
                     }
                 }
+                .nbReadableWidth()
                 .padding(.vertical, 8)
             }
             .scrollDismissesKeyboard(.interactively)

@@ -21,6 +21,9 @@ private struct SidebarIsColumnKey: EnvironmentKey {
 private struct NavColumnKey: EnvironmentKey {
     static let defaultValue: AppStore.NavColumn = .primary
 }
+private struct BarCornerClearanceKey: EnvironmentKey {
+    static let defaultValue = false
+}
 private struct CloseDetailPaneKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
@@ -37,11 +40,36 @@ extension EnvironmentValues {
         get { self[NavColumnKey.self] }
         set { self[NavColumnKey.self] = newValue }
     }
+    /// True when the window has (almost) no top safe-area inset — the iPhone Duo with
+    /// its status bar in the side strip (inner display in landscape, the closed Duo).
+    /// Custom bars then sit at the very top edge, where the display's rounded corners
+    /// would clip their corner buttons, so they add clearance (`nbBarCornerClearance`).
+    var barCornerClearance: Bool {
+        get { self[BarCornerClearanceKey.self] }
+        set { self[BarCornerClearanceKey.self] = newValue }
+    }
     /// Closes the Duo detail pane. Set only inside the pane; nil everywhere else.
     var closeDetailPane: (() -> Void)? {
         get { self[CloseDetailPaneKey.self] }
         set { self[CloseDetailPaneKey.self] = newValue }
     }
+}
+
+// MARK: - Display-corner clearance for custom bars (iOS-DESIGN §10.6)
+
+private struct NBBarCornerClearance: ViewModifier {
+    @Environment(\.barCornerClearance) private var clearance
+    func body(content: Content) -> some View {
+        // Keeps a 36pt corner button inside the display's rounded corner when the bar
+        // touches the top edge: ~12pt extra down and ~8pt extra in from each side.
+        content
+            .padding(.top, clearance ? 12 : 0)
+            .padding(.horizontal, clearance ? 8 : 0)
+    }
+}
+
+extension View {
+    func nbBarCornerClearance() -> some View { modifier(NBBarCornerClearance()) }
 }
 
 // MARK: - NBNavBar
@@ -83,6 +111,7 @@ struct NBNavBar<Leading: View, Trailing: View>: View {
                 .frame(width: side, alignment: .trailing)
         }
         .padding(.horizontal, 16)
+        .nbBarCornerClearance()
         .frame(maxWidth: .infinity, minHeight: 56)
         // Chrome caps at the largest STANDARD size; content (posts, names) scales fully.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)

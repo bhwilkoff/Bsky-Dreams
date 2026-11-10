@@ -333,6 +333,7 @@ struct SearchView: View {
                     }
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)

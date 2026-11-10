@@ -439,11 +439,11 @@ struct AnalyticsView: View {
                                 .multilineTextAlignment(.leading)
 
                             HStack(spacing: 14) {
-                                Label("\(post.likeCount ?? 0)",   systemImage: "heart.fill")
+                                Label(nbCompactCount(post.likeCount ?? 0),   systemImage: "heart.fill")
                                     .foregroundStyle(Color.nbAccentLegible)
-                                Label("\(post.repostCount ?? 0)", systemImage: "arrow.2.squarepath")
+                                Label(nbCompactCount(post.repostCount ?? 0), systemImage: "arrow.2.squarepath")
                                     .foregroundStyle(Color.nbLime)
-                                Label("\(post.replyCount ?? 0)",  systemImage: "bubble.left.fill")
+                                Label(nbCompactCount(post.replyCount ?? 0),  systemImage: "bubble.left.fill")
                                     .foregroundStyle(Color.nbLinkColor)
                             }
                             .font(.inter(11))
@@ -537,11 +537,7 @@ struct AnalyticsView: View {
         }
     }
 
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000     { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
-    }
+    private func formatCount(_ n: Int) -> String { nbCompactCount(n) }
 }
 
 // MARK: - Supporting types

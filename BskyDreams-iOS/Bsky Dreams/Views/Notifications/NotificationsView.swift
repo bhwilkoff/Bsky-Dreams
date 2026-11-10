@@ -110,6 +110,7 @@ struct NotificationsView: View {
                         .padding(.vertical, 20)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .refreshable { await load() }

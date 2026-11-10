@@ -35,6 +35,7 @@ struct FeedView: View {
     @State private var replyingToURI: String? = nil
     @State private var showCompose = false
     @State private var scrollToTopTrigger = 0
+    @State private var toggleWidth: CGFloat = 390
     @State private var discoverLooped = false
     @State private var autoFetchCount = 0
     /// Bumped on tab switch so an in-flight load for the OLD tab can't land its
@@ -201,6 +202,7 @@ struct FeedView: View {
                             .padding()
                     }
                 }
+                .nbReadableWidth()
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -255,13 +257,15 @@ struct FeedView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 10, weight: .bold))
+                        if toggleShowsIcons {
+                            Image(systemName: mode.icon)
+                                .font(.system(size: 10, weight: .bold))
+                        }
                         Text(mode.rawValue.uppercased())
-                            .font(.syne(12, weight: .bold))
+                            .font(.syne(toggleLabelSize, weight: .bold))
                             .tracking(0.3)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.5)
+                            .minimumScaleFactor(0.85)   // safety only — the size above already fits
                     }
                     // Three tabs share ~390pt: chrome caps below accessibility sizes,
                     // where "CONVERSATIONS" truncated to "CONVE…" (device, accessibility3).
@@ -281,6 +285,16 @@ struct FeedView: View {
             Color.nbBlack
                 .offset(x: 3, y: 3)
         )
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toggleWidth = $0 }
+    }
+
+    // One label size for all three tabs, derived from the toggle's measured width, so
+    // "CONVERSATIONS" is never the only one shrunk (it was, in a ~310pt Duo column).
+    // Width per tab ≈ 9.75 × size + padding (+14pt with the icon); icons drop out first.
+    private var toggleShowsIcons: Bool { toggleWidth >= 380 }
+    private var toggleLabelSize: CGFloat {
+        let perTab = toggleWidth / 3 - 12 - (toggleShowsIcons ? 14 : 0)
+        return min(12, max(9, perTab / 9.75))
     }
 
     private var loadingState: some View {
@@ -297,6 +311,7 @@ struct FeedView: View {
                         .padding(.vertical, 4)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -500,6 +515,7 @@ private struct FeedNavBar: View {
             }
         }
         .padding(.horizontal, 12)
+        .nbBarCornerClearance()
         .frame(maxWidth: .infinity, minHeight: 56)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // chrome cap (see NBNavBar)
         .background(Color.nbWhite)

@@ -218,14 +218,18 @@ struct GalleryCardView: View {
                 // Action row
                 HStack(spacing: 20) {
                     // Reply count (no action — tap card to open conversation)
-                    Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                    Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(Color.nbTextSecondary)
 
                     // Repost
                     Button { showRepostSheet = true } label: {
-                        Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                        Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                             .font(.inter(12))
+                            .lineLimit(1)
+                            .fixedSize()
                             .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
@@ -234,8 +238,10 @@ struct GalleryCardView: View {
 
                     // Like
                     Button { toggleLike() } label: {
-                        Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                        Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                             .font(.inter(12))
+                            .lineLimit(1)
+                            .fixedSize()
                             .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)

@@ -689,7 +689,7 @@ struct TVOverlayView: View {
                             Image(systemName: isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 28))
                                 .foregroundStyle(isLiked ? Color.nbAccentLegible : .white)
-                            Text("\(post.likeCount ?? 0)")
+                            Text(nbCompactCount(post.likeCount ?? 0))
                                 .font(.inter(12))
                                 .foregroundStyle(.white)
                         }

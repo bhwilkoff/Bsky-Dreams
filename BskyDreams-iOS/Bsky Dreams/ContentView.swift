@@ -37,6 +37,8 @@ struct MainAppView: View {
     /// The scene's width, measured — never `UIScreen.main` (ambiguous on a two-display
     /// iPhone Duo, and wrong in Split View).
     @State private var containerWidth: CGFloat = 390
+    /// The window's top safe-area inset. ~0 when the Duo's status bar is in the side strip.
+    @State private var topSafeInset: CGFloat = 47
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
@@ -137,7 +139,9 @@ struct MainAppView: View {
 
     var body: some View {
         shellLayout
+        .environment(\.barCornerClearance, topSafeInset < 20)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topSafeInset = $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: rightPaneVisible)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: sidebarPersistent)
         .onChange(of: isSplitLayout, initial: true) { _, split in

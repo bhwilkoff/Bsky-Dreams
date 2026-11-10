@@ -772,3 +772,29 @@ extension View {
         }
     }
 }
+
+// MARK: - Compact counts (iOS-DESIGN §10.9)
+//
+// Engagement counts render as 398 · 1.2K · 12K · 1.3M so they never wrap or push the
+// action row apart in a narrow column (open Duo: ~335pt per column). VoiceOver keeps
+// the exact number via `accessibilityValue`.
+func nbCompactCount(_ n: Int) -> String {
+    func short(_ v: Double, _ unit: String) -> String {
+        let s = v < 10 ? String(format: "%.1f", v) : String(format: "%.0f", v.rounded(.down))
+        return (s.hasSuffix(".0") ? String(s.dropLast(2)) : s) + unit
+    }
+    if n >= 1_000_000 { return short(Double(n) / 1_000_000, "M") }
+    if n >= 1_000 { return short(Double(n) / 1_000, "K") }
+    return "\(n)"
+}
+
+// MARK: - Readable column width (iOS-DESIGN §10.9)
+//
+// Posts read badly at ~860pt (the open Duo's landscape column with the sidebar hidden):
+// lines get long and images huge. Reading lists cap at a comfortable width and centre;
+// phone-width columns are unaffected (they are narrower than the cap).
+extension View {
+    func nbReadableWidth(_ maxWidth: CGFloat = 680) -> some View {
+        frame(maxWidth: maxWidth).frame(maxWidth: .infinity)
+    }
+}

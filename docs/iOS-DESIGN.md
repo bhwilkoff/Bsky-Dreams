@@ -248,6 +248,22 @@ sit in a strip down the trailing edge (closed Duo; inner display in landscape).
 Full-bleed art that reaches that edge uses `.nbExtendsUnderBars()`
 (`backgroundExtensionEffect`, iOS 26+). Controls stay inside the safe area; custom
 bars (`NBNavBar`, `FeedNavBar`) sit inside it already.
+**Rounded display corners:** with the status bar in the side strip the top safe-area
+inset is ~0, so a custom bar touches the top edge and its 36pt corner buttons fall
+inside the display's rounded corner (seen on device, build 52). Every custom bar
+applies `.nbBarCornerClearance()` — +12pt top, +8pt each side, only when
+`\.barCornerClearance` (top inset < 20pt) is true.
+
+10.9 **Narrow and wide columns.** A Duo column can be ~310pt (portrait, two
+columns) or ~860pt (landscape, sidebar hidden). Both must read well:
+- **Counts are compact and never wrap:** `nbCompactCount` (398 · 1.2K · 12K · 1.3M)
+  with `.lineLimit(1).fixedSize()`; VoiceOver keeps the exact number. (Build 52 wrapped
+  "398" onto two lines.)
+- **Segmented toggles size their labels together** from the measured width — never a
+  per-label `minimumScaleFactor` that shrinks only the longest word ("CONVERSATIONS").
+  Icons drop out before the text gets small.
+- **Reading lists cap at ~680pt and centre** (`.nbReadableWidth()`) — long lines and
+  giant images in a wide column are as hard to read as cramped ones in a narrow one.
 
 10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
 iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
@@ -302,5 +318,5 @@ For any new/changed feature surface:
 - [ ] Haptics use the semantic taxonomy.
 - [ ] Default accent is blue, not coral.
 - [ ] New types inlined into compiled files (synchronized-group gotcha).
-- [ ] Open iPhone Duo (regular/regular): works as a primary AND a second column, at ~335pt wide; opens go through `openPost`/`openChat`/`push` with `\.navColumn`; any shared store state it reads is per-column or primary-only (§10).
+- [ ] Open iPhone Duo (regular/regular): works as a primary AND a second column, at ~310pt AND ~860pt wide (§10.9); opens go through `openPost`/`openChat`/`push` with `\.navColumn`; any shared store state it reads is per-column or primary-only (§10).
 - [ ] Feature serves human learning/agency (see CLAUDE.md "Why We Build").
