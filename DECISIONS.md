@@ -956,4 +956,9 @@ showed the inset arrives at each screen's own hosting controller straight from t
 view (the navigation controller between them reports 0). Fixed in UIKit:
 `BarInsetCanceller` sets a negative `additionalSafeAreaInsets` on every primary-column
 screen. Device: left root 350 → 434pt.
+- **Stream is full screen only** (owner: *"it really shouldn't be an option to put on the
+  right side independently of what you have put on the left column"*):
+  `AppTab.isFullScreenExperience` — removed from Right Side, no right side beside it, a
+  remembered `.stream` second column is dropped on launch. TV stays a column choice (it
+  works as a feed in a column) — revisit if the owner sees it the same way.
 

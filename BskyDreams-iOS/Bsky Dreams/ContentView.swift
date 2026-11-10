@@ -270,7 +270,7 @@ struct TabColumns: View {
     }
     private var isCurrent: Bool { (store.selectedTab ?? .home) == tab }
     private var hasRightPane: Bool {
-        guard isSplitLayout else { return false }
+        guard isSplitLayout, !tab.isFullScreenExperience else { return false }
         return store.secondaryTab != nil || tab.hostsPostPane || tab == .dms
     }
 
@@ -327,7 +327,7 @@ struct TabColumns: View {
                 .toolbar {
                     // Full-display screens on the open Duo (TV, Stream…): no right side to
                     // hold the menu, so it sits here (§10.3).
-                    if isSplitLayout && !hasRightPane {
+                    if isSplitLayout && !hasRightPane && !tab.isFullScreenExperience {
                         ToolbarItem(placement: .topBarTrailing) { NBColumnMenu() }
                     }
                 }

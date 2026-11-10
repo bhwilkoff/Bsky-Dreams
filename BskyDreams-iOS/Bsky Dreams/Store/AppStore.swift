@@ -65,7 +65,8 @@ final class AppStore {
     var detailPane: DetailPaneItem? = nil
     var detailPanePath = NavigationPath()
     /// The second column's view, or nil for one column. Remembered across launches.
-    var secondaryTab: AppTab? = AppTab(rawValue: UserDefaults.standard.string(forKey: "duo_secondary_tab") ?? "") {
+    var secondaryTab: AppTab? = AppTab(rawValue: UserDefaults.standard.string(forKey: "duo_secondary_tab") ?? "")
+        .flatMap { $0.isFullScreenExperience ? nil : $0 } {
         didSet { UserDefaults.standard.set(secondaryTab?.rawValue, forKey: "duo_secondary_tab") }
     }
     var secondaryPath = NavigationPath()
@@ -504,7 +505,11 @@ final class AppStore {
         static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .dms, .analytics,
                                               .constellation, .timeline, .channels, .settings]
         /// Views a column can show (the open Duo's right column picker).
-        static let columnChoices: [AppTab] = [.home, .search, .notifications, .reader] + sidebarPlaces
+        static let columnChoices: [AppTab] = ([.home, .search, .notifications, .reader] + sidebarPlaces)
+            .filter { !$0.isFullScreenExperience }
+        /// Takes the whole display on the open Duo: never a right-side view, and no right
+        /// side beside it (owner: "Stream is a full screen experience").
+        var isFullScreenExperience: Bool { self == .stream }
         var isPhoneTab: Bool { Self.phoneTabs.contains(self) }
 
         var label: String {
