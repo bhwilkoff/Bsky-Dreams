@@ -265,6 +265,23 @@ columns) or ~860pt (landscape, sidebar hidden). Both must read well:
 - **Reading lists cap at ~680pt and centre** (`.nbReadableWidth()`) — long lines and
   giant images in a wide column are as hard to read as cramped ones in a narrow one.
 
+10.10 **The side strip carries navigation.** With the iOS 27.1+ SDK the Duo's status
+bar sits in a vertical strip (~84pt) down one edge — the closed Duo, and the inner
+display in landscape — and the system fills the rest of that strip with tab bars and
+toolbar items. Our chrome is custom (§ "Liquid Glass — not adopted"), so `NBStripRail`
+fills it: **New Post on top, then the sidebar's destinations in sidebar order for as
+many as fit, then a More menu with the rest** — the job a system tab bar does there,
+in neubrutalist squares (44pt, accent fill = current, badge dot = unread).
+- **Where:** the strip edge is the system's `toolbarVerticalEdge` (iOS 27.1, read in
+  `NBVerticalBarEdgeReader`), else inferred from the insets (top < 20pt and a side
+  ≥ 60pt). The rail starts under the strip's status bar (`statusBarFrame` when it is
+  vertical; else 176pt, from the device screenshot) and stops 28pt short of the
+  rounded bottom corner.
+- **When not:** while the sidebar column is on screen (open Duo, landscape, shown) —
+  it already carries the same destinations.
+- Reserved regions can't place it: the outer display reports none, and the status bar
+  is not one (observed in the simulator by the iPhone-Duo-by-Examples project).
+
 10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
 iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 `xcode-27` image and logs the SDK.

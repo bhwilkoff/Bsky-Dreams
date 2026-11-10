@@ -821,3 +821,24 @@ custom bars add corner clearance when the top safe-area inset is ~0; reading lis
 at 680pt and centre. Rejected: `ConcentricRectangle`/`containerCornerInsets` for the
 corner — the bars are square neubrutalist chrome, so moving the buttons clear of the
 corner keeps the design language where reshaping the bar would not.
+
+**Update 2026-11-10 (1.49 build 54) — navigation in the side strip.** Owner, with a
+closed-Duo screenshot: *"we should be putting our controls (sidebar items) into the empty
+space below the time and WiFi indicators on the right side of the closed Duo."* Research:
+Apple's model is that the vertical bar hosts the status bar, the tab bar and toolbar
+items, and system `TabView`/`.toolbar` move there automatically (with
+`toolbarVerticalBehavior`, `axisBehavior`, `visibilityPriority` to tune it); custom bars
+don't. Options weighed:
+- **Rebuild the shell on a system `TabView` + system toolbars** — the "free" native
+  route, but it replaces the neubrutalist custom chrome with system (Liquid Glass) chrome
+  on every iPhone, reverses the Liquid Glass decision, and 12 destinations overflow the
+  strip anyway. Rejected.
+- **System toolbar items only on the Duo** — mixed chrome, and the hidden-navigation-bar
+  architecture would need a second path per screen. Rejected.
+- **Chosen: `NBStripRail`, our own rail placed in the strip** using the system's signals
+  (`toolbarVerticalEdge`, the asymmetric safe-area insets, `statusBarFrame`) — the tab-bar
+  role, in the app's visual language, on the closed Duo and the open Duo's landscape when
+  the sidebar is hidden. iOS-DESIGN §10.10.
+Unverified until the device: the exact status-bar height (176pt fallback) and whether
+`toolbarVerticalEdge` reports an edge when the app hides its navigation bar (the inset
+fallback covers it).

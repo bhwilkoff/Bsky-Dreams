@@ -146,7 +146,7 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Next for iOS
 
-- **iPhone Duo — verify on device** (build 51 verified the open-Duo sidebar on device 2026-11-10; build 52 adds the collapsible sidebar + two columns; `xcode-27` runner, iOS 27.2 SDK): portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
+- **iPhone Duo — verify on device** (build 51 verified the open-Duo sidebar on device 2026-11-10; build 52 adds the collapsible sidebar + two columns; 53 formatting; 54 side-strip rail; `xcode-27` runner, iOS 27.2 SDK): portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
 
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions

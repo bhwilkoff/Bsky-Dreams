@@ -37,8 +37,13 @@ struct MainAppView: View {
     /// The scene's width, measured — never `UIScreen.main` (ambiguous on a two-display
     /// iPhone Duo, and wrong in Split View).
     @State private var containerWidth: CGFloat = 390
-    /// The window's top safe-area inset. ~0 when the Duo's status bar is in the side strip.
-    @State private var topSafeInset: CGFloat = 47
+    /// The window's safe-area insets. On iPhone Duo with the status bar in the side strip
+    /// the top inset is ~0 and that side's inset is the strip (~84pt).
+    @State private var safeInsets = EdgeInsets(top: 47, leading: 0, bottom: 34, trailing: 0)
+    /// Which edge the system's vertical bar is on (iOS 27.1 `toolbarVerticalEdge`), if any.
+    @State private var verticalBarEdge: HorizontalEdge? = nil
+    /// Where the strip's status bar (clock, Wi-Fi) ends, in window coordinates.
+    @State private var stripStatusBarBottom: CGFloat = 176
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
@@ -71,6 +76,42 @@ struct MainAppView: View {
     }
 
     private var sidebarWidth: CGFloat { min(containerWidth * 0.78, 300) }
+
+    // MARK: iPhone Duo side strip (iOS-DESIGN §10.10)
+    //
+    // With the iOS 27.1+ SDK the Duo puts the status bar in a vertical strip (~84pt) down
+    // one edge — on the closed Duo, and on the inner display in landscape. The system
+    // fills the rest of that strip with tab bars and toolbars; our chrome is custom, so we
+    // fill it ourselves with the sidebar's destinations. The edge comes from the system
+    // (`toolbarVerticalEdge`) when it reports one; otherwise from the insets themselves
+    // (no top inset + a wide side inset), which is what the strip does to the layout.
+    private var stripEdge: HorizontalEdge? {
+        if let verticalBarEdge { return verticalBarEdge }
+        guard safeInsets.top < 20 else { return nil }
+        if safeInsets.trailing >= 60 { return .trailing }
+        if safeInsets.leading >= 60 { return .leading }
+        return nil
+    }
+    /// Not when the sidebar column is already on screen (open Duo, landscape, shown).
+    private var stripRailVisible: Bool {
+        guard let edge = stripEdge, !sidebarPersistent else { return false }
+        return (edge == .leading ? safeInsets.leading : safeInsets.trailing) >= 44
+    }
+
+    /// The bottom of the strip's status bar. `statusBarFrame` reports the strip's status
+    /// area when it is vertical; if it reports something implausible (horizontal, or the
+    /// whole strip) fall back to the measured position of the clock + Wi-Fi on the
+    /// device (build 53 screenshot: ~155pt), plus breathing room.
+    static func measureStripStatusBarBottom() -> CGFloat {
+        let frame = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?
+            .statusBarManager?.statusBarFrame ?? .zero
+        if frame.height > frame.width, frame.height > 40, frame.height < 320 {
+            return frame.maxY + 12
+        }
+        return 176
+    }
     private var sidebarCurrentX: CGFloat {
         let base: CGFloat = sidebarOpen ? 0 : -sidebarWidth
         return max(-sidebarWidth, min(0, base + sidebarDragOffset))
@@ -139,9 +180,27 @@ struct MainAppView: View {
 
     var body: some View {
         shellLayout
-        .environment(\.barCornerClearance, topSafeInset < 20)
+        .environment(\.barCornerClearance, safeInsets.top < 20)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topSafeInset = $0 }
+        .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { insets in
+            safeInsets = insets
+            stripStatusBarBottom = Self.measureStripStatusBarBottom()
+        }
+        .background {
+            if #available(iOS 27.1, *) {
+                NBVerticalBarEdgeReader { verticalBarEdge = $0 }
+            }
+        }
+        // iPhone Duo side strip: the sidebar's destinations fill the empty space below the
+        // clock — where the system would put a tab bar (iOS-DESIGN §10.10).
+        .overlay(alignment: stripEdge == .leading ? .leading : .trailing) {
+            if stripRailVisible, let edge = stripEdge {
+                NBStripRail(topOffset: stripStatusBarBottom)
+                    .frame(width: edge == .leading ? safeInsets.leading : safeInsets.trailing)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+        }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: rightPaneVisible)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: sidebarPersistent)
         .onChange(of: isSplitLayout, initial: true) { _, split in
@@ -372,6 +431,138 @@ struct MainAppView: View {
         guard let did = auth.session?.did else { return }
         if let profile = try? await ATProtocolClient.shared.getProfile(actor: did) {
             store.currentUserAvatar = profile.avatar
+        }
+    }
+}
+
+// MARK: - iPhone Duo side-strip rail (iOS-DESIGN §10.10)
+
+/// Reports the system's vertical-bar edge (iOS 27.1+). Kept in its own view because the
+/// environment value doesn't exist on the app's iOS 18.6 floor.
+@available(iOS 27.1, *)
+struct NBVerticalBarEdgeReader: View {
+    @Environment(\.toolbarVerticalEdge) private var edge
+    let onChange: (HorizontalEdge?) -> Void
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .onChange(of: edge, initial: true) { _, newEdge in onChange(newEdge) }
+    }
+}
+
+/// The sidebar's destinations as a column of square neubrutalist buttons in the Duo's
+/// side strip, under the clock: New Post on top, then destinations in sidebar order for
+/// as many as fit, then a More menu with the rest. The same job a system tab bar does
+/// in the vertical bar, in this app's own visual language.
+struct NBStripRail: View {
+    /// Window y where the status bar ends — the rail starts below it.
+    let topOffset: CGFloat
+    @Environment(AppStore.self) private var store
+    @State private var height: CGFloat = 0
+
+    private let button: CGFloat = 44
+    private let spacing: CGFloat = 8
+    private let bottomClearance: CGFloat = 28   // the display's rounded bottom corner
+
+    /// Destinations that fit between New Post and the More button.
+    private var capacity: Int {
+        let usable = height - topOffset - bottomClearance - (button + spacing) * 2   // New Post + More
+        return max(0, Int(usable / (button + spacing)))
+    }
+    private var tabs: [AppStore.AppTab] { AppStore.AppTab.allCases }
+    private var shown: [AppStore.AppTab] {
+        // If everything fits without a More button, show everything.
+        if capacity + 1 >= tabs.count { return tabs }
+        return Array(tabs.prefix(capacity))
+    }
+    private var overflow: [AppStore.AppTab] { Array(tabs.dropFirst(shown.count)) }
+
+    var body: some View {
+        VStack(spacing: spacing) {
+            composeButton
+            ForEach(shown, id: \.self) { tab in tabButton(tab) }
+            if !overflow.isEmpty { moreMenu }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, topOffset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // chrome, like the nav bars
+    }
+
+    private var composeButton: some View {
+        Image(systemName: "square.and.pencil")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(Color.nbLabel(on: .nbAccent))
+            .frame(width: button, height: button)
+            .background(Color.nbAccent)
+            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+            .background(Color.nbBlack.offset(x: 2, y: 2))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                Haptics.light()
+                store.showComposeSheet = true
+            }
+            .accessibilityLabel("New post")
+            .accessibilityAddTraits(.isButton)
+    }
+
+    private func tabButton(_ tab: AppStore.AppTab) -> some View {
+        let active = (store.selectedTab ?? .home) == tab
+        return Image(systemName: tab.icon)
+            .font(.system(size: 17, weight: active ? .bold : .regular))
+            .foregroundStyle(active ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
+            .frame(width: button, height: button)
+            .background(active ? Color.nbAccent : Color.nbWhite)
+            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: active ? 2 : 1))
+            .overlay(alignment: .topTrailing) {
+                if badge(for: tab) > 0 {
+                    Circle()
+                        .fill(Color.nbAccentLegible)
+                        .overlay(Circle().strokeBorder(Color.nbWhite, lineWidth: 1.5))
+                        .frame(width: 10, height: 10)
+                        .offset(x: 3, y: -3)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !active else { return }
+                Haptics.selection()
+                store.selectedTab = tab
+            }
+            .accessibilityLabel(tab.label)
+            .accessibilityValue(badge(for: tab) > 0 ? "\(badge(for: tab)) unread" : "")
+            .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            ForEach(overflow, id: \.self) { tab in
+                Button {
+                    Haptics.selection()
+                    store.selectedTab = tab
+                } label: {
+                    Label(tab.label, systemImage: (store.selectedTab ?? .home) == tab ? "checkmark" : tab.icon)
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(overflow.contains(store.selectedTab ?? .home) ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
+                .frame(width: button, height: button)
+                .background(overflow.contains(store.selectedTab ?? .home) ? Color.nbAccent : Color.nbWhite)
+                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("More destinations")
+    }
+
+    private func badge(for tab: AppStore.AppTab) -> Int {
+        switch tab {
+        case .notifications: store.unreadNotificationCount
+        case .dms: store.unreadDMCount
+        default: 0
         }
     }
 }
