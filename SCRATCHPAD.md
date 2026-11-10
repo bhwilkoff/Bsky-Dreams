@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-06-17
+## Current Date: 2026-11-10
 
 ---
 
@@ -51,6 +51,7 @@
 | Hybrid feeds (multi-source merging + trending score) | ✅ | ✅ | Both Following and Discover merge 3 feeds; Gallery merges 4 |
 | NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
 | Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
+| iPhone Duo (foldable) layout | — | ✅ | 2026-11-10, 1.49: persistent sidebar + conversation/chat detail pane on the open Duo; iOS-DESIGN §10. Web equivalent = desktop sidebar (already) — a web two-pane conversation view is a possible parity follow-up |
 | Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
 | Analytics dashboard (post stats, heatmap) | ✅ | ✅ | iOS: Swift Charts (engagement bars, posting heatmap, top posts) |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
@@ -144,6 +145,8 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 - Audit + device-verified polish loop (2026-10-08, 1.48): crash/data-loss fixes (untrusted facet ranges, offline logouts + rotating-refresh races, failed posts kept with Retry), @mention/hashtag facets on every compose surface, like/repost/unblock correctness, real badge counts, iPad (sideways render, window controls), Dynamic Type incl. system-font text + accessibility-size layouts, dark-mode foregrounds, CachedImage in churn surfaces, offline/error states everywhere, Share Extension floor 18.6 + privacy manifest, independence disclaimer. Verified on the iPhone 12 / iPad Pro test devices via `tools/device_smoke.py` + DEBUG launch doors. Log: AUTONOMOUS_PROGRESS.md.
 
 ### Next for iOS
+
+- **iPhone Duo — verify on device (1.49 TestFlight)**: portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
 
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions

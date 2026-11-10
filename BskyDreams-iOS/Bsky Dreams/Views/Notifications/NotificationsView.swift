@@ -362,16 +362,16 @@ struct NotificationGroupRowView: View {
             store.navigationPath.append(ProfileDestination(actor: notification.author.did))
         case .like, .repost, .likeViaRepost, .repostViaRepost:
             if let subject = notification.reasonSubject {
-                store.navigationPath.append(PostDestination(uri: subject, post: nil))
+                store.openPost(uri: subject, post: nil)
             }
         case .reply, .mention, .quote:
-            store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
+            store.openPost(uri: notification.uri, post: nil)
         case .unknown:
             // Best-effort: try reasonSubject first, fall back to notification URI, then profile
             if let subject = notification.reasonSubject {
-                store.navigationPath.append(PostDestination(uri: subject, post: nil))
+                store.openPost(uri: subject, post: nil)
             } else {
-                store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
+                store.openPost(uri: notification.uri, post: nil)
             }
         }
     }

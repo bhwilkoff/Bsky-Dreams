@@ -12,6 +12,7 @@ struct PostCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.isDetailPane) private var inDetailPane
     @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var isLiked: Bool = false
@@ -99,10 +100,21 @@ struct PostCardView: View {
             }
             .padding(.horizontal, CGFloat(depth) * 12)
         }
+        // Open Duo: the post whose conversation is open in the detail pane is marked in
+        // the list beside it — the list/detail "you are here".
+        .overlay {
+            if !inDetailPane, store.detailPane?.id == "post:\(post.uri)" {
+                Rectangle()
+                    .strokeBorder(Color.nbAccent, lineWidth: 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityAddTraits(!inDetailPane && store.detailPane?.id == "post:\(post.uri)" ? AccessibilityTraits.isSelected : [])
         .contentShape(Rectangle())
         .onTapGesture {
             guard !suppressNavigation else { return }
-            store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+            store.openPost(uri: post.uri, post: post, fromDetailPane: inDetailPane)
         }
         .confirmationDialog("Repost Options", isPresented: $showRepostSheet) {
             Button(isReposted ? "Undo Repost" : "Repost") { toggleRepost() }

@@ -109,6 +109,7 @@ struct StreamView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.modelContext) private var modelContext
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Persisted settings
@@ -123,6 +124,13 @@ struct StreamView: View {
     // Session state
     @State private var isLandscape = false
     @State private var streamingRequested = false
+    /// Started on the open iPhone Duo, where the inner display ignores interface
+    /// orientation, so there is no "rotate to landscape" step (iOS-DESIGN §10). Rotation
+    /// signals must not dismiss a stream started this way.
+    @State private var startedWithoutRotation = false
+
+    /// The open Duo's inner display: regular in both dimensions, in every orientation.
+    private var isOpenDuo: Bool { horizontalSizeClass == .regular && verticalSizeClass == .regular }
     @State private var slides: [IndexedSlide] = []
     @State private var currentIndex = 0
     @State private var isLoadingMore = false
@@ -166,6 +174,7 @@ struct StreamView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             AppDelegate.streamingActive = false
             streamingRequested = false
+            startedWithoutRotation = false
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let rootVC = scene.windows.first?.rootViewController {
@@ -184,7 +193,7 @@ struct StreamView: View {
                     if slides.isEmpty && !isLoadingMore { await loadMore() }
                     if !isPaused { startTimer() }
                 }
-            } else if !nowLandscape && isLandscape {
+            } else if !nowLandscape && isLandscape && !startedWithoutRotation {
                 isLandscape = false
             }
         }
@@ -195,6 +204,7 @@ struct StreamView: View {
             isLandscape = false
             AppDelegate.streamingActive = false
             streamingRequested = false
+            startedWithoutRotation = false
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let rootVC = scene.windows.first?.rootViewController {
@@ -239,7 +249,7 @@ struct StreamView: View {
                     Text("STREAM")
                         .font(.syne(22, weight: .bold))
                         .foregroundStyle(Color.nbBlack)
-                    Text("One post at a time, full-screen in landscape")
+                    Text(isOpenDuo ? "One post at a time, full-screen" : "One post at a time, full-screen in landscape")
                         .font(.inter(13))
                         .foregroundStyle(Color.nbTextSecondary)
                 }
@@ -379,6 +389,18 @@ struct StreamView: View {
 
     private var startButton: some View {
         Button {
+            if isOpenDuo {
+                // Open Duo: the inner display has no landscape to rotate into — start now.
+                startedWithoutRotation = true
+                streamingRequested = true
+                isLandscape = true
+                Task {
+                    await loadSeenURIs()
+                    if slides.isEmpty && !isLoadingMore { await loadMore() }
+                    if !isPaused { startTimer() }
+                }
+                return
+            }
             streamingRequested = true
             // Start listening for physical device rotation. streamingActive is NOT set
             // here — it's only set once the device physically tilts to landscape, so iOS
@@ -464,7 +486,7 @@ struct StreamView: View {
                     rootVC.setNeedsUpdateOfSupportedInterfaceOrientations()
                 }
                 // The 1-second timer (below) detects when the interface actually rotates
-            } else if deviceOri.isPortrait && isLandscape {
+            } else if deviceOri.isPortrait && isLandscape && !startedWithoutRotation {
                 // Physically rotated back — dismiss the stream cover
                 isLandscape = false
             }

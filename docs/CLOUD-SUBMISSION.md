@@ -6,7 +6,7 @@ path + bundle id are STALE (it predates the current `app.bskydreams.ios` / space
 
 > **Why cloud:** the dev Mac runs a *beta* macOS, so a local archive is rejected by App Review
 > (**ITMS-90301** — "built with this version of the OS"); Apple also keeps raising the Xcode floor
-> (**ITMS-90111**). A GitHub-hosted **`macos-26`** runner (released macOS + Xcode 26.6) clears both,
+> (**ITMS-90111**). GitHub's **`xcode-27`** runner image (released macOS 27, newest non-beta Xcode on it) clears both,
 > **free** for this public repo — the same pipeline Archive Watch uses, with no Xcode Cloud compute.
 
 ---
@@ -23,7 +23,7 @@ path + bundle id are STALE (it predates the current `app.bskydreams.ios` / space
    gh workflow run appstore-build.yml -f platform=ios
    gh run watch $(gh run list --workflow=appstore-build.yml -L1 --json databaseId -q '.[0].databaseId')
    ```
-   `.github/workflows/appstore-build.yml` (runner `macos-26`) selects Xcode 26.6, imports the signing
+   `.github/workflows/appstore-build.yml` (runner `xcode-27`) selects the newest non-beta Xcode and logs its iOS SDK (27.1+ = iPhone Duo edge to edge), imports the signing
    `.p12`s, and runs `tools/submit-appstore.sh ios` — which archives the **`Bsky Dreams`** scheme via
    the repo-root **`BskyDreams.xcworkspace`** (the project path has spaces + is two levels deep, so the
    tooling quotes it and builds the workspace), creates App Store profiles for **both** embedded bundle

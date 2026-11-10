@@ -29,13 +29,42 @@ struct MainAppView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Query private var seenPosts: [SeenPost]
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var sidebarOpen = false
     @State private var sidebarDragOffset: CGFloat = 0
     @State private var isDraggingSidebar = false
+    /// The scene's width, measured — never `UIScreen.main` (ambiguous on a two-display
+    /// iPhone Duo, and wrong in Split View).
+    @State private var containerWidth: CGFloat = 390
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
-    private var sidebarWidth: CGFloat { min(UIScreen.main.bounds.width * 0.78, 300) }
+    // MARK: iPhone Duo layout (iOS-DESIGN §10)
+    //
+    // Regular width AND regular height is the OPEN iPhone Duo's inner display, in every
+    // orientation and pose. (An iPhone Pro Max in landscape is regular width but COMPACT
+    // height, so it keeps the phone layout.) The closed Duo, Split View and every other
+    // iPhone are compact width → the original drawer layout, untouched.
+    private var isSplitLayout: Bool {
+        horizontalSizeClass == .regular && verticalSizeClass == .regular
+    }
+    private var detailPaneVisible: Bool { isSplitLayout && store.detailPane != nil }
+    /// Portrait inner display (~670pt) can't fit sidebar + two readable panes, so while a
+    /// conversation is open the sidebar folds back into the drawer and the two panes
+    /// split the screen exactly in half — at the center line, where the fold runs.
+    /// Landscape (~950pt) keeps the sidebar: sidebar + two iPhone-width panes.
+    private var sidebarPersistent: Bool {
+        isSplitLayout && !(detailPaneVisible && containerWidth < 900)
+    }
+    private let persistentSidebarWidth: CGFloat = 260
+    private let paneDivider: CGFloat = 2
+    private var paneWidth: CGFloat {
+        let content = containerWidth - (sidebarPersistent ? persistentSidebarWidth + paneDivider : 0)
+        return max(0, (content - paneDivider) / 2)
+    }
+
+    private var sidebarWidth: CGFloat { min(containerWidth * 0.78, 300) }
     private var sidebarCurrentX: CGFloat {
         let base: CGFloat = sidebarOpen ? 0 : -sidebarWidth
         return max(-sidebarWidth, min(0, base + sidebarDragOffset))
@@ -92,59 +121,20 @@ struct MainAppView: View {
         .allowsHitTesting(!sidebarOpen && store.navigationPath.isEmpty)
     }
 
+    private var paneSeparator: some View {
+        Color.nbBlack.frame(width: paneDivider).ignoresSafeArea(edges: .vertical)
+    }
+
     var body: some View {
-        ZStack(alignment: .leading) {
-            // Page background — deep navy-black in dark mode so cards float above it.
-            Color.nbBackground.ignoresSafeArea()
-
-            // Full-screen content
-            NavigationStack(path: Bindable(store).navigationPath) {
-                DetailView(toggleSidebar: { toggleSidebarAnimated() })
-                    .environment(\.toggleSidebar, { toggleSidebarAnimated() })
-                    .navigationDestination(for: PostDestination.self) { dest in
-                        ThreadView(uri: dest.uri, initialPost: dest.post)
-                            .enableNavigationBackSwipe()
-                    }
-                    .navigationDestination(for: ProfileDestination.self) { dest in
-                        ProfileView(actor: dest.actor)
-                            .enableNavigationBackSwipe()
-                    }
-                    .navigationDestination(for: HashtagDestination.self) { dest in
-                        SearchView(initialQuery: "#\(dest.tag)")
-                            .enableNavigationBackSwipe()
-                    }
-                    .navigationDestination(for: Conversation.self) { convo in
-                        ChatView(conversation: convo, myDid: auth.session?.did ?? "")
-                            .enableNavigationBackSwipe()
-                    }
-                    .navigationDestination(for: AnalyticsDestination.self) { dest in
-                        AnalyticsView(initialActor: dest.actor)
-                            .enableNavigationBackSwipe()
-                    }
-                    .navigationDestination(for: ConstellationDestination.self) { dest in
-                        ConstellationView(initialActor: dest.actor)
-                            .enableNavigationBackSwipe()
-                    }
-            }
-
-            // Dim overlay — opacity tracks sidebar position 1:1 during drag
-            Color.black.opacity(dimOpacity)
-                .ignoresSafeArea()
-                .allowsHitTesting(dimOpacity > 0.01)
-                .onTapGesture { closeSidebar() }
-                .zIndex(1)
-
-            // Sidebar — always in hierarchy, translated off-screen when closed
-            SidebarView(onNavigate: closeSidebar)
-                .frame(width: sidebarWidth)
-                .ignoresSafeArea(edges: .vertical)
-                .offset(x: sidebarCurrentX)
-                .zIndex(2)
-
-            // Left-edge ghost strip — above sidebar so it wins gesture competition
-            // over child ScrollViews; passes through all hits when sidebar is open
-            edgeOpenStrip
-                .zIndex(3)
+        shellLayout
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: detailPaneVisible)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: sidebarPersistent)
+        .onChange(of: isSplitLayout, initial: true) { _, split in
+            store.setDetailPaneEnabled(split)
+        }
+        .onChange(of: sidebarPersistent) { _, persistent in
+            if persistent { sidebarOpen = false; sidebarDragOffset = 0 }
         }
         // Close-only gesture on the ZStack: handles dragging the sidebar shut.
         // Opening is handled exclusively by edgeOpenStrip above.
@@ -244,6 +234,92 @@ struct MainAppView: View {
         }
         .onChange(of: store.selectedTab) { _, _ in
             store.navigationPath = NavigationPath()
+            store.detailPaneTabChanged()
+        }
+    }
+
+    /// Drawer layout on every iPhone; sidebar column + list + detail pane on the open Duo.
+    private var shellLayout: some View {
+        ZStack(alignment: .leading) {
+            // Page background — deep navy-black in dark mode so cards float above it.
+            Color.nbBackground.ignoresSafeArea()
+
+            HStack(spacing: 0) {
+                // Open Duo: the sidebar is a column, like the web app's desktop layout.
+                if sidebarPersistent {
+                    SidebarView(onNavigate: {})
+                        .frame(width: persistentSidebarWidth)
+                        .ignoresSafeArea(edges: .vertical)
+                        .transition(.move(edge: .leading))
+                    paneSeparator
+                }
+
+                mainStack
+                    .frame(width: detailPaneVisible ? paneWidth : nil)
+                    .frame(maxWidth: detailPaneVisible ? nil : CGFloat.infinity)
+
+                // Open Duo: the conversation / chat sits beside the list it came from.
+                if detailPaneVisible, let item = store.detailPane {
+                    paneSeparator
+                    DetailPaneView(item: item)
+                        .frame(width: paneWidth)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .environment(\.sidebarIsPersistent, sidebarPersistent)
+
+            if !sidebarPersistent {
+                // Dim overlay — opacity tracks sidebar position 1:1 during drag
+                Color.black.opacity(dimOpacity)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(dimOpacity > 0.01)
+                    .onTapGesture { closeSidebar() }
+                    .zIndex(1)
+
+                // Sidebar — always in hierarchy, translated off-screen when closed
+                SidebarView(onNavigate: closeSidebar)
+                    .frame(width: sidebarWidth)
+                    .ignoresSafeArea(edges: .vertical)
+                    .offset(x: sidebarCurrentX)
+                    .zIndex(2)
+
+                // Left-edge ghost strip — above sidebar so it wins gesture competition
+                // over child ScrollViews; passes through all hits when sidebar is open
+                edgeOpenStrip
+                    .zIndex(3)
+            }
+        }
+    }
+
+    /// The single app-wide push stack (iOS-DESIGN §1.1).
+    private var mainStack: some View {
+        NavigationStack(path: Bindable(store).navigationPath) {
+            DetailView(toggleSidebar: { toggleSidebarAnimated() })
+                .environment(\.toggleSidebar, { toggleSidebarAnimated() })
+                .navigationDestination(for: PostDestination.self) { dest in
+                    ThreadView(uri: dest.uri, initialPost: dest.post)
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: ProfileDestination.self) { dest in
+                    ProfileView(actor: dest.actor)
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: HashtagDestination.self) { dest in
+                    SearchView(initialQuery: "#\(dest.tag)")
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: Conversation.self) { convo in
+                    ChatView(conversation: convo, myDid: auth.session?.did ?? "")
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: AnalyticsDestination.self) { dest in
+                    AnalyticsView(initialActor: dest.actor)
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: ConstellationDestination.self) { dest in
+                    ConstellationView(initialActor: dest.actor)
+                        .enableNavigationBackSwipe()
+                }
         }
     }
 
@@ -285,6 +361,49 @@ struct MainAppView: View {
         guard let did = auth.session?.did else { return }
         if let profile = try? await ATProtocolClient.shared.getProfile(actor: did) {
             store.currentUserAvatar = profile.avatar
+        }
+    }
+}
+
+// MARK: - iPhone Duo detail pane (iOS-DESIGN §10)
+
+/// The right-hand pane on the open iPhone Duo: the conversation or chat opened from the
+/// list beside it. It is the detail column of a list/detail split (what
+/// NavigationSplitView's detail column is), so it owns a small stack of its own for
+/// drilling into replies — §1.1's "one stack" still governs every other push flow.
+struct DetailPaneView: View {
+    let item: AppStore.DetailPaneItem
+    @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
+
+    var body: some View {
+        NavigationStack(path: Bindable(store).detailPanePath) {
+            paneRoot
+                .navigationDestination(for: PostDestination.self) { dest in
+                    ThreadView(uri: dest.uri, initialPost: dest.post)
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: ProfileDestination.self) { dest in
+                    ProfileView(actor: dest.actor)
+                        .enableNavigationBackSwipe()
+                }
+                .navigationDestination(for: HashtagDestination.self) { dest in
+                    SearchView(initialQuery: "#\(dest.tag)")
+                        .enableNavigationBackSwipe()
+                }
+        }
+        .environment(\.isDetailPane, true)
+        .environment(\.closeDetailPane, { store.closeDetailPane() })
+        .id(item.id)   // a new conversation gets fresh view state, not the last one's
+    }
+
+    @ViewBuilder
+    private var paneRoot: some View {
+        switch item {
+        case .post(let dest):
+            ThreadView(uri: dest.uri, initialPost: dest.post)
+        case .chat(let convo):
+            ChatView(conversation: convo, myDid: auth.session?.did ?? "")
         }
     }
 }

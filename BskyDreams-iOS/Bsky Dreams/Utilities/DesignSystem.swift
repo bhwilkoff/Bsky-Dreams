@@ -601,11 +601,11 @@ enum NBImageLoader {
 
     /// Fetch + decode + downsample off the main actor. Returns a display-ready image.
     /// `maxPixel` caps the longest side (in points) so small cells don't decode huge bitmaps.
-    static func load(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
+    /// `scale` is the view's `displayScale` — never `UIScreen.main.scale`, which is
+    /// ambiguous on a two-display device (iPhone Duo) and slated for deprecation.
+    static func load(_ url: URL, maxPixel: CGFloat?, scale: CGFloat) async -> UIImage? {
         if let hit = cached(url) { return hit }
         guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
-        // UIScreen is main-actor-only; read the scale here, before hopping off-main.
-        let scale = await MainActor.run { UIScreen.main.scale }
         return await Task.detached(priority: .utility) { () -> UIImage? in
             let image: UIImage?
             if let maxPixel, let downsampled = NBImageLoader.downsample(data, maxPixel: maxPixel * scale) {
@@ -652,6 +652,7 @@ struct CachedImage<Content: View>: View {
     @ViewBuilder let content: (CachedImagePhase) -> Content
 
     @State private var phase: CachedImagePhase = .empty
+    @Environment(\.displayScale) private var displayScale
 
     init(url: URL?, maxPixelSize: CGFloat? = nil,
          @ViewBuilder content: @escaping (CachedImagePhase) -> Content) {
@@ -673,7 +674,7 @@ struct CachedImage<Content: View>: View {
         guard let url else { phase = .failure; return }
         if case .success = phase, NBImageLoader.cached(url) != nil { return }
         let target = url
-        if let img = await NBImageLoader.load(url, maxPixel: maxPixelSize) {
+        if let img = await NBImageLoader.load(url, maxPixel: maxPixelSize, scale: displayScale) {
             guard target == url else { return }   // parameter changed mid-flight (fast scroll)
             phase = .success(Image(uiImage: img))
         } else {
@@ -752,5 +753,22 @@ extension Color {
         let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
         let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
         return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
+    }
+}
+
+// MARK: - iPhone Duo: art under the vertical strip (iOS-DESIGN §10)
+//
+// On the iPhone Duo (iOS 27.1 SDK) the status bar and system bars sit in a strip down
+// the trailing edge. Full-bleed art that reaches that edge continues under the strip
+// instead of stopping short of it. No-op before iOS 26, so older phones draw exactly
+// what they drew before. (Same helper as Archive Watch's `extendsUnderBars()`.)
+extension View {
+    @ViewBuilder
+    func nbExtendsUnderBars() -> some View {
+        if #available(iOS 26, *) {
+            backgroundExtensionEffect()
+        } else {
+            self
+        }
     }
 }

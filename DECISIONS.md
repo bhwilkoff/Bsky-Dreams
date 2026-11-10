@@ -751,3 +751,43 @@ The app does not adopt iOS 26 Liquid Glass (`glassEffect`, glass toolbars/tab ba
 *2026-10-08*
 
 Settings → About (iOS) and the web auth footer state that Bsky Dreams is independent and not affiliated with or endorsed by Bluesky Social, PBC. A brand name inside an app's name is the trigger App Review uses for guideline 4.1 (copycats); the sibling BOBA app was rejected on exactly this in June 2026. The same sentence belongs in App Review notes on every submission.
+
+---
+
+## [iOS] iPhone Duo — Persistent Sidebar + Conversation Detail Pane
+*2026-11-10*
+
+Bsky Dreams adapts to iPhone Duo (iOS 27.1, Oct 2026) the way Apple asks and the way
+Archive Watch already did: **one app, two size classes.** Outer display = compact width
+(the phone layout, unchanged). Inner display = regular width + regular height in every
+pose → the open-Duo layout. Rules in `docs/iOS-DESIGN.md` §10.
+
+**What ships (1.49):**
+- **Persistent sidebar** on the open Duo — the web app's desktop layout (sidebar always
+  open ≥768px), so parity improves rather than diverges.
+- **List / detail for conversations and chats.** The canonical foldable social pattern:
+  read the feed on one side, the conversation on the other, without losing your place in
+  the feed. Posts route through `AppStore.openPost`, chats through `openChat`; the pane
+  shows `ThreadView` / `ChatView` unchanged. Closing the device pushes the open item onto
+  the main stack (continuity across the fold).
+- **Portrait split on the center line.** Inner portrait (~670pt) can't hold sidebar +
+  two readable panes, so with a conversation open the sidebar returns to the drawer and
+  the panes split exactly in half. The book pose folds along the center line, so neither
+  pane bends across the fold (not yet confirmed on a physical device).
+- No `UIScreen.main` (sidebar width, GIF grid, image-decode scale); Stream starts without
+  rotation on the inner display (which ignores interface orientation); Gallery goes two
+  columns by measured width ≥600pt; the profile banner extends under the trailing strip.
+- **CI moves to the `xcode-27` image + newest non-beta Xcode** (Archive Watch's step). The
+  edge-to-edge Duo layout needs the iOS 27.1 SDK; older SDKs run the app "boxed". The run
+  logs the SDK and warns if it predates 27.1. Mandatory anyway from April 2027.
+
+**Why a second NavigationStack in the pane** (an exception to §1.1): the pane is a detail
+column; drilling into a reply must stay in the pane. `NavigationSplitView` was rejected
+again: it would replace the custom drawer/sidebar shell on every iPhone (risking the
+compact layout to gain the regular one), and it collapsed poorly here before.
+
+**Rejected / deferred** (see §10.8): fold-aware `ArrangementView`/`ReservedRegion` APIs
+(signatures not verified, no device or simulator here — Archive Watch also withdrew its
+ArrangementView attempt); hinge effects; tabletop-specific layouts; a second window
+(app-global `AppStore` state would mirror across windows). Built and shipped without a
+Duo or the 27.1 simulator: first verification is the TestFlight build on the owner's device.

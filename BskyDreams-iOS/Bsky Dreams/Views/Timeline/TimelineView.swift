@@ -416,9 +416,7 @@ struct TimelineScrubberView: View {
                             .frame(width: 158, height: 72)
                             .offset(x: card.left, y: card.top)
                             .onTapGesture {
-                                store.navigationPath.append(
-                                    PostDestination(uri: card.post.uri, post: card.post)
-                                )
+                                store.openPost(uri: card.post.uri, post: card.post)
                             }
                     }
 

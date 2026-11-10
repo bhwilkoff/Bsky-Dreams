@@ -175,6 +175,7 @@ struct ProfileView: View {
                 } placeholder: { DiagonalStripeBackground() }
                 .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120)
                 .clipped()
+                .nbExtendsUnderBars()
             } else {
                 DiagonalStripeBackground()
                     .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100)

@@ -57,13 +57,13 @@ struct DMsView: View {
             guard let convoId else { return }
             store.pendingDMConvoId = nil
             if let convo = conversations.first(where: { $0.id == convoId }) {
-                store.navigationPath.append(convo)
+                store.openChat(convo)
             }
         }
         .sheet(isPresented: $showNewConvo, onDismiss: {
             // Navigate after the sheet is fully dismissed to avoid presentation conflicts
             if let created = justCreatedConvo {
-                store.navigationPath.append(created)
+                store.openChat(created)
                 justCreatedConvo = nil
             }
         }) {
@@ -128,11 +128,13 @@ struct DMsView: View {
             }
 
             ForEach(conversations) { convo in
-                NavigationLink(value: convo) {
+                Button { store.openChat(convo) } label: {
                     ConversationRowView(conversation: convo, myDid: myDid)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .listRowBackground(store.detailPane?.id == "chat:\(convo.id)" ? Color.nbAccent.opacity(0.12) : Color.clear)
                 .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
                 .contextMenu {
                     if convo.muted {
                         Button { Task { await toggleMute(convo: convo, mute: false) } } label: {
@@ -177,7 +179,7 @@ struct DMsView: View {
             if let convoId = store.pendingDMConvoId,
                let convo = conversations.first(where: { $0.id == convoId }) {
                 store.pendingDMConvoId = nil
-                store.navigationPath.append(convo)
+                store.openChat(convo)
             }
         } catch {
             if conversations.isEmpty {

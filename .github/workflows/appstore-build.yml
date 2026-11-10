@@ -1,10 +1,12 @@
 name: App Store build (cloud)
 
-# Build + sign + upload the App Store binaries on a GitHub-hosted macos-26 runner (RELEASED macOS +
-# Xcode 26.6) — the DEFAULT way to ship this app. The dev Mac is on a beta macOS, so local builds are
-# rejected ITMS-90301; and Apple keeps raising the Xcode floor (ITMS-90111). A cloud runner sidesteps
-# both, FREE for this public repo. Signing is MANUAL via .p12 secrets (cloud signing fails for this
-# team key). Bump AppVersion.xcconfig + push BEFORE dispatching so the build number is monotonic.
+# Build + sign + upload the App Store binaries on GitHub's `xcode-27` runner image (RELEASED macOS 27),
+# with the NEWEST NON-BETA Xcode on it — the DEFAULT way to ship this app. The dev Mac is on a beta
+# macOS, so local builds are rejected ITMS-90301; and Apple keeps raising the Xcode floor (ITMS-90111;
+# from April 2027 every upload must use the iOS 27 SDK). The iOS 27.1 SDK is also what lets the app
+# fill both iPhone Duo displays edge to edge (docs/iOS-DESIGN.md §10) — older SDKs run "boxed".
+# FREE for this public repo. Signing is MANUAL via .p12 secrets (cloud signing fails for this team
+# key). Bump AppVersion.xcconfig + push BEFORE dispatching so the build number is monotonic.
 #
 # REQUIRED SECRETS (shared across the team's apps; set via tools/ci_make_signing_p12.py + gh secret set):
 #   APPLE_DIST_P12 / APPLE_INSTALLER_P12 / APPLE_P12_PASSWORD / APPLE_DIST_CERT_ID
@@ -24,21 +26,41 @@ concurrency:
   group: appstore-build
   cancel-in-progress: false
 
+# `bash -eo pipefail` for every step (the implicit default has no pipefail).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 
-      - name: Select a released Xcode 26.6+ (clears the ITMS-90111 floor)
+      # The newest Xcode on the image that is NOT a beta (same rule as Archive Watch:
+      # a Release Candidate counts as final). Version symlinks such as Xcode_27.1.app can
+      # point at a beta, so the RESOLVED path is what is judged. Logs the iOS SDK so the
+      # run shows whether this build gets the iPhone Duo edge-to-edge layout (27.1+).
+      - name: Select the newest non-beta Xcode
         run: |
-          XC="$(ls -d /Applications/Xcode_26.6*.app 2>/dev/null | sort -V | tail -1)"
-          [ -n "$XC" ] || XC="$(ls -d /Applications/Xcode_26.*.app 2>/dev/null | sort -V | tail -1)"
+          XC=""
+          for app in $(ls -d /Applications/Xcode_*.app | sort -V); do
+            real="$(cd "$app" && pwd -P)"
+            case "$real" in *[Bb]eta*) continue ;; esac
+            XC="$real"
+          done
+          [ -n "$XC" ] || { echo "::error::no non-beta Xcode on this image"; exit 1; }
           echo "Selected Xcode: $XC"
           sudo xcode-select -s "$XC"
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           "$XC/Contents/Developer/usr/bin/xcodebuild" -version
+          SDK="$("$XC/Contents/Developer/usr/bin/xcodebuild" -showsdks | grep -o 'iphoneos[0-9.]*' | sort -V | tail -1)"
+          echo "iOS SDK: $SDK"
+          case "$SDK" in
+            iphoneos27.[1-9]*|iphoneos2[89]*|iphoneos[3-9][0-9]*) echo "::notice::$SDK — iPhone Duo runs edge to edge." ;;
+            *) echo "::warning::$SDK predates iOS 27.1 — on iPhone Duo the app runs without the 27.1 edge-to-edge layout." ;;
+          esac
 
       - uses: actions/setup-python@v6
         with:

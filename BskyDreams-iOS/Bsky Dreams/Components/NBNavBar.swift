@@ -13,6 +13,37 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - iPhone Duo layout environment (iOS-DESIGN §10)
+
+private struct SidebarIsPersistentKey: EnvironmentKey {
+    static let defaultValue = false
+}
+private struct IsDetailPaneKey: EnvironmentKey {
+    static let defaultValue = false
+}
+private struct CloseDetailPaneKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// True when the sidebar is an always-visible column (open iPhone Duo), so the
+    /// hamburger that opens the drawer has nothing to do and hides.
+    var sidebarIsPersistent: Bool {
+        get { self[SidebarIsPersistentKey.self] }
+        set { self[SidebarIsPersistentKey.self] = newValue }
+    }
+    /// True inside the Duo detail pane — post taps there drill down within the pane.
+    var isDetailPane: Bool {
+        get { self[IsDetailPaneKey.self] }
+        set { self[IsDetailPaneKey.self] = newValue }
+    }
+    /// Closes the Duo detail pane. Set only inside the pane; nil everywhere else.
+    var closeDetailPane: (() -> Void)? {
+        get { self[CloseDetailPaneKey.self] }
+        set { self[CloseDetailPaneKey.self] = newValue }
+    }
+}
+
 // MARK: - NBNavBar
 
 /// Neubrutalist navigation bar. Use via the `.nbNavBar(...)` View extension.
@@ -130,8 +161,13 @@ extension View {
 /// Neubrutalist hamburger menu button. Reads toggleSidebar from environment.
 struct NBHamburger: View {
     @Environment(\.toggleSidebar) private var toggleSidebar
+    @Environment(\.sidebarIsPersistent) private var sidebarIsPersistent
 
     var body: some View {
+        if !sidebarIsPersistent { button }
+    }
+
+    private var button: some View {
         Image(systemName: "line.3.horizontal")
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.nbBlack)
@@ -145,18 +181,30 @@ struct NBHamburger: View {
 }
 
 /// Neubrutalist back button. Calls dismiss() from environment.
+/// At the ROOT of the Duo detail pane there is nothing to go back to, so it becomes
+/// a close button that collapses the pane (`isPresented` is false only at a stack root).
 struct NBBackButton: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
+    @Environment(\.closeDetailPane) private var closeDetailPane
+
+    private var closesPane: Bool { !isPresented && closeDetailPane != nil }
 
     var body: some View {
-        Image(systemName: "chevron.left")
+        Image(systemName: closesPane ? "xmark" : "chevron.left")
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.nbBlack)
             .frame(width: 36, height: 36)
             .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
             .contentShape(Rectangle())
-            .onTapGesture { dismiss() }
-            .accessibilityLabel("Back")
+            .onTapGesture {
+                if closesPane, let closeDetailPane {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { closeDetailPane() }
+                } else {
+                    dismiss()
+                }
+            }
+            .accessibilityLabel(closesPane ? "Close conversation" : "Back")
             .accessibilityAddTraits(.isButton)
     }
 }

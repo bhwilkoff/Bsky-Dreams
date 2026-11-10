@@ -422,7 +422,7 @@ struct AnalyticsView: View {
 
             ForEach(Array(sortedPosts.prefix(15).enumerated()), id: \.offset) { i, post in
                 Button {
-                    store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                    store.openPost(uri: post.uri, post: post)
                 } label: {
                     HStack(spacing: 10) {
                         // Rank badge

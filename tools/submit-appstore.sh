@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build + upload App Store archives from the command line (no Xcode GUI). DEFAULT venue is the cloud
-# workflow `.github/workflows/appstore-build.yml` (GitHub macos-26 runner = released macOS + Xcode 26.6),
+# workflow `.github/workflows/appstore-build.yml` (GitHub `xcode-27` runner = released macOS 27 + newest non-beta Xcode),
 # because the dev Mac is on a beta macOS and would be rejected ITMS-90301 locally. Signing is MANUAL via
 # imported .p12s (cloud signing fails for this team key); on CI the cert id comes from ASC_DIST_CERT_ID.
 # Adapted from Archive Watch's tools/submit-appstore.sh. Locally it only works on a RELEASED-macOS box.

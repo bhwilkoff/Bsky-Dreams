@@ -661,7 +661,7 @@ struct TVOverlayView: View {
 
                     // Pop-out: open post thread
                     Button {
-                        store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                        store.openPost(uri: post.uri, post: post)
                     } label: {
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 24))

@@ -13,6 +13,85 @@ final class AppStore {
     var selectedTab: AppTab? = .home
     var navigationPath = NavigationPath()
 
+    // MARK: iPhone Duo — detail pane (iOS-DESIGN §10)
+    //
+    // On the OPEN iPhone Duo (regular width AND regular height) a conversation or chat
+    // opens in a pane beside the list instead of replacing it — the book-shaped
+    // list/detail layout. Everywhere else (every other iPhone, the closed Duo, Split
+    // View) the pane is disabled and these calls push onto `navigationPath` exactly
+    // as before. Views open posts/chats ONLY through `openPost` / `openChat`.
+    var detailPaneEnabled = false
+    var detailPane: DetailPaneItem? = nil
+    var detailPanePath = NavigationPath()
+
+    enum DetailPaneItem: Hashable, Identifiable {
+        case post(PostDestination)
+        case chat(Conversation)
+        var id: String {
+            switch self {
+            case .post(let d): "post:\(d.uri)"
+            case .chat(let c): "chat:\(c.id)"
+            }
+        }
+    }
+
+    private var currentTab: AppTab { selectedTab ?? .home }
+
+    /// Open a conversation. `fromDetailPane` = the tap came from inside the pane
+    /// (a reply in an open conversation), so it drills down within the pane.
+    func openPost(uri: String, post: PostView?, fromDetailPane: Bool = false) {
+        let dest = PostDestination(uri: uri, post: post)
+        guard detailPaneEnabled, currentTab.hostsPostPane else {
+            navigationPath.append(dest)
+            return
+        }
+        if fromDetailPane, detailPane != nil {
+            detailPanePath.append(dest)
+        } else {
+            detailPanePath = NavigationPath()
+            detailPane = .post(dest)
+        }
+    }
+
+    /// Open a DM conversation — in the pane on the open Duo's Messages tab.
+    func openChat(_ convo: Conversation) {
+        guard detailPaneEnabled, currentTab == .dms else {
+            navigationPath.append(convo)
+            return
+        }
+        detailPanePath = NavigationPath()
+        detailPane = .chat(convo)
+    }
+
+    func closeDetailPane() {
+        detailPane = nil
+        detailPanePath = NavigationPath()
+    }
+
+    /// Called by MainAppView when the layout changes (Duo opens/closes, Split View).
+    /// Closing the Duo with a conversation open CONTINUES it on the outer display:
+    /// the pane's item is pushed onto the main stack, so the person keeps their place.
+    func setDetailPaneEnabled(_ enabled: Bool) {
+        guard enabled != detailPaneEnabled else { return }
+        detailPaneEnabled = enabled
+        if !enabled, let item = detailPane {
+            switch item {
+            case .post(let d): navigationPath.append(d)
+            case .chat(let c): navigationPath.append(c)
+            }
+            closeDetailPane()
+        }
+    }
+
+    /// Tab switch: keep the pane only if the new tab can host what it shows.
+    func detailPaneTabChanged() {
+        guard let item = detailPane else { return }
+        switch item {
+        case .post: if !currentTab.hostsPostPane { closeDetailPane() }
+        case .chat: if currentTab != .dms { closeDetailPane() }
+        }
+    }
+
     // Unread badge
     var unreadNotificationCount: Int = 0
     var unreadDMCount: Int = 0
@@ -323,6 +402,14 @@ final class AppStore {
             case .constellation: "network"
             case .timeline: "calendar.day.timeline.leading"
             case .settings: "gearshape"
+            }
+        }
+        /// Reading surfaces whose post taps open the Duo detail pane. Full-screen media
+        /// (TV, Stream), the graph, Messages (which hosts chats) and Settings push instead.
+        var hostsPostPane: Bool {
+            switch self {
+            case .home, .search, .notifications, .gallery, .reader, .analytics, .timeline: true
+            case .dms, .tv, .stream, .constellation, .settings: false
             }
         }
     }

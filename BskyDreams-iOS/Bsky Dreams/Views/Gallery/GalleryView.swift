@@ -22,6 +22,7 @@ struct GalleryView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
+    @State private var galleryWidth: CGFloat = 0
 
     var body: some View {
         Group {
@@ -60,8 +61,12 @@ struct GalleryView: View {
     private var cardFeed: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            LazyVStack(spacing: 0) {
-                Color.clear.frame(height: 0).id("gallery-top")
+            Color.clear.frame(height: 0).id("gallery-top")
+            // One column on a phone; two once the column itself is wide (open iPhone Duo
+            // landscape, a Pro Max on its side) — keyed on measured width, not device.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0, alignment: .top),
+                                     count: galleryWidth >= 600 ? 2 : 1),
+                      spacing: 0) {
                 ForEach(posts) { item in
                     GalleryCardView(post: item.post, seenURIs: seenURISet, markedSeen: markedSeen)
                         .padding(.horizontal, 8)
@@ -80,6 +85,7 @@ struct GalleryView: View {
             }
         }
         .scrollIndicators(.hidden)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { galleryWidth = $0 }
         .refreshable {
             posts = []
             timelineCursor = nil
@@ -241,7 +247,7 @@ struct GalleryCardView: View {
             .padding(12)
             .contentShape(Rectangle())
             .onTapGesture {
-                store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                store.openPost(uri: post.uri, post: post)
             }
         }
         .background(Color.nbWhite)

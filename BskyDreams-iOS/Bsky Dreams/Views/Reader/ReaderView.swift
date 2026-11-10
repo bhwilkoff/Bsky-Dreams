@@ -392,7 +392,7 @@ struct ArticleCardView: View {
             // Action bar — same layout as GalleryCardView
             HStack(spacing: 20) {
                 Button {
-                    store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                    store.openPost(uri: post.uri, post: post)
                 } label: {
                     Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
                         .font(.inter(12))

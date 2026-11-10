@@ -17,6 +17,10 @@ this doc is the practical checklist.
 second `NavigationStack` for push flows (DMs proved `NavigationSplitView`
 collapses poorly on compact iPhone — it was replaced with `NavigationStack` +
 `NavigationLink`).
+**One exception:** the iPhone Duo detail pane (§10.3) is the detail column of a
+list/detail split and owns a small stack (`store.detailPanePath`) for drilling
+into replies — exactly what `NavigationSplitView`'s detail column would own.
+Only `DetailPaneView` may create it.
 
 1.2 **Destinations are `Hashable` structs.** Push `PostDestination(uri:post:)`,
 `ProfileDestination(actor:)`, or `HashtagDestination(tag:)`. `PostDestination.post`
@@ -182,6 +186,76 @@ imagesets) ARE picked up by `actool` regardless — new assets are safe.
 
 ---
 
+## 10. iPhone Duo (foldable)
+
+Apple's model, which this section follows: **iPhone Duo is an iPhone with two size
+classes, not a third app.** The outer (closed) display is compact width; the inner
+(open) display is regular width AND regular height in every orientation and pose
+(flat, half-folded like a book, tabletop, standing). Never design per pose; never key
+on device, idiom or orientation. Research + Archive Watch's experience:
+DECISIONS.md "[iOS] iPhone Duo".
+
+10.1 **Layout key.** `horizontalSizeClass == .regular && verticalSizeClass == .regular`
+is the open-Duo layout. (A Pro Max on its side is regular width but compact height,
+so it keeps the phone layout. The iPhone-only app runs phone-sized on iPad, so it
+never sees regular/regular there.) Width-only decisions (e.g. Gallery's second
+column) key on the view's MEASURED width, never the screen's.
+
+10.2 **Persistent sidebar.** On the open Duo the sidebar is an always-visible 260pt
+column (web desktop parity: the web sidebar is always open ≥768px); the hamburger
+hides (`\.sidebarIsPersistent`). Everywhere else it is the slide-in drawer, unchanged.
+
+10.3 **List / detail — conversations and chats open BESIDE the list.** On the open Duo,
+a post tapped in a reading surface (`AppTab.hostsPostPane`: Home, Search,
+Notifications, Gallery, Reader, Analytics, Timeline) opens its conversation in a
+right-hand detail pane; a chat tapped in Messages opens in the pane too. The list
+keeps its scroll position and marks the open post (accent outline, `.isSelected`).
+- **Views never append `PostDestination` / `Conversation` themselves** — they call
+  `store.openPost(uri:post:fromDetailPane:)` / `store.openChat(_:)`, which push onto
+  the main stack whenever the pane is off. A tap INSIDE the pane drills down within
+  it (`\.isDetailPane`).
+- At the pane's root, `NBBackButton` becomes a close (✕) button.
+- **Continuity:** closing the Duo with a conversation open pushes it onto the main
+  stack, so the outer display continues where the inner one was.
+- **Geometry.** Landscape inner (~950pt): sidebar + two equal panes. Portrait inner
+  (~670pt): while a conversation is open the sidebar returns to the drawer and the two
+  panes split the screen exactly in half — on the center line, where the fold runs
+  when the device is half-open like a book, so neither pane bends across it.
+- TV, Stream, Constellation and Settings push as before (full-screen or tool surfaces).
+
+10.4 **No screen references.** Never `UIScreen.main` (ambiguous on two displays,
+slated for deprecation) — measure the container (`onGeometryChange`) and use
+`@Environment(\.displayScale)`.
+
+10.5 **Stream starts flat.** The inner display ignores interface orientation, so on
+the open Duo Stream starts at once — no "turn your phone" step — and rotation
+signals don't dismiss it.
+
+10.6 **Art under the strip.** With the iOS 27.1 SDK, the status bar and system bars
+sit in a strip down the trailing edge (closed Duo; inner display in landscape).
+Full-bleed art that reaches that edge uses `.nbExtendsUnderBars()`
+(`backgroundExtensionEffect`, iOS 26+). Controls stay inside the safe area; custom
+bars (`NBNavBar`, `FeedNavBar`) sit inside it already.
+
+10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
+iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
+`xcode-27` image and logs the SDK.
+
+10.8 **Deliberately NOT adopted (yet)** — revisit on a physical Duo:
+- `ArrangementView` / `ReservedRegion` / `reservedRegions(kind:)` fold-aware APIs —
+  not compiled or verified here; the centered split (10.3) covers the book pose.
+- Hinge-angle effects (`onHingeChange`) — Apple: effects only, never layout; none
+  worth adding.
+- Tabletop-specific TV/Stream layout — Apple says use the same controls in every
+  pose; revisit with the device.
+- A second window on the inner display — `AppStore` is app-global (one navigation
+  path, one compose sheet), so two windows would mirror each other. Needs per-scene
+  state first.
+- Duo screenshots (1398×2034 outer / 2007×2853 inner) — required from April 2027
+  for iOS 27.1-SDK builds; make them in Xcode 27.1's Device Hub.
+
+---
+
 ## Anti-Patterns (never)
 
 - ❌ Bare `catch {}` that only logs — always surface `NBErrorBanner` + `Haptics.error`.
@@ -194,7 +268,10 @@ imagesets) ARE picked up by `actool` regardless — new assets are safe.
 - ❌ Ad-hoc `UIImpactFeedbackGenerator` — use the `Haptics` taxonomy.
 - ❌ Disabling Constellation physics/gestures for Reduce Motion (decorative only).
 - ❌ A new standalone `.swift` file when the type can be inlined into a compiled file.
-- ❌ A second `NavigationStack` for push flows.
+- ❌ A second `NavigationStack` for push flows (the Duo detail pane, §10.3, is the one exception).
+- ❌ `store.navigationPath.append(PostDestination…)` / `.append(convo)` in a view — use `store.openPost` / `store.openChat` (§10.3).
+- ❌ `UIScreen.main` anywhere — measure the container; use `displayScale` (§10.4).
+- ❌ Branching on device / idiom / orientation for layout — size classes and measured width only (§10.1).
 
 ---
 
@@ -213,4 +290,5 @@ For any new/changed feature surface:
 - [ ] Haptics use the semantic taxonomy.
 - [ ] Default accent is blue, not coral.
 - [ ] New types inlined into compiled files (synchronized-group gotcha).
+- [ ] Open iPhone Duo (regular/regular): works beside the persistent sidebar and, if it opens posts/chats, through `openPost`/`openChat` (§10).
 - [ ] Feature serves human learning/agency (see CLAUDE.md "Why We Build").

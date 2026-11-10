@@ -447,6 +447,7 @@ private struct FeedNavBar: View {
     let onToggleSidebar: () -> Void
     let onScrollToTop: () -> Void
     let onCompose: () -> Void
+    @Environment(\.sidebarIsPersistent) private var sidebarIsPersistent
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -469,17 +470,19 @@ private struct FeedNavBar: View {
 
             // Hamburger and compose icon at edges — both 36×36 bordered squares
             HStack(spacing: 0) {
-                // Hamburger
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                    .frame(width: 36, height: 36)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .contentShape(Rectangle())
-                    .onTapGesture { onToggleSidebar() }
-                    .accessibilityLabel("Open sidebar")
-                    .accessibilityAddTraits(.isButton)
-                    .padding(.leading, NBWindowControls.leadingInset)
+                // Hamburger — hidden when the sidebar is a persistent column (open Duo)
+                if !sidebarIsPersistent {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.nbBlack)
+                        .frame(width: 36, height: 36)
+                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        .contentShape(Rectangle())
+                        .onTapGesture { onToggleSidebar() }
+                        .accessibilityLabel("Open sidebar")
+                        .accessibilityAddTraits(.isButton)
+                        .padding(.leading, NBWindowControls.leadingInset)
+                }
 
                 Spacer()
 

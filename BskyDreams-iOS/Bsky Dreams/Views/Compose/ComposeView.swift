@@ -768,7 +768,7 @@ struct GifThumbnailView: View {
     var body: some View {
         Button(action: onTap) {
             AnimatedGifView(url: gif.thumbUrl, placeholderUrl: gif.thumbJpgUrl)
-                .frame(width: (UIScreen.main.bounds.width - 32) / 3, height: 90)
+                .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 90)   // fills its grid column (no UIScreen.main)
                 .clipped()
                 .overlay(alignment: .bottomTrailing) {
                     // Klipy watermark — required on each GIF card per branding guidelines
