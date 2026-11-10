@@ -77,7 +77,11 @@ final class AppStore {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "duo_sidebar_collapsed") }
     }
 
-    enum NavColumn: Hashable { case primary, secondary, detail }
+    /// `.companion`: the discussion beside an article on the open Duo (ArticleReaderSheet,
+    /// §10.12) — a sibling stack in the article's full-screen cover.
+    enum NavColumn: Hashable { case primary, secondary, detail, companion }
+    /// The companion conversation's stack (open Duo only).
+    var companionPath = NavigationPath()
 
     enum DetailPaneItem: Hashable, Identifiable {
         case post(PostDestination)
@@ -101,6 +105,7 @@ final class AppStore {
         switch column {
         case .secondary where secondaryColumnVisible: secondaryPath.append(value)
         case .detail where detailPane != nil:          detailPanePath.append(value)
+        case .companion:                                  companionPath.append(value)
         default:                                       navigationPath.append(value)
         }
     }
@@ -117,6 +122,20 @@ final class AppStore {
             push(dest, column: column)
         }
     }
+
+    /// Reply in context: open the post's conversation with its reply box already open,
+    /// so the person reads what others have said before adding to it. On the open Duo
+    /// (one column) the conversation opens BESIDE the list; elsewhere it pushes.
+    /// ThreadView consumes `pendingReplyURI` when it shows that post (iOS-DESIGN §10.11).
+    var pendingReplyURI: String? = nil
+    func openReply(to post: PostView, column: NavColumn = .primary) {
+        pendingReplyURI = post.uri
+        openPost(uri: post.uri, post: post, column: column)
+    }
+
+    /// True when a post tapped in the current primary list opens in the detail pane
+    /// (the open Duo, one column, a reading tab) rather than pushing.
+    var postsOpenBeside: Bool { detailPaneAvailable && currentTab.hostsPostPane }
 
     /// Open a DM conversation — in the pane on the open Duo's Messages tab.
     func openChat(_ convo: Conversation, column: NavColumn = .primary) {
@@ -852,6 +871,10 @@ enum DebugLaunchDoors {
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
         if let col = env["BSKY_SECOND_COLUMN"] {
             if let tab = AppStore.AppTab(rawValue: col) { store.openSecondColumn(tab) } else { store.closeSecondColumn() }
+        }
+        if let uri = env["BSKY_REPLY_POST"], uri.hasPrefix("at://") {
+            store.pendingReplyURI = uri      // as AppStore.openReply, for a URI-only door
+            store.openPost(uri: uri, post: nil)
         }
         if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
             // Through openPost so the open Duo shows it in the detail pane, as a tap would.

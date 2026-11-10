@@ -52,6 +52,8 @@ struct ReaderView: View {
     @State private var hasLoaded = false
     @State private var errorMessage: String?
     @State private var selectedArticle: PostView? = nil
+    @Environment(\.navColumn) private var navColumn
+    @Environment(AppStore.self) private var store
     @State private var readURLs: Set<String> = []
     // In-memory seen-URI cache — avoids @Query cascade re-renders on every
     // mark-seen insert (same pattern as FeedView).
@@ -96,6 +98,12 @@ struct ReaderView: View {
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
             }
             await load()
+            #if DEBUG
+            // Device-test door: open the first article (see DebugLaunchDoors, AppStore.swift).
+            if ProcessInfo.processInfo.environment["BSKY_OPEN_FIRST_ARTICLE"] != nil, navColumn == .primary {
+                selectedArticle = articlesWithCards.first?.post
+            }
+            #endif
         }
     }
 
@@ -180,7 +188,15 @@ struct ReaderView: View {
             newsCursor = nil
             await load()
         }
-        .sheet(item: $selectedArticle) { post in
+        // Open Duo: full screen — the article and its discussion side by side (§10.12).
+        .sheet(item: Binding(get: { store.splitLayoutActive ? nil : selectedArticle },
+                             set: { selectedArticle = $0 })) { post in
+            if let card = post.embed?.external {
+                ArticleReaderSheet(card: card, post: post)
+            }
+        }
+        .fullScreenCover(item: Binding(get: { store.splitLayoutActive ? selectedArticle : nil },
+                                       set: { selectedArticle = $0 })) { post in
             if let card = post.embed?.external {
                 ArticleReaderSheet(card: card, post: post)
             }
@@ -484,6 +500,10 @@ struct ArticleReaderSheet: View {
     let card: ExternalCard
     var post: PostView? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var mode: ReadMode = .reader
     @State private var readableProgress: String? = nil
 
@@ -498,6 +518,40 @@ struct ArticleReaderSheet: View {
     }
 
     var body: some View {
+        if let post, horizontalSizeClass == .regular, verticalSizeClass == .regular {
+            articleWithDiscussion(post)
+        } else {
+            articleStack
+        }
+    }
+
+    /// Open iPhone Duo (§10.12): the article on one page, the post's Bluesky conversation
+    /// on the other — read the piece, then what people make of it, without switching.
+    /// In book pose the system puts the divider on the fold.
+    @ViewBuilder
+    private func articleWithDiscussion(_ post: PostView) -> some View {
+        let discussion = NavigationStack(path: Bindable(store).companionPath) {
+            ThreadView(uri: post.uri, initialPost: post)
+                .withAppDestinations(myDid: auth.session?.did ?? "")
+                .environment(\.nbIsPushed, true)   // the article side owns Close
+        }
+        .environment(\.navColumn, .companion)
+        .onAppear { store.companionPath = NavigationPath() }
+
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                articleStack
+                    .splitArrangementLayoutRatio(minHorizontal: 0.4, idealHorizontal: 0.5)
+            } secondary: {
+                discussion
+            }
+            .arrangementViewStyle(.split.axes(.horizontal))
+        } else {
+            HStack(spacing: 0) { articleStack; Divider(); discussion }
+        }
+    }
+
+    private var articleStack: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Neubrutalist mode toggle

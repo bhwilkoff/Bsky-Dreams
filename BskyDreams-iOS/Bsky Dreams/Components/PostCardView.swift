@@ -13,6 +13,7 @@ struct PostCardView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
     @Environment(\.navColumn) private var navColumn
+    @Environment(\.playingPostURI) private var playingPostURI
     @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var isLiked: Bool = false
@@ -73,8 +74,9 @@ struct PostCardView: View {
                 }
 
                 // Embed
-                if let embed = post.embed {
+                if let embed = post.embed, playingPostURI != post.uri {
                     EmbedView(embed: embed)
+                        .environment(\.embedPost, post)
                 }
 
                 // Action bar
@@ -219,7 +221,8 @@ struct PostCardView: View {
         HStack(spacing: 22) {   // 22 (was 28) keeps reply/repost/like/… on one line in a ~310pt Duo column
             // Reply
             Button {
-                onReply?(post)
+                // No local reply box here → reply in context (conversation + reply box).
+                if let onReply { onReply(post) } else { store.openReply(to: post, column: navColumn) }
             } label: {
                 Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                     .font(.inter(13))

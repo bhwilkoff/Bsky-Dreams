@@ -873,3 +873,43 @@ The custom chrome is gone, on every iPhone:
 This supersedes the 2026-10-08 Liquid Glass decision for chrome. Content (cards, borders,
 shadows, Syne/Inter) stays neubrutalist. Web is unaffected (web parity of destinations
 and order is kept).
+
+---
+
+## [iOS] iPhone Duo — Device Verification + Content-Paired Layouts
+*2026-11-10 (1.49, after build 55)*
+
+**Verified on the owner's Duo** (Xcode 27.1, Debug, `tools/device_smoke.py duo`, which
+screenshots the ACTIVE display — `devicectl` defaults to the outer one even when it's
+off): outer display (every view; tab bar + toolbar items in the vertical strip), inner
+flat (detail pane, second column of any view), inner book pose. Diagnostics on device
+answered the open question in §10.8: in book pose `ArrangementView` DOES put the divider
+on the fold — the `.division` reserved region is 455.5–495.5pt on the 951pt-wide inner
+display and the columns measured 0–455.5 / 495.5–867. Flat, the region is reported
+inactive and the split is 50/50 of the safe area (433.5pt each); an explicit
+`idealHorizontal: 0.5` doesn't fight the fold.
+
+**Like haptics fired without a tap.** `.sensoryFeedback(trigger: isLiked)` fires on ANY
+change — including `syncState()` flipping a liked post's state false→true as it loads.
+Haptics now come only from the tap action. Rule: never drive tap feedback from model
+state that also changes on load.
+
+**New (owner: "build out the features you have identified"; research ranked them by
+common social activities):**
+- **Reply in context** (§10.11) — reading before replying; also fixes Reply being a dead
+  button on Search, Notifications, Timeline, Gallery cards.
+- **Article beside its discussion** (§10.12) — reading a link, then what people make of it.
+- **TV + conversation** (§10.13) — watching video without it becoming passive: the
+  replies sit beside or below the clip. Keyed on measured shape, not pose (HIG: no
+  per-pose layouts).
+Beside an article the discussion is a `.companion` NavColumn with its own stack — a
+sibling of the article's stack inside the cover, like the detail pane (§1.1 exception).
+TV's conversation tried the same and failed on device: TV sits INSIDE its tab's stack,
+nested stacks are ignored, and the conversation's title surfaced in TV's bar. It now has
+no stack; its pushes go to TV's own stack (full width; Back returns to the video).
+
+Deferred from the research shortlist: drag and drop into Compose (Duo behavior
+unverified), DM beside a shared post, profile + interaction graph (needs the graph
+port), multi-window event columns (needs per-scene state), outer-display camera
+preview (`CameraCaptureAccessory`; no camera UI today).
+

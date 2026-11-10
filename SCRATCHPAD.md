@@ -52,6 +52,7 @@
 | NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
 | Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
 | iPhone Duo (foldable) layout | — | ✅ | 2026-11-10, 1.49 (55): native TabView (tab bar → Duo vertical bar; system sidebar when open), system nav bars, ArrangementView columns; second column of ANY view (Search + Home, two feeds, Gallery + Reader…); conversation/chat detail pane when single-column; iOS-DESIGN §10. Web equivalent = desktop sidebar (already) — a web two-pane conversation view is a possible parity follow-up |
+| Duo: reply in context / article + discussion / TV + conversation | — | ✅ | 2026-11-10; iOS-DESIGN §10.11–10.13. Reply-in-context (Reply opens the conversation with the box open) is a candidate for web too |
 | Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
 | Analytics dashboard (post stats, heatmap) | ✅ | ✅ | iOS: Swift Charts (engagement bars, posting heatmap, top posts) |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |

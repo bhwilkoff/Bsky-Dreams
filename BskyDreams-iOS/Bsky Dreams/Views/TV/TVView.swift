@@ -21,6 +21,10 @@ struct TVView: View {
     @Environment(\.toggleSidebar) private var toggleSidebar
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// TV's measured size — picks the companion split's axis (§10.13).
+    @State private var tvSize: CGSize = .zero
     @Query private var seenPosts: [SeenPost]
 
     private var seenURIs: Set<String> { Set(seenPosts.map { $0.uri }) }
@@ -61,6 +65,8 @@ struct TVView: View {
         Group {
             if showSelector {
                 topicSelectorView
+            } else if showsCompanion {
+                companionSplit
             } else {
                 videoFeedView
                     .toolbarVisibility(.hidden, for: .navigationBar)
@@ -77,8 +83,68 @@ struct TVView: View {
                     )
             }
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { tvSize = $0 }
+        #if DEBUG
+        // Device-test door: skip the topic picker (see DebugLaunchDoors, AppStore.swift).
+        .task {
+            if ProcessInfo.processInfo.environment["BSKY_TV_AUTOSTART"] != nil, showSelector {
+                await startTV()
+            }
+        }
+        #endif
         // No color scheme override — topicSelectorView uses adaptive tokens;
         // videoFeedView is always on black so it works in both modes.
+    }
+
+    // MARK: - Open iPhone Duo: the video and its conversation (iOS-DESIGN §10.13)
+
+    /// TV has the whole inner display (no second column): pair the video with its
+    /// conversation, so watching leads into the discussion rather than the next clip.
+    private var showsCompanion: Bool {
+        horizontalSizeClass == .regular && verticalSizeClass == .regular
+            && !store.secondaryColumnVisible && !videos.isEmpty
+    }
+
+    /// Wider than tall (book pose) → side by side; taller than wide (upright, tabletop) →
+    /// video on top, conversation below. The same layout in every pose; only the axis
+    /// follows the shape. The system puts the divider on the fold.
+    @ViewBuilder
+    private var companionSplit: some View {
+        let stacked = tvSize.height > tvSize.width
+        let video = videoFeedView
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                video.splitArrangementLayoutRatio(minHorizontal: 0.4, idealHorizontal: 0.5,
+                                                  minVertical: 0.4, idealVertical: 0.5)
+            } secondary: {
+                videoConversation
+            }
+            .arrangementViewStyle(.split.axes(stacked ? .vertical : .horizontal))
+            // TV's bar stays hidden (the video has TOPICS); also keeps the conversation's
+            // title from surfacing in it.
+            .toolbarVisibility(.hidden, for: .navigationBar)
+        } else if stacked {
+            VStack(spacing: 0) { video; Divider(); videoConversation }
+        } else {
+            HStack(spacing: 0) { video; Divider(); videoConversation }
+        }
+    }
+
+    /// No NavigationStack of its own: TV already sits in its tab's stack, and a stack
+    /// nested in a stack is ignored (its title leaked into TV's bar on device). Opening a
+    /// reply or profile from here pushes onto TV's stack — full width, the video pauses,
+    /// Back returns to the video and its conversation.
+    @ViewBuilder
+    private var videoConversation: some View {
+        if currentIndex < videos.count {
+            let post = videos[currentIndex]
+            ThreadView(uri: post.uri, initialPost: post)
+                .id(post.uri)   // follows the video on screen
+                .environment(\.playingPostURI, post.uri)   // the clip is already playing
+                .environment(\.nbIsPushed, true)            // TV owns "back to topics"; no Close
+        } else {
+            Color.nbBackground
+        }
     }
 
     // MARK: - Topic Selector

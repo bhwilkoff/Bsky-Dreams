@@ -274,6 +274,31 @@ and moves the tab bar and toolbar items into it — automatically, because they 
 system TabView and system toolbar items (§1.0, §1.5). Nothing of ours is drawn there.
 (Build 54's custom `NBStripRail` was removed: it drew into the content, not the strip.)
 
+10.11 **Reply in context.** A Reply with no reply box of its own opens the post's
+conversation with the reply box already open (`store.openReply(to:column:)` →
+`pendingReplyURI`, consumed by ThreadView). On the open Duo, Home's Reply does the same
+instead of its inline box, so the conversation opens BESIDE the list: the person reads
+what others have said before adding to it. (Before this, Reply did nothing outside
+Home, Profile and a conversation.)
+
+10.12 **An article beside its discussion.** On the open Duo, an article (Reader card or a
+post's link card) opens full screen as an `ArrangementView` split: the article on one
+page, the sharing post's conversation on the other. A link card learns its post from
+`\.embedPost` (set by PostCardView). The discussion is a `.companion` column with its
+own stack (`store.companionPath`); the article side owns Close.
+
+10.13 **TV pairs the video with its conversation.** On the open Duo with TV on its own
+(no second column), the video and the current video's conversation split the display:
+side by side when TV is wider than tall (book pose), video above conversation when it
+is taller than wide (rotated, tabletop — the replies land on the flat half). One
+layout in every pose; only the axis follows the measured shape (§10.1). The
+conversation follows the video on screen. It has NO stack of its own — TV is
+already inside its tab's stack, and a NavigationStack nested in a NavigationStack is
+ignored (device: its title surfaced in TV's hidden bar). Opening a reply or profile
+from it pushes onto TV's stack, full width; Back returns to the video. Rule: a
+companion stack is only valid as a SIBLING of the content's stack (the article cover),
+never inside it.
+
 10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
 iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 `xcode-27` image and logs the SDK.
@@ -329,5 +354,6 @@ For any new/changed feature surface:
 - [ ] Haptics use the semantic taxonomy.
 - [ ] Default accent is blue, not coral.
 - [ ] New types inlined into compiled files (synchronized-group gotcha).
+- [ ] A Reply button always does something (local box, or `openReply`) (§10.11).
 - [ ] Open iPhone Duo (regular/regular): works as a primary AND a second column, at ~310pt AND ~860pt wide (§10.9); opens go through `openPost`/`openChat`/`push` with `\.navColumn`; any shared store state it reads is per-column or primary-only (§10).
 - [ ] Feature serves human learning/agency (see CLAUDE.md "Why We Build").

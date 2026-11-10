@@ -181,6 +181,11 @@ struct FeedView: View {
                                 post: item.post,
                                 showParentPreview: item.reply != nil,
                                 onReply: { post in
+                                    // Open Duo: reply beside the list, in the conversation.
+                                    if navColumn == .primary, store.postsOpenBeside {
+                                        store.openReply(to: post, column: navColumn)
+                                        return
+                                    }
                                     let isOpening = replyingToURI != post.uri
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         replyingToURI = isOpening ? post.uri : nil

@@ -10,6 +10,7 @@ struct ThreadView: View {
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
     @State private var replyingToPost: PostView? = nil
+    @Environment(AppStore.self) private var store
 
     var body: some View {
         Group {
@@ -38,7 +39,20 @@ struct ThreadView: View {
             }
         }
         .nbNavBar(title: "CONVERSATION", leading: { NBBackButton() })
-        .task { await loadThread() }
+        .task {
+            openPendingReply(initialPost)
+            await loadThread()
+            openPendingReply(thread?.post?.post)
+        }
+    }
+
+    /// "Reply in context" (AppStore.openReply): open the reply box for this post as the
+    /// conversation appears.
+    private func openPendingReply(_ post: PostView?) {
+        guard let post, store.pendingReplyURI == uri, post.uri == uri else { return }
+        store.pendingReplyURI = nil
+        replyingToURI = post.uri
+        replyingToPost = post
     }
 
     @ViewBuilder

@@ -23,6 +23,12 @@ private struct CloseDetailPaneKey: EnvironmentKey {
 private struct IsPushedKey: EnvironmentKey {
     static let defaultValue = false
 }
+private struct EmbedPostKey: EnvironmentKey {
+    static let defaultValue: PostView? = nil
+}
+private struct PlayingPostKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
 
 extension EnvironmentValues {
     /// Legacy: the drawer is gone (the system TabView/sidebar replaced it). Kept so old
@@ -46,6 +52,18 @@ extension EnvironmentValues {
     var nbIsPushed: Bool {
         get { self[IsPushedKey.self] }
         set { self[IsPushedKey.self] = newValue }
+    }
+    /// The post whose embed is being drawn — lets a link card open the article WITH
+    /// that post's discussion beside it on the open Duo (iOS-DESIGN §10.12).
+    var embedPost: PostView? {
+        get { self[EmbedPostKey.self] }
+        set { self[EmbedPostKey.self] = newValue }
+    }
+    /// URI of the post whose media is already playing beside this view (TV's companion
+    /// conversation, §10.13) — its card skips the embed instead of showing it twice.
+    var playingPostURI: String? {
+        get { self[PlayingPostKey.self] }
+        set { self[PlayingPostKey.self] = newValue }
     }
 }
 

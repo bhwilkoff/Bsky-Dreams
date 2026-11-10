@@ -638,6 +638,10 @@ func isGifExternalCard(_ card: ExternalCard) -> Bool {
 struct LinkCardView: View {
     let card: ExternalCard
     @State private var showReader = false
+    /// The post this card belongs to (set by PostCardView) — the article opens with its
+    /// discussion beside it on the open Duo.
+    @Environment(\.embedPost) private var post
+    @Environment(AppStore.self) private var store
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -685,8 +689,14 @@ struct LinkCardView: View {
         .nbBorder()
         .contentShape(Rectangle())
         .onTapGesture { showReader = true }
-        .sheet(isPresented: $showReader) {
-            ArticleReaderSheet(card: card)
+        // Open Duo: full screen so the article and its discussion each get a page.
+        .sheet(isPresented: Binding(get: { showReader && !store.splitLayoutActive },
+                                    set: { showReader = $0 })) {
+            ArticleReaderSheet(card: card, post: post)
+        }
+        .fullScreenCover(isPresented: Binding(get: { showReader && store.splitLayoutActive },
+                                              set: { showReader = $0 })) {
+            ArticleReaderSheet(card: card, post: post)
         }
     }
 }
