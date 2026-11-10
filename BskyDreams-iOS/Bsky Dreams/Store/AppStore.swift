@@ -513,8 +513,10 @@ final class AppStore {
         static let columnChoices: [AppTab] = ([.home, .search, .notifications, .reader] + sidebarPlaces)
             .filter { !$0.isFullScreenExperience }
         /// Takes the whole display on the open Duo: never a right-side view, and no right
-        /// side beside it (owner: "Stream is a full screen experience").
-        var isFullScreenExperience: Bool { self == .stream }
+        /// side beside it. Stream (owner: "Stream is a full screen experience"), and the two
+        /// canvases that need the width (owner: "Timeline and Constellation are also full
+        /// screen experiences"). TV is NOT here — it has its own full-screen toggle.
+        var isFullScreenExperience: Bool { self == .stream || self == .constellation || self == .timeline }
         var isPhoneTab: Bool { Self.phoneTabs.contains(self) }
 
         var label: String {

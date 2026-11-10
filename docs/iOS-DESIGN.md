@@ -286,9 +286,10 @@ slated for deprecation) — measure the container (`onGeometryChange`) and use
 `@Environment(\.displayScale)`.
 
 10.4b **Full-screen experiences own the display.** `AppTab.isFullScreenExperience`
-(Stream): never offered as a right-side view, and with it in the left column the right
+(Stream, Constellation, Timeline): never offered as a right-side view, and with it in the left column the right
 side and the Right Side menu are hidden; a chosen second view returns when you leave.
-Owner: "Stream is a full screen experience."
+Owner: "Stream is a full screen experience" … "Timeline and Constellation are also full
+screen experiences." TV is not on the list — it has its own full-screen toggle (§10.13).
 
 10.5 **Stream starts flat.** The inner display ignores interface orientation, so on
 the open Duo Stream starts at once — no "turn your phone" step — and rotation

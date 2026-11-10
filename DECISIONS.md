@@ -967,4 +967,9 @@ screen. Device: left root 350 → 434pt.
   `tvFullScreen` toggle on the video, default with-conversation. Full screen hides the
   right side too. Device check caught the overlay's like/mute buttons under the vertical
   bar once the video reached the edge — padded by the window's trailing inset.
+- **Timeline and Constellation are full-screen experiences too** (owner: *"Timeline and
+  Constellation are also full screen experiences too, right?"*) — they already filled
+  the display on the left, but were still offered as right-side views and shared the
+  screen when one was set. Now in `isFullScreenExperience` with Stream. Verified on
+  device with Search set as the second view.
 
