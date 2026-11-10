@@ -93,10 +93,12 @@ final class AppStore {
     enum DetailPaneItem: Hashable, Identifiable {
         case post(PostDestination)
         case chat(Conversation)
+        case profile(ProfileDestination)
         var id: String {
             switch self {
             case .post(let d): "post:\(d.uri)"
             case .chat(let c): "chat:\(c.id)"
+            case .profile(let p): "profile:\(p.actor)"
             }
         }
     }
@@ -144,6 +146,19 @@ final class AppStore {
     /// (the open Duo, one column, a reading tab) rather than pushing.
     var postsOpenBeside: Bool { detailPaneAvailable && currentTab.hostsPostPane }
 
+    /// Open a profile. From a list in the primary column on the open Duo (right side
+    /// unoccupied) it opens in the pane beside the list — e.g. a follow notification shows
+    /// who followed you without leaving Notifications. Elsewhere it pushes.
+    func openProfile(_ actor: String, column: NavColumn = .primary) {
+        let dest = ProfileDestination(actor: actor)
+        if column == .primary, detailPaneAvailable, currentTab.hostsPostPane || currentTab == .dms {
+            detailPanePath = NavigationPath()
+            detailPane = .profile(dest)
+        } else {
+            push(dest, column: column)
+        }
+    }
+
     /// Open a DM conversation — in the pane on the open Duo's Messages tab.
     func openChat(_ convo: Conversation, column: NavColumn = .primary) {
         if column == .primary, detailPaneAvailable, currentTab == .dms {
@@ -182,6 +197,7 @@ final class AppStore {
             switch item {
             case .post(let d): navigationPath.append(d)
             case .chat(let c): navigationPath.append(c)
+            case .profile(let p): navigationPath.append(p)
             }
             closeDetailPane()
         }
@@ -480,13 +496,15 @@ final class AppStore {
 
         /// The tab bar on every iPhone and the closed Duo (the system moves it into the
         /// Duo's vertical bar). Five, so the system never adds its own More tab.
-        static let phoneTabs: [AppTab] = [.home, .search, .notifications, .dms, .explore]
+        static let phoneTabs: [AppTab] = [.home, .search, .notifications, .reader, .explore]
         /// The system sidebar's other places at regular width (the open Duo), in the
         /// sidebar order of iOS-DESIGN §1.7. At compact width they are rows in More.
-        static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .reader, .analytics,
+        // Reader and Messages swapped places (owner, 2026-11-10): Reader is a tab (in the
+        // Duo's vertical bar), Messages is a place (sidebar / overflow / More).
+        static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .dms, .analytics,
                                               .constellation, .timeline, .channels, .settings]
         /// Views a column can show (the open Duo's right column picker).
-        static let columnChoices: [AppTab] = [.home, .search, .notifications, .dms] + sidebarPlaces
+        static let columnChoices: [AppTab] = [.home, .search, .notifications, .reader] + sidebarPlaces
         var isPhoneTab: Bool { Self.phoneTabs.contains(self) }
 
         var label: String {
@@ -529,8 +547,9 @@ final class AppStore {
         /// (TV, Stream), the graph, Messages (which hosts chats) and Settings push instead.
         var hostsPostPane: Bool {
             switch self {
-            case .home, .search, .notifications, .gallery, .reader, .analytics, .timeline: true
-            case .dms, .tv, .stream, .constellation, .settings, .explore, .channels: false
+            case .home, .search, .notifications, .gallery, .reader, .analytics: true
+            // Timeline takes the whole display like Constellation (§10.14).
+            case .dms, .tv, .stream, .constellation, .timeline, .settings, .explore, .channels: false
             }
         }
     }
@@ -839,7 +858,7 @@ enum DiscoverEngine {
 //   BSKY_TEST_HANDLE / BSKY_TEST_PASSWORD  sign in (test account, from tools/test-account.env)
 //   BSKY_START_VIEW                       an AppTab raw value: home, search, notifications, dms, …
 //   BSKY_OPEN_POST                        an at:// post URI to push as a conversation
-//   BSKY_OPEN_PROFILE                     a handle or DID to push as a profile
+//   BSKY_OPEN_PROFILE                     a handle or DID to open as a profile (openProfile)
 //   BSKY_TYPE_SIZE                        Dynamic Type override: large, xLarge, xxxLarge,
 //                                         accessibility1 … accessibility5
 #if DEBUG
@@ -875,6 +894,7 @@ enum DebugLaunchDoors {
         if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
             store.select(tab)
         }
+        if let q = env["BSKY_TIMELINE_QUERY"] { store.openChannel(query: q, isTimeline: true) }
         if let v = env["BSKY_TALL_SIDE_BY_SIDE"] { store.columnsSideBySideWhenTall = (v == "1") }
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
         if let col = env["BSKY_SECOND_COLUMN"] {
@@ -889,7 +909,8 @@ enum DebugLaunchDoors {
             store.openPost(uri: uri, post: nil)
         }
         if let actor = env["BSKY_OPEN_PROFILE"], !actor.isEmpty {
-            store.navigationPath.append(ProfileDestination(actor: actor))
+            try? await Task.sleep(for: .seconds(0.5))   // let a tab switch settle (it clears the pane)
+            store.openProfile(actor)   // as a tap would: the pane on the open Duo
         }
     }
 }

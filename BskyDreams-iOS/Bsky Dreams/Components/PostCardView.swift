@@ -176,7 +176,7 @@ struct PostCardView: View {
         let stacked = typeSize.isAccessibilitySize
         return HStack(alignment: .top, spacing: 10) {
             Button {
-                store.push(ProfileDestination(actor: post.author.did), column: navColumn)
+                store.openProfile(post.author.did, column: navColumn)
             } label: {
                 AvatarView(url: post.author.avatar, size: 40)
             }

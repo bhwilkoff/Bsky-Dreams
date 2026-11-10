@@ -51,7 +51,7 @@ struct MainAppView: View {
     }
 
     // People may reorder/hide sidebar entries (system customization); kept across launches.
-    @AppStorage("tabCustomization") private var tabCustomizationData = Data()
+    @AppStorage("tabCustomization.v2") private var tabCustomizationData = Data()
     private var tabCustomization: Binding<TabViewCustomization> {
         Binding(
             get: { (try? JSONDecoder().decode(TabViewCustomization.self, from: tabCustomizationData))
@@ -137,7 +137,7 @@ struct MainAppView: View {
             let navType = notification.userInfo?["nav_type"] as? String
             if navType == "dm", let convoId = notification.userInfo?["convo_id"] as? String {
                 store.pendingDMConvoId = convoId
-                store.selectedTab = .dms
+                store.select(.dms)   // a place: its own tab when open, inside More when closed
             } else {
                 store.selectedTab = .notifications
             }
@@ -184,12 +184,11 @@ struct MainAppView: View {
         }
         .badge(store.unreadNotificationCount)
         .customizationID("notifications")
-        Tab(AppStore.AppTab.dms.label, systemImage: AppStore.AppTab.dms.icon,
-            value: AppStore.AppTab.dms) {
-            TabColumns(tab: .dms)
+        Tab(AppStore.AppTab.reader.label, systemImage: AppStore.AppTab.reader.icon,
+            value: AppStore.AppTab.reader) {
+            TabColumns(tab: .reader)
         }
-        .badge(store.unreadDMCount)
-        .customizationID("dms")
+        .customizationID("reader")
     }
 
     @TabContentBuilder<AppStore.AppTab>
@@ -207,6 +206,7 @@ struct MainAppView: View {
             Tab(tab.label, systemImage: tab.icon, value: tab) {
                 TabColumns(tab: tab)
             }
+            .badge(tab == .dms ? store.unreadDMCount : 0)
             .customizationID(tab.rawValue)
         }
     }
@@ -253,12 +253,11 @@ struct MainAppView: View {
     }
 }
 
-// MARK: - A tab's columns (open iPhone Duo: Apple's ArrangementView, §10.3)
+// MARK: - A tab's columns (open iPhone Duo, §10.3)
 
-/// One tab's content. Everywhere it is the tab's own NavigationStack. On the open Duo,
-/// reading tabs (and any tab while a right column is chosen) sit in an `ArrangementView`
-/// split: the list beside the conversation it opened, or beside a second view. In book
-/// pose the system puts the divider on the fold.
+/// One tab's content: the tab's own NavigationStack, and on the open Duo a right side
+/// (the conversation pane or a second view) — in `FoldSplitLayout`, whose divider sits on
+/// the fold (Apple's reserved-region API) in book and tabletop poses.
 struct TabColumns: View {
     let tab: AppStore.AppTab
     @Environment(AppStore.self) private var store
@@ -275,18 +274,56 @@ struct TabColumns: View {
         return store.secondaryTab != nil || tab.hostsPostPane || tab == .dms
     }
 
+    /// ONE container in every state — closed, open, rotated, either Layout choice — with
+    /// the primary column always in the same slot. Switching containers (one column ↔
+    /// ArrangementView ↔ HStack) made SwiftUI rebuild the column, so every open/close
+    /// reloaded the feed and lost the person's place (owner, device, 2026-11-10).
+    /// Only the right side comes and goes.
     var body: some View {
-        if hasRightPane {
-            split
-        } else {
+        FoldSplitLayout(stacked: stacked, fold: foldGap) {
             primary
+                // With a right side, the primary never touches the trailing (or, stacked,
+                // bottom) edge — the vertical bar / tab bar's inset belongs to the right
+                // side. Without this the column was laid out 84pt narrower than its frame
+                // (the rail's width), as if the rail sat beside it (owner, device).
+                .ignoresSafeArea(edges: primaryIgnoredEdges)
+                .environment(\.barInsetEdges, primaryIgnoredEdges)
+            if hasRightPane {
+                rightPane
+                    .overlay(alignment: stacked ? .top : .leading) {
+                        Rectangle().fill(Color.nbBorder)
+                            .frame(width: stacked ? nil : 1, height: stacked ? 1 : nil)
+                    }
+            }
+        }
+        .onGeometryChange(for: FoldGeometry.self) { proxy in
+            FoldGeometry(proxy: proxy)
+        } action: { geo in
+            fold = geo
+            if isCurrent { store.columnsAreTall = geo.isTall }
         }
     }
+
+    @State private var fold = FoldGeometry()
+    /// With a right side, the primary never touches the trailing (stacked: bottom) edge,
+    /// so the vertical bar's / tab bar's inset there isn't its to keep.
+    private var primaryIgnoredEdges: Edge.Set { hasRightPane ? (stacked ? .bottom : .trailing) : [] }
+
+    /// Rotated (taller than wide) stacks top/bottom unless the person chose side by side.
+    private var stacked: Bool { fold.isTall && !store.columnsSideBySideWhenTall }
+    /// The fold's span along the split axis, when the device is folded (book or tabletop)
+    /// and the fold runs across that axis — the columns meet on either side of it.
+    private var foldGap: ClosedRange<CGFloat>? { stacked ? fold.foldY : fold.foldX }
 
     private var primary: some View {
         NavigationStack(path: store.pathBinding(tab)) {
             DetailView(tab: tab)
                 .withAppDestinations(myDid: auth.session?.did ?? "")
+                // The Duo's vertical bar adds its inset to EVERY view controller under the
+                // tab view (UIKit additionalSafeAreaInsets — not geometric, so SwiftUI's
+                // ignoresSafeArea can't remove it): the left column's root measured 350pt
+                // in a 434pt column. Cancel it on this stack's navigation controller.
+                .modifier(BarInsetCancelling())
                 .toolbar {
                     // Full-display screens on the open Duo (TV, Stream…): no right side to
                     // hold the menu, so it sits here (§10.3).
@@ -294,50 +331,6 @@ struct TabColumns: View {
                         ToolbarItem(placement: .topBarTrailing) { NBColumnMenu() }
                     }
                 }
-        }
-    }
-
-    @ViewBuilder
-    private var split: some View {
-        Group {
-            if store.columnsAreTall && store.columnsSideBySideWhenTall {
-                // The person chose side by side while rotated. ArrangementView won't split
-                // across the fold (it drops the right side), so a plain HStack, halves.
-                HStack(spacing: 0) {
-                    primary.frame(maxWidth: .infinity)
-                    Divider()
-                    rightPane.frame(maxWidth: .infinity)
-                }
-            } else {
-                arrangedSplit
-            }
-        }
-        .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: { tall in
-            if isCurrent { store.columnsAreTall = tall }
-        }
-    }
-
-    @ViewBuilder
-    private var arrangedSplit: some View {
-        if #available(iOS 27.1, *) {
-            ArrangementView {
-                primary
-                    // Half each; at least a third for the list. No max (it fights the fold).
-                    .splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5,
-                                                 minVertical: 0.34, idealVertical: 0.5)
-            } secondary: {
-                rightPane
-            }
-            // Both axes: side by side when the fold runs top to bottom (book), stacked when
-            // it runs across (rotated). Horizontal-only made the system DROP the right side
-            // when rotated — device, 2026-11-10 (§10.3).
-            .arrangementViewStyle(.split)
-        } else {
-            HStack(spacing: 0) {
-                primary
-                Divider()
-                rightPane
-            }
         }
     }
 
@@ -503,35 +496,42 @@ extension View {
         self
             .navigationDestination(for: ExplorePlace.self) { place in
                 DetailView(tab: place.tab)
+                    .modifier(BarInsetCancelling())
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: PostDestination.self) { dest in
                 ThreadView(uri: dest.uri, initialPost: dest.post)
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: ProfileDestination.self) { dest in
                 ProfileView(actor: dest.actor)
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: HashtagDestination.self) { dest in
                 SearchView(initialQuery: "#\(dest.tag)")
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: Conversation.self) { convo in
                 ChatView(conversation: convo, myDid: myDid)
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: AnalyticsDestination.self) { dest in
                 AnalyticsView(initialActor: dest.actor)
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: ConstellationDestination.self) { dest in
                 ConstellationView(initialActor: dest.actor)
+                    .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
             }
@@ -567,6 +567,8 @@ struct DetailPaneView: View {
             ThreadView(uri: dest.uri, initialPost: dest.post)
         case .chat(let convo):
             ChatView(conversation: convo, myDid: auth.session?.did ?? "")
+        case .profile(let dest):
+            ProfileView(actor: dest.actor)
         }
     }
 }
@@ -1013,3 +1015,126 @@ struct SettingsView: View {
         else { let p = CachedPreferences(); p.defaultFeedTab = tab; modelContext.insert(p) }
     }
 }
+
+// MARK: - Duo columns container (iOS-DESIGN §10.3)
+
+/// Where the fold is, from Apple's reserved-region API (the API for custom layouts on
+/// iPhone Duo). Active only while the device is folded; flat, the columns split evenly.
+nonisolated struct FoldGeometry: Equatable, Sendable {
+    var isTall = false
+    var foldX: ClosedRange<CGFloat>? = nil   // a fold running top to bottom (book)
+    var foldY: ClosedRange<CGFloat>? = nil   // a fold running across (rotated / tabletop)
+
+    init() {}
+    @MainActor init(proxy: GeometryProxy) {
+        isTall = proxy.size.height > proxy.size.width
+        if #available(iOS 27.1, *) {
+            for region in proxy.reservedRegions(kind: .division) where region.isActive {
+                let f = region.frame
+                if f.height >= f.width { foldX = f.minX...f.maxX } else { foldY = f.minY...f.maxY }
+            }
+        }
+    }
+}
+
+/// Primary + optional second view, side by side or stacked. Halves, or — when the device
+/// is folded across the split axis — the halves meet at the fold's edges (what Apple's
+/// ArrangementView does; verified on device: 0–455.5 | 495.5–867pt). One Layout type in
+/// every state, so the primary column keeps its identity and state.
+struct FoldSplitLayout: Layout {
+    var stacked: Bool
+    var fold: ClosedRange<CGFloat>?
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let first = subviews.first else { return }
+        guard subviews.count > 1 else {
+            first.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+            return
+        }
+        let total = stacked ? bounds.height : bounds.width
+        var firstEnd = (total / 2).rounded()
+        var secondStart = firstEnd
+        // Use the fold only if it's near the middle (never squeeze a column to a sliver).
+        if let fold, fold.lowerBound > total * 0.3, fold.upperBound < total * 0.7 {
+            firstEnd = fold.lowerBound
+            secondStart = fold.upperBound
+        }
+        if stacked {
+            first.place(at: bounds.origin,
+                        proposal: ProposedViewSize(width: bounds.width, height: firstEnd))
+            subviews[1].place(at: CGPoint(x: bounds.minX, y: bounds.minY + secondStart),
+                              proposal: ProposedViewSize(width: bounds.width, height: total - secondStart))
+        } else {
+            first.place(at: bounds.origin,
+                        proposal: ProposedViewSize(width: firstEnd, height: bounds.height))
+            subviews[1].place(at: CGPoint(x: bounds.minX + secondStart, y: bounds.minY),
+                              proposal: ProposedViewSize(width: total - secondStart, height: bounds.height))
+        }
+    }
+}
+
+/// Cancels, on this screen's hosting controller, the inset the iPhone Duo's vertical bar
+/// (or a bottom tab bar) propagates to every screen under the tab view — for a column that
+/// doesn't touch that edge. Applied to every screen of the primary column via
+/// `\.barInsetEdges` + `.withAppDestinations` (pushed screens have their own controller). Measures the inherited inset and offsets it
+/// with `additionalSafeAreaInsets`; a no-op when `edges` is empty (§10.3).
+struct BarInsetCanceller: UIViewRepresentable {
+    let edges: Edge.Set
+
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) {
+        view.edges = edges
+        view.setNeedsLayout()
+    }
+
+    final class Probe: UIView {
+        var edges: Edge.Set = []
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            apply()
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+        }
+
+        private func apply() {
+            // The nearest view controller is this screen's hosting controller; SwiftUI hands
+            // it the tab view's inset directly (the navigation controller above it has 0).
+            var r: UIResponder? = self
+            while let next = r?.next, !(next is UIViewController) { r = next }
+            guard let vc = r?.next as? UIViewController, vc.view.window != nil else { return }
+            let added = vc.additionalSafeAreaInsets
+            let total = vc.view.safeAreaInsets
+            var want = UIEdgeInsets.zero
+            if edges.contains(.trailing) { want.right = -(total.right - added.right) }
+            if edges.contains(.bottom) { want.bottom = -(total.bottom - added.bottom) }
+            if want != added { vc.additionalSafeAreaInsets = want }
+        }
+    }
+}
+
+private struct BarInsetEdgesKey: EnvironmentKey {
+    static let defaultValue: Edge.Set = []
+}
+extension EnvironmentValues {
+    /// Edges whose inherited bar inset this column's screens cancel (open Duo, left column).
+    var barInsetEdges: Edge.Set {
+        get { self[BarInsetEdgesKey.self] }
+        set { self[BarInsetEdgesKey.self] = newValue }
+    }
+}
+
+/// Applies `BarInsetCanceller` with the column's `\.barInsetEdges`.
+struct BarInsetCancelling: ViewModifier {
+    @Environment(\.barInsetEdges) private var edges
+    func body(content: Content) -> some View {
+        content.background(BarInsetCanceller(edges: edges))
+    }
+}
+

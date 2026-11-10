@@ -294,7 +294,7 @@ struct NotificationGroupRowView: View {
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(avatars.enumerated().reversed()), id: \.element.id) { idx, notif in
                         Button {
-                            store.push(ProfileDestination(actor: notif.author.did), column: navColumn)
+                            store.openProfile(notif.author.did, column: navColumn)
                         } label: {
                             AvatarView(url: notif.author.avatar, size: 36)
                         }
@@ -306,7 +306,7 @@ struct NotificationGroupRowView: View {
                 .frame(width: 56, height: 50)
             } else {
                 Button {
-                    store.push(ProfileDestination(actor: notification.author.did), column: navColumn)
+                    store.openProfile(notification.author.did, column: navColumn)
                 } label: {
                     AvatarView(url: notification.author.avatar, size: 44)
                 }
@@ -351,7 +351,7 @@ struct NotificationGroupRowView: View {
     private func navigate() {
         switch notification.reason {
         case .follow, .starterpackJoined:
-            store.push(ProfileDestination(actor: notification.author.did), column: navColumn)
+            store.openProfile(notification.author.did, column: navColumn)
         case .like, .repost, .likeViaRepost, .repostViaRepost:
             if let subject = notification.reasonSubject {
                 store.openPost(uri: subject, post: nil, column: navColumn)

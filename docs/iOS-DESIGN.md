@@ -54,9 +54,11 @@ a system Close item. Trailing items are `Button(title, systemImage:)` / `Menu { 
 bar lists every place and the system's own "…" overflow covers what doesn't fit; a More
 tab there is a duplicate overflow (owner, device).
 
-1.7 **Destination order** (Home, Search, Notifications, Messages, then Gallery, TV,
-Stream, Reader, Analytics, Constellation, Timeline, Channels, Settings) matches web's
-sidebar. Tab bar = the first four + More (`AppTab.phoneTabs`); the rest are sidebar
+1.7 **Destination order** (Home, Search, Notifications, Reader, then Gallery, TV,
+Stream, Messages, Analytics, Constellation, Timeline, Channels, Settings). Reader and
+Messages swapped (owner, 2026-11-10): Reader is a tab (in the Duo's vertical bar),
+Messages a place (sidebar / overflow / More). Diverges from web's order — deliberate.
+Tab bar = the first four + More (`AppTab.phoneTabs`); the rest are sidebar
 places at regular width and rows in More at compact width (`AppTab.sidebarPlaces`).
 Go anywhere with `store.select(_:)`, which knows where a destination lives.
 
@@ -241,15 +243,30 @@ customization, kept in `tabCustomization`). At compact width it is the tab bar.
   default Following) so two home feeds can differ.
 - **Otherwise, a detail pane:** a post tapped in a reading surface of the primary
   column (`AppTab.hostsPostPane`: Home, Search, Notifications, Gallery, Reader,
-  Analytics, Timeline) opens its conversation beside the list; a chat tapped in
-  Messages opens there too. The list keeps its scroll position and marks the open
+  Analytics) opens its conversation beside the list; a chat tapped in Messages opens
+  there too, and a profile (`store.openProfile` — e.g. a follow notification, an author
+  tap) opens there as well. Only when the right side is unoccupied (no second view). The list keeps its scroll position and marks the open
   post (accent outline, `.isSelected`). At the pane's root `NBBackButton` is ✕.
   **Continuity:** closing the Duo pushes the open conversation onto the main stack.
 - **Routing rule:** views never append to a path themselves — they call
   `store.openPost(…, column:)` / `store.openChat(_:column:)` / `store.push(_:column:)`
   with their `@Environment(\.navColumn)`. One-shot handoffs from the sidebar or a
   notification (`pending*`) are consumed only by the primary column.
-- **Container: Apple's `ArrangementView`** (`.split`, BOTH axes;
+- **Container: `FoldSplitLayout`** (ContentView.swift) — ONE Layout in every state
+  (closed, open, rotated, either Layout choice) with the primary always in the same
+  slot, so opening/closing the Duo never rebuilds the column (switching containers did:
+  every open/close reloaded the feed — owner, device). Halves; when folded, the halves
+  meet at the fold's edges from Apple's `reservedRegions(kind: .division)` (the API for
+  custom layouts), matching what ArrangementView measured on device.
+- **The left column cancels the vertical bar's inset.** On the Duo the bar's 84pt
+  trailing inset is handed to EVERY screen's hosting controller under the tab view
+  (device log: navigation controller 0, its screen 84) — so the left column's content was
+  350pt in a 434pt column, under ArrangementView too. SwiftUI `ignoresSafeArea` can't
+  remove it; `BarInsetCanceller` offsets it with `additionalSafeAreaInsets` on each
+  screen of the primary column (root + every destination in `.withAppDestinations`, via
+  `\.barInsetEdges`). Trailing when side by side, bottom when stacked; none without a
+  right side.
+- **Before 2026-11-10 it was Apple's `ArrangementView`** (`.split`, BOTH axes;
   `splitArrangementLayoutRatio` 0.34 min / 0.5 ideal on each axis) — side by side when
   the fold runs top to bottom (book), stacked top/bottom when the device is rotated and
   the fold runs across; in book pose the divider lands on the fold (device-verified).
@@ -320,6 +337,11 @@ ignored (device: its title surfaced in TV's hidden bar). Opening a reply or prof
 from it pushes onto TV's stack, full width; Back returns to the video. Rule: a
 companion stack is only valid as a SIBLING of the content's stack (the article cover),
 never inside it.
+
+10.14 **Timeline takes the whole display** (like Constellation; not a pane host). At
+≥700pt measured width: 220×100 cards with readable type, controls in one row, and a
+tapped card opens in a bottom panel (full post + Open Conversation) so the timeline
+keeps its place. Narrower, the phone timeline is unchanged (tap → conversation).
 
 10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
 iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the

@@ -69,6 +69,14 @@ struct TimelineScrubberView: View {
     @State private var errorMessage: String? = nil
     @State private var showSaveAlert: Bool = false
     @State private var channelName: String = ""
+    /// Measured width. ≥ 700pt (the open Duo, full width) = the wide timeline (§10.14).
+    @State private var viewWidth: CGFloat = 0
+    /// Wide timeline: the tapped post, shown in a panel over the canvas (as Constellation
+    /// shows a tapped person) — the timeline stays where it was.
+    @State private var selectedPost: PostView? = nil
+    private var isWide: Bool { viewWidth >= 700 }
+    private var cardW: CGFloat { isWide ? 220 : 158 }
+    private var cardH: CGFloat { isWide ? 100 : 72 }
 
     private var currentZoom: TLZoomLevel { kTLZoomLevels[zoomIndex] }
     private var windowSpan: TimeInterval { windowEnd.timeIntervalSince(windowStart) }
@@ -81,7 +89,14 @@ struct TimelineScrubberView: View {
                 Color.nbWhite.ignoresSafeArea()
                 contentArea
             }
+            .overlay(alignment: .bottom) {
+                if isWide, let post = selectedPost {
+                    selectedPostPanel(post)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewWidth = $0 }
         .nbOfflineBanner()
         .nbNavBar(title: "TIMELINE", leading: { NBHamburger() })
         .alert("Save as Channel", isPresented: $showSaveAlert) {
@@ -134,7 +149,59 @@ struct TimelineScrubberView: View {
 
     private var controlsBar: some View {
         VStack(spacing: 0) {
-            // Row 1: search input
+            if isWide {
+                // Wide: one row, so the canvas gets the height.
+                HStack(spacing: 0) {
+                    controlsRow1.frame(maxWidth: 560)
+                    controlsRow2
+                }
+            } else {
+                controlsRow1
+                Divider().background(Color.nbBorder)
+                controlsRow2
+            }
+
+
+            // Collapsible date pickers
+            if showDatePickers {
+                Divider().background(Color.nbBorder)
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("FROM")
+                            .font(.syne(9, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.nbTextTertiary)
+                        DatePicker("", selection: $startDate,
+                                   displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
+                            .onChange(of: startDate) { _, _ in applyCustomRange() }
+                    }
+                    Text("→")
+                        .font(.inter(14))
+                        .foregroundStyle(Color.nbTextTertiary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("TO")
+                            .font(.syne(9, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.nbTextTertiary)
+                        DatePicker("", selection: $endDate,
+                                   displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
+                            .onChange(of: endDate) { _, _ in applyCustomRange() }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+
+            Divider().background(Color.nbBlack)
+        }
+        .background(Color.nbWhite)
+    }
+
+    private var controlsRow1: some View {
+        // Search input
             HStack(spacing: 6) {
                 // Search field
                 HStack(spacing: 6) {
@@ -206,10 +273,10 @@ struct TimelineScrubberView: View {
             .padding(.horizontal, 12)
             .padding(.top, 10)
             .padding(.bottom, 8)
+    }
 
-            Divider().background(Color.nbBorder)
-
-            // Row 2: zoom controls + date range
+    private var controlsRow2: some View {
+        // Zoom controls + date range
             HStack(spacing: 8) {
                 // Zoom out
                 zoomBtn("−") {
@@ -267,43 +334,6 @@ struct TimelineScrubberView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-
-            // Collapsible date pickers
-            if showDatePickers {
-                Divider().background(Color.nbBorder)
-                HStack(alignment: .center, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("FROM")
-                            .font(.syne(9, weight: .bold))
-                            .tracking(1.2)
-                            .foregroundStyle(Color.nbTextTertiary)
-                        DatePicker("", selection: $startDate,
-                                   displayedComponents: [.date, .hourAndMinute])
-                            .labelsHidden()
-                            .onChange(of: startDate) { _, _ in applyCustomRange() }
-                    }
-                    Text("→")
-                        .font(.inter(14))
-                        .foregroundStyle(Color.nbTextTertiary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("TO")
-                            .font(.syne(9, weight: .bold))
-                            .tracking(1.2)
-                            .foregroundStyle(Color.nbTextTertiary)
-                        DatePicker("", selection: $endDate,
-                                   displayedComponents: [.date, .hourAndMinute])
-                            .labelsHidden()
-                            .onChange(of: endDate) { _, _ in applyCustomRange() }
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-
-            Divider().background(Color.nbBlack)
-        }
-        .background(Color.nbWhite)
     }
 
     private func zoomBtn(_ label: String, action: @escaping () -> Void) -> some View {
@@ -407,18 +437,32 @@ struct TimelineScrubberView: View {
                         windowStart: windowStart,
                         windowSpan: windowSpan,
                         canvasW: canvasW,
-                        canvasH: canvasH
+                        canvasH: canvasH,
+                        cardH: cardH
                     )
                     .frame(width: canvasW, height: canvasH)
 
                     // Post cards — absolutely positioned over the canvas
                     ForEach(cards) { card in
-                        TLPostCard(post: card.post)
-                            .frame(width: 158, height: 72)
+                        TLPostCard(post: card.post, large: isWide)
+                            .frame(width: cardW, height: cardH)
+                            .overlay {
+                                if selectedPost?.uri == card.post.uri {
+                                    Rectangle().strokeBorder(Color.nbAccent, lineWidth: 3)
+                                }
+                            }
                             .offset(x: card.left, y: card.top)
                             .onTapGesture {
-                                store.openPost(uri: card.post.uri, post: card.post, column: navColumn)
+                                if isWide {
+                                    Haptics.selection()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        selectedPost = selectedPost?.uri == card.post.uri ? nil : card.post
+                                    }
+                                } else {
+                                    store.openPost(uri: card.post.uri, post: card.post, column: navColumn)
+                                }
                             }
+                            .accessibilityAddTraits(.isButton)
                     }
 
                     // Invisible center anchor — uses .position() (not .offset()) so
@@ -443,14 +487,59 @@ struct TimelineScrubberView: View {
         }
     }
 
+    // MARK: - Wide: selected post panel (§10.14)
+
+    private func selectedPostPanel(_ post: PostView) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("SELECTED POST")
+                    .font(.syne(11, weight: .bold))
+                    .tracking(1)
+                    .foregroundStyle(Color.nbTextSecondary)
+                Spacer()
+                Button {
+                    store.openPost(uri: post.uri, post: post, column: navColumn)
+                } label: {
+                    Label("Open Conversation", systemImage: "bubble.left.and.bubble.right")
+                        .font(.inter(13, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.nbLinkColor)
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { selectedPost = nil }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.nbTextSecondary)
+                        .padding(8)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close selected post")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            ScrollView {
+                PostCardView(post: post)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 10)
+            }
+            .frame(maxHeight: 320)
+        }
+        .background(Color.nbWhite)
+        .nbBorder()
+        .nbShadow()
+        .frame(maxWidth: 560)
+        .padding(12)
+    }
+
     // MARK: - Lane Layout Algorithm
 
     private func buildLayout(canvasW: CGFloat, canvasH: CGFloat) -> [TLPositionedCard] {
         guard !allPosts.isEmpty else { return [] }
 
-        let CARD_W: CGFloat  = 158
-        let CARD_H: CGFloat  = 72
-        let LANE_H: CGFloat  = 76    // CARD_H + 4pt breathing room
+        let CARD_W: CGFloat  = cardW
+        let CARD_H: CGFloat  = cardH
+        let LANE_H: CGFloat  = cardH + 4    // breathing room
         let GAP_AXIS: CGFloat = 10   // gap from axis line to nearest card edge
         let TICK_H: CGFloat  = 26    // space reserved below axis for tick labels
         let CARD_GAP: CGFloat = 6    // minimum horizontal gap between adjacent cards
@@ -653,6 +742,8 @@ struct TLAxisCanvas: View {
     let canvasW: CGFloat
     let canvasH: CGFloat
 
+    var cardH: CGFloat = 72
+
     var body: some View {
         Canvas { ctx, size in
             let axY      = size.height / 2
@@ -706,7 +797,7 @@ struct TLAxisCanvas: View {
             // ── Connector lines + dots ────────────────────────────────────────
             for card in cards {
                 // Connector: dashed blue line from axis dot to the nearest card edge
-                let edgeY: CGFloat = card.isAbove ? (card.top + 72) : card.top
+                let edgeY: CGFloat = card.isAbove ? (card.top + cardH) : card.top
                 var conn = Path()
                 conn.move(to: CGPoint(x: card.axisX, y: axY))
                 conn.addLine(to: CGPoint(x: card.axisX, y: edgeY))
@@ -734,30 +825,33 @@ struct TLAxisCanvas: View {
 
 struct TLPostCard: View {
     let post: PostView
+    /// Wide timeline (open Duo): bigger, readable card (220×100).
+    var large: Bool = false
 
     private var truncatedText: String {
         let t = post.record.text
-        return t.count > 80 ? String(t.prefix(77)) + "…" : t
+        let limit = large ? 160 : 80
+        return t.count > limit ? String(t.prefix(limit - 3)) + "…" : t
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             // Author row: tiny circular avatar + @handle
             HStack(spacing: 4) {
-                AvatarView(url: post.author.avatar, size: 14)
+                AvatarView(url: post.author.avatar, size: large ? 20 : 14)
                 Text("@\(post.author.handle)")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: large ? 12 : 9, weight: .semibold))
                     .foregroundStyle(Color.nbLinkColor)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .frame(height: 16)
+            .frame(height: large ? 22 : 16)
 
-            // Post text — 2-line clamp
+            // Post text — 2-line clamp (3 when large)
             Text(truncatedText)
-                .font(.system(size: 10))
+                .font(.system(size: large ? 13 : 10))
                 .foregroundStyle(Color.nbBlack)
-                .lineLimit(2)
+                .lineLimit(large ? 3 : 2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -774,7 +868,7 @@ struct TLPostCard: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
-        .frame(width: 158, height: 72, alignment: .topLeading)
+        .frame(width: large ? 220 : 158, height: large ? 100 : 72, alignment: .topLeading)
         .background(Color.nbWhite)
         .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
         .background(Color.nbBlack.offset(x: 2, y: 2))
@@ -783,10 +877,10 @@ struct TLPostCard: View {
     private func engagementCell(_ icon: String, _ count: Int) -> some View {
         HStack(spacing: 2) {
             Image(systemName: icon)
-                .font(.system(size: 7))
+                .font(.system(size: large ? 10 : 7))
                 .foregroundStyle(Color.nbTextTertiary)
             Text(count >= 1000 ? "\(count / 1000)k" : "\(count)")
-                .font(.system(size: 8))
+                .font(.system(size: large ? 11 : 8))
                 .foregroundStyle(Color.nbTextSecondary)
         }
     }

@@ -938,3 +938,22 @@ to one another."* Also: the constant vibration returned.
   The article reader's split also moved to both axes (it had the same drop-when-rotated
   restriction).
 
+**Update 2026-11-10 — feeds survive open/close; layout requests.** Owner: *"opening and
+closing the iPhone Duo makes it so that the feeds refresh"* → `TabColumns` switched
+containers (one column ↔ ArrangementView ↔ HStack), so SwiftUI rebuilt the column on
+every open/close/rotate. Replaced by ONE custom `Layout` (`FoldSplitLayout`) in every
+state; the fold position comes from `reservedRegions(kind: .division)`. Verified on
+device by the owner. ArrangementView stays for the article cover and TV (whose content
+doesn't need to survive a layout change). Then, owner: swap Reader (now a tab, in the
+vertical bar) and Messages (now a place, in overflow/More); Notifications and Messages
+open their item on the right when it's unoccupied — added `DetailPaneItem.profile` /
+`store.openProfile` (follow notifications, author taps); Timeline redesigned to use the
+whole display (§10.14); and the left column was laid out 84pt narrower than its frame in
+landscape — the vertical bar's trailing safe-area inset was applied to a column that
+doesn't touch that edge (also true under ArrangementView, visible in earlier device
+screenshots). `ignoresSafeArea` did NOT fix it — three rounds of on-device geometry logs
+showed the inset arrives at each screen's own hosting controller straight from the tab
+view (the navigation controller between them reports 0). Fixed in UIKit:
+`BarInsetCanceller` sets a negative `additionalSafeAreaInsets` on every primary-column
+screen. Device: left root 350 → 434pt.
+
