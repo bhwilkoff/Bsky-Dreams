@@ -67,13 +67,8 @@ struct ProfileView: View {
                         Label("Report Account", systemImage: "flag")
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.nbBlack)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    Label("More Options", systemImage: "ellipsis")
                 }
-                .accessibilityLabel("More options")
             }
         })
         .confirmationDialog(
@@ -296,7 +291,7 @@ struct ProfileView: View {
                     Spacer()
 
                     Button {
-                        store.selectedTab = .timeline
+                        store.select(.timeline)
                         store.pendingTimelineQuery = "@\(profile.handle)"
                     } label: {
                         VStack(spacing: 6) {

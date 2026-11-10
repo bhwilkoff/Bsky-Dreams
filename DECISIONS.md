@@ -461,7 +461,7 @@ Seen-posts are synced across devices using the AT Protocol repo as a key-value s
 ---
 
 ## [iOS] Toolbar POST Button — Plain View + .onTapGesture, Not Button
-*2026-03-17*
+*2026-03-17 — SUPERSEDED 2026-11-10: toolbar items are system `Button(title, systemImage:)` so they can move into the iPhone Duo's vertical bar.*
 
 The POST button in `FeedView` and `ComposeView` toolbars uses a plain `Text` view with `.onTapGesture` rather than a SwiftUI `Button`. When a `Button` is placed inside a `ToolbarItem`, SwiftUI maps it to a `UIBarButtonItem` backed by a `UIButton` with `UIButtonConfiguration` — iOS 15+ uses this to render a rounded rect highlight background that cannot be suppressed via SwiftUI modifiers (`.buttonStyle(.plain)`) or the legacy `UIBarButtonItem.appearance().setBackgroundImage()` API. A plain view (non-Button) results in `UIBarButtonItem(customView: UIView)` which never receives `UIButtonConfiguration` treatment and therefore renders no rounded rect. Accessibility restored via `.accessibilityLabel` + `.accessibilityAddTraits(.isButton)`. `BskyDreamsApp.init()` also sets `UINavigationBarAppearance.buttonAppearance.backgroundEffect = nil` via the `UINavigationBar.appearance()` proxy (correct modern API; legacy `setBackgroundImage` had no effect). Trade-off: no automatic UIKit press-state feedback; the button visually looks identical pressed vs unpressed (acceptable for the neubrutalist style which doesn't use press states).
 
@@ -741,7 +741,7 @@ Non-English articles were leaking into the Reader because the filter used `isEng
 ---
 
 ## [iOS] Liquid Glass — Not Adopted; Neubrutalist Chrome Stays Opaque
-*2026-10-08*
+*2026-10-08 — SUPERSEDED 2026-11-10: navigation chrome is now the system's (see "Native Shell" below). Content keeps the neubrutalist style.*
 
 The app does not adopt iOS 26 Liquid Glass (`glassEffect`, glass toolbars/tab bars, `scrollEdgeEffectStyle`). Its identity is Neubrutalism: opaque fills, 2–3pt near-black borders, hard offset shadows — translucent, refractive chrome contradicts every one of those rules, and the custom `NBNavBar`/`FeedNavBar` would have to be rebuilt as system toolbars to get it. Floor stays iOS 18.6, so any glass would also need a parallel non-glass path. What iOS 26+ DOES require is honored: on iPad the window's controls sit in the top-leading corner, so custom nav bars inset their leading item there (`NBWindowControls.leadingInset`, iPad hardware only). Revisit if Apple makes glass mandatory for system chrome, or if the design language changes.
 
@@ -842,3 +842,34 @@ don't. Options weighed:
 Unverified until the device: the exact status-bar height (176pt fallback) and whether
 `toolbarVerticalEdge` reports an edge when the app hides its navigation bar (the inset
 fallback covers it).
+
+---
+
+## [iOS] Native Shell — System TabView, Sidebar, Navigation Bar, ArrangementView
+*2026-11-10 (1.49 build 55)*
+
+Owner, after seeing build 54's custom rail drawn over the content: *"You have to use the
+built in APIs for the iPhone Duo. No custom interfaces should be used instead of the
+elements that are specifically built for the DUO. I don't care which sdk you need to
+use. It has to work the way Apple has built the interface."*
+
+The custom chrome is gone, on every iPhone:
+- **Shell:** system `TabView(.sidebarAdaptable)` — tab bar (Home · Search · Notifications ·
+  Messages · More) that the Duo moves into its vertical bar; Apple's collapsible sidebar
+  with every destination at regular width. Replaces the slide-in drawer, the custom
+  persistent sidebar, its collapse button and `NBStripRail`. Pattern taken from Archive
+  Watch's shipped shell (five phone tabs; sidebar places only at regular width so the
+  phone never grows a system More tab; places hand over to More when the window narrows).
+- **Bars:** the system navigation bar on every screen; `nbNavBar` keeps its call shape but
+  configures the system bar. Apple's back button; system Close on roots; toolbar items
+  are `Label`s. `NBNavBar`/`FeedNavBar` and the corner-clearance hack are deleted.
+- **Columns:** Apple's `ArrangementView` (iOS 27.1) for list/detail and the second column
+  — the divider goes to the fold in book pose — with an HStack only below iOS 27.1
+  (never a Duo).
+- **Channels / account** (were in the custom sidebar): a Channels place in the sidebar;
+  Channels and Account sections in More.
+- Per-tab navigation stacks (`store.paths`) replace the single shared path.
+
+This supersedes the 2026-10-08 Liquid Glass decision for chrome. Content (cards, borders,
+shadows, Syne/Inter) stays neubrutalist. Web is unaffected (web parity of destinations
+and order is kept).

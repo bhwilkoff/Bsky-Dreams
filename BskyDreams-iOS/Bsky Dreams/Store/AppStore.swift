@@ -11,7 +11,44 @@ import Network
 final class AppStore {
     // Navigation
     var selectedTab: AppTab? = .home
-    var navigationPath = NavigationPath()
+    /// One stack per tab — the native TabView keeps each tab's place (iOS-DESIGN §1.1).
+    var paths: [AppTab: NavigationPath] = [:]
+    /// The selected tab's stack. Views push through `push` / `openPost`, not this.
+    var navigationPath: NavigationPath {
+        get { paths[selectedTab ?? .home] ?? NavigationPath() }
+        set { paths[selectedTab ?? .home] = newValue }
+    }
+    func pathBinding(_ tab: AppTab) -> Binding<NavigationPath> {
+        Binding(get: { self.paths[tab] ?? NavigationPath() },
+                set: { self.paths[tab] = $0 })
+    }
+    /// True at regular width, where the system sidebar lists every destination. At
+    /// compact width (every iPhone, the closed Duo) only `phoneTabs` are tabs and the
+    /// rest live in More.
+    var sidebarPlacesShown = false
+
+    /// Go to a destination wherever it lives: its own tab, or pushed inside More.
+    func select(_ tab: AppTab) {
+        if tab.isPhoneTab || sidebarPlacesShown {
+            selectedTab = tab
+        } else {
+            var path = NavigationPath()
+            path.append(ExplorePlace(tab: tab))
+            paths[.explore] = path
+            selectedTab = .explore
+        }
+    }
+
+    /// Open a saved channel (search or timeline query).
+    func openChannel(query: String, isTimeline: Bool) {
+        if isTimeline {
+            pendingTimelineQuery = query
+            select(.timeline)
+        } else {
+            pendingChannelQuery = query
+            select(.search)
+        }
+    }
 
     // MARK: iPhone Duo — columns + detail pane (iOS-DESIGN §10)
     //
@@ -125,13 +162,9 @@ final class AppStore {
         if !active { secondaryPath = NavigationPath() }
     }
 
-    /// Tab switch: keep the pane only if the new tab can host what it shows.
+    /// Tab switch: the detail pane belongs to the tab it was opened from.
     func detailPaneTabChanged() {
-        guard let item = detailPane else { return }
-        switch item {
-        case .post: if !currentTab.hostsPostPane { closeDetailPane() }
-        case .chat: if currentTab != .dms { closeDetailPane() }
-        }
+        closeDetailPane()
     }
 
     // Unread badge
@@ -414,6 +447,22 @@ final class AppStore {
 
     enum AppTab: String, CaseIterable {
         case home, search, notifications, dms, gallery, tv, stream, reader, analytics, constellation, timeline, settings
+        /// Compact width only: the list of everything that isn't a tab-bar tab.
+        case explore
+        /// Regular width only: the saved channels, as a sidebar place.
+        case channels
+
+        /// The tab bar on every iPhone and the closed Duo (the system moves it into the
+        /// Duo's vertical bar). Five, so the system never adds its own More tab.
+        static let phoneTabs: [AppTab] = [.home, .search, .notifications, .dms, .explore]
+        /// The system sidebar's other places at regular width (the open Duo), in the
+        /// sidebar order of iOS-DESIGN §1.6. At compact width they are rows in More.
+        static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .reader, .analytics,
+                                              .constellation, .timeline, .channels, .settings]
+        /// Views a column can show (the open Duo's right column picker).
+        static let columnChoices: [AppTab] = [.home, .search, .notifications, .dms] + sidebarPlaces
+        var isPhoneTab: Bool { Self.phoneTabs.contains(self) }
+
         var label: String {
             switch self {
             case .home: "Home"
@@ -428,6 +477,8 @@ final class AppStore {
             case .constellation: "Constellation"
             case .timeline: "Timeline"
             case .settings: "Settings"
+            case .explore: "More"
+            case .channels: "Channels"
             }
         }
         var icon: String {
@@ -444,6 +495,8 @@ final class AppStore {
             case .constellation: "network"
             case .timeline: "calendar.day.timeline.leading"
             case .settings: "gearshape"
+            case .explore: "square.grid.2x2"
+            case .channels: "number"
             }
         }
         /// Reading surfaces whose post taps open the Duo detail pane. Full-screen media
@@ -451,7 +504,7 @@ final class AppStore {
         var hostsPostPane: Bool {
             switch self {
             case .home, .search, .notifications, .gallery, .reader, .analytics, .timeline: true
-            case .dms, .tv, .stream, .constellation, .settings: false
+            case .dms, .tv, .stream, .constellation, .settings, .explore, .channels: false
             }
         }
     }
@@ -791,7 +844,7 @@ enum DebugLaunchDoors {
         }
         guard auth.isLoggedIn else { return }
         if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
-            store.selectedTab = tab
+            store.select(tab)
         }
         if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
             store.navigationPath.append(PostDestination(uri: uri, post: nil))

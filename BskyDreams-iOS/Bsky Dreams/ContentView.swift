@@ -21,7 +21,13 @@ struct RootView: View {
     }
 }
 
-// MARK: - Main App
+// MARK: - Main App (native shell, iOS-DESIGN §1, §10)
+//
+// Apple's own navigation, so iPhone Duo can do what it was built to do: a `TabView`
+// with `.sidebarAdaptable` is a tab bar on every iPhone, moves into the vertical bar
+// beside the status bar on the closed Duo (and the inner display in landscape), and
+// becomes the system's collapsible sidebar on the open Duo. Each tab has its own
+// `NavigationStack`; screens use the system navigation bar (see NBNavBar.swift).
 
 struct MainAppView: View {
     @Environment(AuthManager.self) private var auth
@@ -31,212 +37,55 @@ struct MainAppView: View {
     @Query private var seenPosts: [SeenPost]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @State private var sidebarOpen = false
-    @State private var sidebarDragOffset: CGFloat = 0
-    @State private var isDraggingSidebar = false
-    /// The scene's width, measured — never `UIScreen.main` (ambiguous on a two-display
-    /// iPhone Duo, and wrong in Split View).
-    @State private var containerWidth: CGFloat = 390
-    /// The window's safe-area insets. On iPhone Duo with the status bar in the side strip
-    /// the top inset is ~0 and that side's inset is the strip (~84pt).
-    @State private var safeInsets = EdgeInsets(top: 47, leading: 0, bottom: 34, trailing: 0)
-    /// Which edge the system's vertical bar is on (iOS 27.1 `toolbarVerticalEdge`), if any.
-    @State private var verticalBarEdge: HorizontalEdge? = nil
-    /// Where the strip's status bar (clock, Wi-Fi) ends, in window coordinates.
-    @State private var stripStatusBarBottom: CGFloat = 176
 
     private let seenMaxAge: TimeInterval = 7 * 24 * 3600
 
-    // MARK: iPhone Duo layout (iOS-DESIGN §10)
-    //
-    // Regular width AND regular height is the OPEN iPhone Duo's inner display, in every
-    // orientation and pose. (An iPhone Pro Max in landscape is regular width but COMPACT
-    // height, so it keeps the phone layout.) The closed Duo, Split View and every other
-    // iPhone are compact width → the original drawer layout, untouched.
+    /// Regular width AND regular height = the open iPhone Duo's inner display, every pose.
     private var isSplitLayout: Bool {
         horizontalSizeClass == .regular && verticalSizeClass == .regular
     }
-    private var secondaryVisible: Bool { isSplitLayout && store.secondaryTab != nil }
-    private var detailPaneVisible: Bool { isSplitLayout && !secondaryVisible && store.detailPane != nil }
-    private var rightPaneVisible: Bool { secondaryVisible || detailPaneVisible }
-    /// Portrait inner display (~670pt) can't fit sidebar + two readable columns, so while
-    /// a right column is open the sidebar becomes the drawer and the two columns split
-    /// the screen exactly in half — on the center line, where the fold runs. Landscape
-    /// (~950pt) can keep the sidebar.
-    private var sidebarColumnAllowed: Bool {
-        isSplitLayout && !(rightPaneVisible && containerWidth < 900)
-    }
-    /// The sidebar is on screen as a column (allowed, and not collapsed by the person).
-    private var sidebarPersistent: Bool { sidebarColumnAllowed && !store.sidebarCollapsed }
-    private let persistentSidebarWidth: CGFloat = 260
-    private let paneDivider: CGFloat = 2
-    private var paneWidth: CGFloat {
-        let content = containerWidth - (sidebarPersistent ? persistentSidebarWidth + paneDivider : 0)
-        return max(0, (content - paneDivider) / 2)
+    private var showsSidebarPlaces: Bool { horizontalSizeClass == .regular }
+
+    private var tabSelection: Binding<AppStore.AppTab> {
+        Binding(get: { store.selectedTab ?? .home }, set: { store.selectedTab = $0 })
     }
 
-    private var sidebarWidth: CGFloat { min(containerWidth * 0.78, 300) }
-
-    // MARK: iPhone Duo side strip (iOS-DESIGN §10.10)
-    //
-    // With the iOS 27.1+ SDK the Duo puts the status bar in a vertical strip (~84pt) down
-    // one edge — on the closed Duo, and on the inner display in landscape. The system
-    // fills the rest of that strip with tab bars and toolbars; our chrome is custom, so we
-    // fill it ourselves with the sidebar's destinations. The edge comes from the system
-    // (`toolbarVerticalEdge`) when it reports one; otherwise from the insets themselves
-    // (no top inset + a wide side inset), which is what the strip does to the layout.
-    private var stripEdge: HorizontalEdge? {
-        if let verticalBarEdge { return verticalBarEdge }
-        guard safeInsets.top < 20 else { return nil }
-        if safeInsets.trailing >= 60 { return .trailing }
-        if safeInsets.leading >= 60 { return .leading }
-        return nil
-    }
-    /// Not when the sidebar column is already on screen (open Duo, landscape, shown).
-    private var stripRailVisible: Bool {
-        guard let edge = stripEdge, !sidebarPersistent else { return false }
-        return (edge == .leading ? safeInsets.leading : safeInsets.trailing) >= 44
-    }
-
-    /// The bottom of the strip's status bar. `statusBarFrame` reports the strip's status
-    /// area when it is vertical; if it reports something implausible (horizontal, or the
-    /// whole strip) fall back to the measured position of the clock + Wi-Fi on the
-    /// device (build 53 screenshot: ~155pt), plus breathing room.
-    static func measureStripStatusBarBottom() -> CGFloat {
-        let frame = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }?
-            .statusBarManager?.statusBarFrame ?? .zero
-        if frame.height > frame.width, frame.height > 40, frame.height < 320 {
-            return frame.maxY + 12
-        }
-        return 176
-    }
-    private var sidebarCurrentX: CGFloat {
-        let base: CGFloat = sidebarOpen ? 0 : -sidebarWidth
-        return max(-sidebarWidth, min(0, base + sidebarDragOffset))
-    }
-    private var dimOpacity: Double {
-        Double((sidebarCurrentX + sidebarWidth) / sidebarWidth) * 0.35
-    }
-    private func closeSidebar() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            sidebarOpen = false
-            sidebarDragOffset = 0
-        }
-    }
-    /// The hamburger. On the open Duo (when a sidebar column fits) it shows/hides the
-    /// sidebar column for more room; everywhere else it opens the drawer.
-    private func toggleSidebarAnimated() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            if sidebarColumnAllowed {
-                store.sidebarCollapsed.toggle()
-            } else {
-                sidebarOpen.toggle()
-                sidebarDragOffset = 0
-            }
-        }
-    }
-
-    /// Transparent left-edge strip that sits above child ScrollViews in the hit-test
-    /// hierarchy. Because it's its own view at high zIndex, it wins the gesture
-    /// competition before any scroll view sees the touch — no angle check needed.
-    /// Only active when the sidebar is closed and no pushed view is on the stack.
-    private var edgeOpenStrip: some View {
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: 28)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 5, coordinateSpace: .global)
-                        .onChanged { value in
-                            // Any rightward motion from the left edge = open intent.
-                            // No angle check — the narrow strip implies horizontal intent.
-                            guard value.translation.width > 0 else { return }
-                            isDraggingSidebar = true
-                            sidebarDragOffset = value.translation.width
-                        }
-                        .onEnded { value in
-                            guard isDraggingSidebar else { return }
-                            isDraggingSidebar = false
-                            // base = -sidebarWidth (sidebar was closed)
-                            let predicted = max(-sidebarWidth, min(0,
-                                -sidebarWidth + value.predictedEndTranslation.width))
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                sidebarOpen = predicted > -sidebarWidth / 2
-                                sidebarDragOffset = 0
-                            }
-                        }
-                )
-            Spacer()
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(!sidebarOpen && store.navigationPath.isEmpty)
-    }
-
-    private var paneSeparator: some View {
-        Color.nbBlack.frame(width: paneDivider).ignoresSafeArea(edges: .vertical)
+    // People may reorder/hide sidebar entries (system customization); kept across launches.
+    @AppStorage("tabCustomization") private var tabCustomizationData = Data()
+    private var tabCustomization: Binding<TabViewCustomization> {
+        Binding(
+            get: { (try? JSONDecoder().decode(TabViewCustomization.self, from: tabCustomizationData))
+                   ?? TabViewCustomization() },
+            set: { tabCustomizationData = (try? JSONEncoder().encode($0)) ?? Data() })
     }
 
     var body: some View {
-        shellLayout
-        .environment(\.barCornerClearance, safeInsets.top < 20)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
-        .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { insets in
-            safeInsets = insets
-            stripStatusBarBottom = Self.measureStripStatusBarBottom()
+        TabView(selection: tabSelection) {
+            phoneTabs
+            // Sidebar places only at regular width: hidden-for-tab-bar tabs still count
+            // toward the phone's bar and make the system add its own More tab.
+            if showsSidebarPlaces { sidebarPlaces }
         }
-        .background {
-            if #available(iOS 27.1, *) {
-                NBVerticalBarEdgeReader { verticalBarEdge = $0 }
+        .tabViewStyle(.sidebarAdaptable)
+        .tabViewCustomization(tabCustomization)
+        .onChange(of: showsSidebarPlaces, initial: true) { _, shown in
+            store.sidebarPlacesShown = shown
+            // Narrowed to compact (Duo closed, Split View): a selected sidebar place hands
+            // over to More, opened at that place.
+            if !shown, let tab = store.selectedTab, !tab.isPhoneTab {
+                store.select(tab)
+            }
+            // Widened: More's place becomes its own sidebar entry.
+            if shown, store.selectedTab == .explore {
+                store.selectedTab = .home
             }
         }
-        // iPhone Duo side strip: the sidebar's destinations fill the empty space below the
-        // clock — where the system would put a tab bar (iOS-DESIGN §10.10).
-        .overlay(alignment: stripEdge == .leading ? .leading : .trailing) {
-            if stripRailVisible, let edge = stripEdge {
-                NBStripRail(topOffset: stripStatusBarBottom)
-                    .frame(width: edge == .leading ? safeInsets.leading : safeInsets.trailing)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: rightPaneVisible)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: sidebarPersistent)
         .onChange(of: isSplitLayout, initial: true) { _, split in
             store.setSplitLayoutActive(split)
         }
         .onChange(of: store.secondaryTab) { _, _ in
             store.secondaryPath = NavigationPath()
         }
-        .onChange(of: sidebarPersistent) { _, persistent in
-            if persistent { sidebarOpen = false; sidebarDragOffset = 0 }
-        }
-        // Close-only gesture on the ZStack: handles dragging the sidebar shut.
-        // Opening is handled exclusively by edgeOpenStrip above.
-        .gesture(
-            DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                .onChanged { value in
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    if !isDraggingSidebar {
-                        // Only handle close: sidebar must be open, swipe must be left
-                        guard sidebarOpen && abs(dx) > abs(dy) && dx < 0 else { return }
-                        isDraggingSidebar = true
-                    }
-                    sidebarDragOffset = dx
-                }
-                .onEnded { value in
-                    guard isDraggingSidebar else { return }
-                    isDraggingSidebar = false
-                    // base = 0 (sidebar was open); predicted end determines open/close
-                    let predicted = max(-sidebarWidth, min(0, value.predictedEndTranslation.width))
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sidebarOpen = predicted > -sidebarWidth / 2
-                        sidebarDragOffset = 0
-                    }
-                }
-        )
         .overlay(alignment: .bottom) {
             if let failed = store.failedPost {
                 NBErrorBanner(message: "Your post didn't send — \(failed.reason)",
@@ -309,87 +158,50 @@ struct MainAppView: View {
             }
         }
         .onChange(of: store.selectedTab) { _, _ in
-            store.navigationPath = NavigationPath()
             store.detailPaneTabChanged()
         }
     }
 
-    /// Drawer layout on every iPhone; sidebar column + list + detail pane on the open Duo.
-    private var shellLayout: some View {
-        ZStack(alignment: .leading) {
-            // Page background — deep navy-black in dark mode so cards float above it.
-            Color.nbBackground.ignoresSafeArea()
-
-            HStack(spacing: 0) {
-                // Open Duo: the sidebar is a column, like the web app's desktop layout.
-                if sidebarPersistent {
-                    SidebarView(onNavigate: {})
-                        .frame(width: persistentSidebarWidth)
-                        .ignoresSafeArea(edges: .vertical)
-                        .transition(.move(edge: .leading))
-                    paneSeparator
-                }
-
-                mainStack
-                    .frame(width: rightPaneVisible ? paneWidth : nil)
-                    .frame(maxWidth: rightPaneVisible ? nil : CGFloat.infinity)
-
-                // Open Duo, right side: a second column of any view, or — with one
-                // column — the conversation/chat opened from the list.
-                if secondaryVisible, let tab = store.secondaryTab {
-                    paneSeparator
-                    secondaryStack(tab)
-                        .frame(width: paneWidth)
-                        .transition(.move(edge: .trailing))
-                } else if detailPaneVisible, let item = store.detailPane {
-                    paneSeparator
-                    DetailPaneView(item: item)
-                        .frame(width: paneWidth)
-                        .transition(.move(edge: .trailing))
-                }
-            }
-            .environment(\.sidebarIsColumn, sidebarColumnAllowed)
-
-            if !sidebarPersistent {
-                // Dim overlay — opacity tracks sidebar position 1:1 during drag
-                Color.black.opacity(dimOpacity)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(dimOpacity > 0.01)
-                    .onTapGesture { closeSidebar() }
-                    .zIndex(1)
-
-                // Sidebar — always in hierarchy, translated off-screen when closed
-                SidebarView(onNavigate: closeSidebar)
-                    .frame(width: sidebarWidth)
-                    .ignoresSafeArea(edges: .vertical)
-                    .offset(x: sidebarCurrentX)
-                    .zIndex(2)
-
-                // Left-edge ghost strip — above sidebar so it wins gesture competition
-                // over child ScrollViews; passes through all hits when sidebar is open
-                edgeOpenStrip
-                    .zIndex(3)
-            }
+    @TabContentBuilder<AppStore.AppTab>
+    private var phoneTabs: some TabContent<AppStore.AppTab> {
+        Tab(AppStore.AppTab.home.label, systemImage: AppStore.AppTab.home.icon,
+            value: AppStore.AppTab.home) {
+            TabColumns(tab: .home)
         }
+        .customizationID("home")
+        Tab(AppStore.AppTab.search.label, systemImage: AppStore.AppTab.search.icon,
+            value: AppStore.AppTab.search, role: .search) {
+            TabColumns(tab: .search)
+        }
+        .customizationID("search")
+        Tab(AppStore.AppTab.notifications.label, systemImage: AppStore.AppTab.notifications.icon,
+            value: AppStore.AppTab.notifications) {
+            TabColumns(tab: .notifications)
+        }
+        .badge(store.unreadNotificationCount)
+        .customizationID("notifications")
+        Tab(AppStore.AppTab.dms.label, systemImage: AppStore.AppTab.dms.icon,
+            value: AppStore.AppTab.dms) {
+            TabColumns(tab: .dms)
+        }
+        .badge(store.unreadDMCount)
+        .customizationID("dms")
+        // More: compact width only — the sidebar lists its rows as places instead.
+        Tab(AppStore.AppTab.explore.label, systemImage: AppStore.AppTab.explore.icon,
+            value: AppStore.AppTab.explore) {
+            TabColumns(tab: .explore)
+        }
+        .customizationID("explore")
+        .defaultVisibility(.hidden, for: .sidebar)
     }
 
-    /// The open Duo's second column: any sidebar view, with its own small stack so
-    /// what you open there stays there (iOS-DESIGN §10.3).
-    private func secondaryStack(_ tab: AppStore.AppTab) -> some View {
-        NavigationStack(path: Bindable(store).secondaryPath) {
-            DetailView(tab: tab, toggleSidebar: { toggleSidebarAnimated() })
-                .id(tab)
-                .withAppDestinations(myDid: auth.session?.did ?? "")
-        }
-        .environment(\.navColumn, .secondary)
-    }
-
-    /// The single app-wide push stack (iOS-DESIGN §1.1).
-    private var mainStack: some View {
-        NavigationStack(path: Bindable(store).navigationPath) {
-            DetailView(tab: store.selectedTab ?? .home, toggleSidebar: { toggleSidebarAnimated() })
-                .environment(\.toggleSidebar, { toggleSidebarAnimated() })
-                .withAppDestinations(myDid: auth.session?.did ?? "")
+    @TabContentBuilder<AppStore.AppTab>
+    private var sidebarPlaces: some TabContent<AppStore.AppTab> {
+        ForEach(AppStore.AppTab.sidebarPlaces, id: \.self) { tab in
+            Tab(tab.label, systemImage: tab.icon, value: tab) {
+                TabColumns(tab: tab)
+            }
+            .customizationID(tab.rawValue)
         }
     }
 
@@ -435,134 +247,211 @@ struct MainAppView: View {
     }
 }
 
-// MARK: - iPhone Duo side-strip rail (iOS-DESIGN §10.10)
+// MARK: - A tab's columns (open iPhone Duo: Apple's ArrangementView, §10.3)
 
-/// Reports the system's vertical-bar edge (iOS 27.1+). Kept in its own view because the
-/// environment value doesn't exist on the app's iOS 18.6 floor.
-@available(iOS 27.1, *)
-struct NBVerticalBarEdgeReader: View {
-    @Environment(\.toolbarVerticalEdge) private var edge
-    let onChange: (HorizontalEdge?) -> Void
+/// One tab's content. Everywhere it is the tab's own NavigationStack. On the open Duo,
+/// reading tabs (and any tab while a right column is chosen) sit in an `ArrangementView`
+/// split: the list beside the conversation it opened, or beside a second view. In book
+/// pose the system puts the divider on the fold.
+struct TabColumns: View {
+    let tab: AppStore.AppTab
+    @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var isSplitLayout: Bool {
+        horizontalSizeClass == .regular && verticalSizeClass == .regular
+    }
+    private var isCurrent: Bool { (store.selectedTab ?? .home) == tab }
+    private var hasRightPane: Bool {
+        guard isSplitLayout else { return false }
+        return store.secondaryTab != nil || tab.hostsPostPane || tab == .dms
+    }
 
     var body: some View {
-        Color.clear
-            .allowsHitTesting(false)
-            .onChange(of: edge, initial: true) { _, newEdge in onChange(newEdge) }
+        if hasRightPane {
+            split
+        } else {
+            primary
+        }
+    }
+
+    private var primary: some View {
+        NavigationStack(path: store.pathBinding(tab)) {
+            DetailView(tab: tab)
+                .withAppDestinations(myDid: auth.session?.did ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var split: some View {
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                primary
+                    // Half each; at least a third for the list. No max (it fights the fold).
+                    .splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5)
+            } secondary: {
+                rightPane
+            }
+            .arrangementViewStyle(.split.axes(.horizontal))
+        } else {
+            HStack(spacing: 0) {
+                primary
+                Divider()
+                rightPane
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var rightPane: some View {
+        if let column = store.secondaryTab {
+            if isCurrent {
+                SecondaryColumn(tab: column)
+            } else {
+                Color.nbBackground
+            }
+        } else if isCurrent, let item = store.detailPane {
+            DetailPaneView(item: item)
+        } else {
+            NavigationStack {
+                NBEmptyState(
+                    icon: tab == .dms ? "bubble.left.and.bubble.right" : "text.bubble",
+                    title: tab == .dms ? "No chat open" : "No conversation open",
+                    message: tab == .dms
+                        ? "Pick a chat and it opens here, beside your messages."
+                        : "Tap a post and its conversation opens here, beside the list."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.nbBackground)
+            }
+        }
     }
 }
 
-/// The sidebar's destinations as a column of square neubrutalist buttons in the Duo's
-/// side strip, under the clock: New Post on top, then destinations in sidebar order for
-/// as many as fit, then a More menu with the rest. The same job a system tab bar does
-/// in the vertical bar, in this app's own visual language.
-struct NBStripRail: View {
-    /// Window y where the status bar ends — the rail starts below it.
-    let topOffset: CGFloat
+/// The open Duo's second column: any destination, with its own stack, so what you open
+/// there stays there. Its leading toolbar item picks the view or closes the column.
+struct SecondaryColumn: View {
+    let tab: AppStore.AppTab
     @Environment(AppStore.self) private var store
-    @State private var height: CGFloat = 0
-
-    private let button: CGFloat = 44
-    private let spacing: CGFloat = 8
-    private let bottomClearance: CGFloat = 28   // the display's rounded bottom corner
-
-    /// Destinations that fit between New Post and the More button.
-    private var capacity: Int {
-        let usable = height - topOffset - bottomClearance - (button + spacing) * 2   // New Post + More
-        return max(0, Int(usable / (button + spacing)))
-    }
-    private var tabs: [AppStore.AppTab] { AppStore.AppTab.allCases }
-    private var shown: [AppStore.AppTab] {
-        // If everything fits without a More button, show everything.
-        if capacity + 1 >= tabs.count { return tabs }
-        return Array(tabs.prefix(capacity))
-    }
-    private var overflow: [AppStore.AppTab] { Array(tabs.dropFirst(shown.count)) }
+    @Environment(AuthManager.self) private var auth
 
     var body: some View {
-        VStack(spacing: spacing) {
-            composeButton
-            ForEach(shown, id: \.self) { tab in tabButton(tab) }
-            if !overflow.isEmpty { moreMenu }
-            Spacer(minLength: 0)
+        NavigationStack(path: Bindable(store).secondaryPath) {
+            DetailView(tab: tab)
+                .id(tab)
+                .withAppDestinations(myDid: auth.session?.did ?? "")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { NBColumnMenu() }
+                }
         }
-        .padding(.top, topOffset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // chrome, like the nav bars
+        .environment(\.navColumn, .secondary)
     }
+}
 
-    private var composeButton: some View {
-        Image(systemName: "square.and.pencil")
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Color.nbLabel(on: .nbAccent))
-            .frame(width: button, height: button)
-            .background(Color.nbAccent)
-            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-            .background(Color.nbBlack.offset(x: 2, y: 2))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                Haptics.light()
-                store.showComposeSheet = true
-            }
-            .accessibilityLabel("New post")
-            .accessibilityAddTraits(.isButton)
-    }
+/// A destination opened inside More (compact width).
+struct ExplorePlace: Hashable {
+    let tab: AppStore.AppTab
+}
 
-    private func tabButton(_ tab: AppStore.AppTab) -> some View {
-        let active = (store.selectedTab ?? .home) == tab
-        return Image(systemName: tab.icon)
-            .font(.system(size: 17, weight: active ? .bold : .regular))
-            .foregroundStyle(active ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
-            .frame(width: button, height: button)
-            .background(active ? Color.nbAccent : Color.nbWhite)
-            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: active ? 2 : 1))
-            .overlay(alignment: .topTrailing) {
-                if badge(for: tab) > 0 {
-                    Circle()
-                        .fill(Color.nbAccentLegible)
-                        .overlay(Circle().strokeBorder(Color.nbWhite, lineWidth: 1.5))
-                        .frame(width: 10, height: 10)
-                        .offset(x: 3, y: -3)
+/// More — compact width (every iPhone, the closed Duo): the destinations that aren't in
+/// the tab bar, the saved channels, and the account. A system List.
+struct ExploreView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
+    @State private var confirmSignOut = false
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(AppStore.AppTab.sidebarPlaces.filter { $0 != .channels }, id: \.self) { tab in
+                    NavigationLink(value: ExplorePlace(tab: tab)) {
+                        Label(tab.label, systemImage: tab.icon)
+                    }
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !active else { return }
-                Haptics.selection()
-                store.selectedTab = tab
+            ChannelsSection()
+            Section("Account") {
+                if let handle = auth.session?.handle {
+                    NavigationLink(value: ProfileDestination(actor: handle)) {
+                        Label("@\(handle)", systemImage: "person.crop.circle")
+                    }
+                }
+                Button(role: .destructive) { confirmSignOut = true } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+                .confirmationDialog("Sign out of Bsky Dreams?", isPresented: $confirmSignOut,
+                                    titleVisibility: .visible) {
+                    Button("Sign Out", role: .destructive) { auth.logout() }
+                    Button("Cancel", role: .cancel) {}
+                }
             }
-            .accessibilityLabel(tab.label)
-            .accessibilityValue(badge(for: tab) > 0 ? "\(badge(for: tab)) unread" : "")
-            .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+        }
+        .navigationTitle("More")
     }
+}
 
-    private var moreMenu: some View {
-        Menu {
-            ForEach(overflow, id: \.self) { tab in
+/// Channels — regular width: a sidebar place listing the saved channels.
+struct ChannelsView: View {
+    var body: some View {
+        List { ChannelsSection() }
+            .navigationTitle("Channels")
+    }
+}
+
+/// The saved search / timeline channels: tap to open, context menu to rename or delete.
+struct ChannelsSection: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.modelContext) private var modelContext
+    @Query private var savedSearches: [SavedSearch]
+    @State private var editingChannel: SavedSearch? = nil
+    @State private var channelRenameText = ""
+
+    var body: some View {
+        Section("Channels") {
+            if savedSearches.isEmpty {
+                Text("Save a search or a timeline to keep it here.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(savedSearches) { channel in
                 Button {
-                    Haptics.selection()
-                    store.selectedTab = tab
+                    store.openChannel(query: channel.query, isTimeline: channel.channelType == "timeline")
                 } label: {
-                    Label(tab.label, systemImage: (store.selectedTab ?? .home) == tab ? "checkmark" : tab.icon)
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(channel.name)
+                            Text(channel.query).font(.caption).foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: channel.channelType == "timeline"
+                              ? "calendar.day.timeline.leading" : "number")
+                    }
+                }
+                .badge(channel.unreadCount)
+                .contextMenu {
+                    Button("Rename", systemImage: "pencil") {
+                        channelRenameText = channel.name
+                        editingChannel = channel
+                    }
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        modelContext.delete(channel)
+                    }
                 }
             }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(overflow.contains(store.selectedTab ?? .home) ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
-                .frame(width: button, height: button)
-                .background(overflow.contains(store.selectedTab ?? .home) ? Color.nbAccent : Color.nbWhite)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 1))
-                .contentShape(Rectangle())
         }
-        .accessibilityLabel("More destinations")
-    }
-
-    private func badge(for tab: AppStore.AppTab) -> Int {
-        switch tab {
-        case .notifications: store.unreadNotificationCount
-        case .dms: store.unreadDMCount
-        default: 0
+        .alert("Rename Channel", isPresented: Binding(
+            get: { editingChannel != nil },
+            set: { if !$0 { editingChannel = nil } }
+        )) {
+            TextField("Channel name", text: $channelRenameText)
+            Button("Save") {
+                editingChannel?.name = channelRenameText
+                editingChannel = nil
+            }
+            Button("Cancel", role: .cancel) { editingChannel = nil }
+        } message: {
+            Text("Enter a new name for this channel")
         }
     }
 }
@@ -574,29 +463,39 @@ extension View {
     /// Duo the second column's and the detail pane's (iOS-DESIGN §1.1, §10.3).
     func withAppDestinations(myDid: String) -> some View {
         self
+            .navigationDestination(for: ExplorePlace.self) { place in
+                DetailView(tab: place.tab)
+                    .environment(\.nbIsPushed, true)
+            }
             .navigationDestination(for: PostDestination.self) { dest in
                 ThreadView(uri: dest.uri, initialPost: dest.post)
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: ProfileDestination.self) { dest in
                 ProfileView(actor: dest.actor)
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: HashtagDestination.self) { dest in
                 SearchView(initialQuery: "#\(dest.tag)")
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: Conversation.self) { convo in
                 ChatView(conversation: convo, myDid: myDid)
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: AnalyticsDestination.self) { dest in
                 AnalyticsView(initialActor: dest.actor)
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
             .navigationDestination(for: ConstellationDestination.self) { dest in
                 ConstellationView(initialActor: dest.actor)
                     .enableNavigationBackSwipe()
+                    .environment(\.nbIsPushed, true)
             }
     }
 }
@@ -633,381 +532,29 @@ struct DetailPaneView: View {
     }
 }
 
-// MARK: - Sidebar
-
-struct SidebarView: View {
-    let onNavigate: () -> Void
-
-    @Environment(AppStore.self) private var store
-    @Environment(AuthManager.self) private var auth
-    @Environment(\.modelContext) private var modelContext
-    @Query private var savedSearches: [SavedSearch]
-
-    @State private var editingChannel: SavedSearch? = nil
-    @State private var channelRenameText = ""
-    @State private var confirmSignOut = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            sidebarHeader
-            Divider().background(Color.nbBlack)
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(AppStore.AppTab.allCases, id: \.self) { tab in
-                        SidebarNavButton(
-                            tab: tab,
-                            isActive: store.selectedTab == tab,
-                            badge: badgeCount(for: tab)
-                        ) {
-                            store.selectedTab = tab
-                            onNavigate()
-                        }
-                        .contextMenu {
-                            if store.splitLayoutActive {
-                                Button {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                        store.openSecondColumn(tab)
-                                    }
-                                    onNavigate()
-                                } label: {
-                                    Label("Open in Right Column", systemImage: "rectangle.righthalf.inset.filled")
-                                }
-                            }
-                        }
-                    }
-
-                    // Open iPhone Duo: a second column of any view beside the first —
-                    // Search beside Home, two home feeds, Gallery beside Reader (§10.3).
-                    if store.splitLayoutActive {
-                        columnsSection
-                    }
-
-                    if !savedSearches.isEmpty {
-                        Divider().background(Color.nbBlack).padding(.vertical, 8)
-
-                        HStack {
-                            Text("CHANNELS")
-                                .font(.syne(10, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(Color.nbTextTertiary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 4)
-
-                        ForEach(savedSearches) { channel in
-                            SidebarChannelButton(channel: channel, isActive: false) {
-                                if channel.channelType == "timeline" {
-                                    store.selectedTab = .timeline
-                                    store.pendingTimelineQuery = channel.query
-                                } else {
-                                    store.selectedTab = .search
-                                    store.pendingChannelQuery = channel.query
-                                }
-                                onNavigate()
-                            }
-                            .contextMenu {
-                                Button("Rename") {
-                                    channelRenameText = channel.name
-                                    editingChannel = channel
-                                }
-                                Button("Delete", role: .destructive) {
-                                    modelContext.delete(channel)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.vertical, 8)
-            }
-
-            Spacer()
-            Divider().background(Color.nbBlack)
-            sidebarFooter
-        }
-        .background(Color.nbWhite)
-        .alert("Rename Channel", isPresented: Binding(
-            get: { editingChannel != nil },
-            set: { if !$0 { editingChannel = nil } }
-        )) {
-            TextField("Channel name", text: $channelRenameText)
-            Button("Save") {
-                editingChannel?.name = channelRenameText
-                editingChannel = nil
-            }
-            Button("Cancel", role: .cancel) { editingChannel = nil }
-        } message: {
-            Text("Enter a new name for this channel")
-        }
-    }
-
-    private var columnsSection: some View {
-        VStack(spacing: 0) {
-            Divider().background(Color.nbBlack).padding(.vertical, 8)
-            HStack {
-                Text("COLUMNS")
-                    .font(.syne(10, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Color.nbTextTertiary)
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
-
-            if let right = store.secondaryTab {
-                HStack(spacing: 12) {
-                    Image(systemName: "rectangle.righthalf.inset.filled")
-                        .font(.system(size: 16))
-                        .frame(width: 20)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Right column")
-                            .font(.inter(11))
-                            .foregroundStyle(Color.nbTextSecondary)
-                        Text(right.label)
-                            .font(.syne(14, weight: .bold))
-                    }
-                    Spacer()
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 32, height: 32)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            Haptics.light()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
-                        }
-                        .accessibilityLabel("Close right column")
-                        .accessibilityAddTraits(.isButton)
-                }
-                .foregroundStyle(Color.nbBlack)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .accessibilityElement(children: .contain)
-            } else {
-                Button {
-                    Haptics.light()
-                    let pick: AppStore.AppTab = (store.selectedTab ?? .home) == .home ? .search : .home
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.openSecondColumn(pick) }
-                    onNavigate()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "rectangle.split.2x1")
-                            .font(.system(size: 16))
-                            .frame(width: 20)
-                        Text("Add Right Column")
-                            .font(.syne(14, weight: .bold))
-                        Spacer()
-                    }
-                    .foregroundStyle(Color.nbBlack)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Shows a second view beside this one. Change it from the column's menu button.")
-            }
-        }
-    }
-
-    private var sidebarHeader: some View {
-        // VStack + .background() keeps the header non-greedy.
-        // Neither Color nor DiagonalStripeBackground (GeometryReader) can expand
-        // the height when used as backgrounds — only content drives the size.
-        VStack(spacing: 0) {
-            // Push content below Dynamic Island / notch
-            Color.clear.frame(height: topSafeAreaInset)
-
-            // Logo + title row
-            HStack(spacing: 0) {
-                Spacer()
-                CloudLogoView(size: 36)
-                Text("BSKY DREAMS")
-                    .font(.syne(20, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(Color.nbBlack)
-                    .padding(.leading, 10)
-                Spacer()
-            }
-            .padding(.vertical, 12)
-
-            // Thin stripe accent at the very bottom of the header
-            DiagonalStripeBackground()
-                .frame(height: 14)
-        }
-        .background(Color.nbWhite)
-    }
-
-    private var topSafeAreaInset: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.keyWindow?.safeAreaInsets.top ?? 0
-    }
-
-    private var sidebarFooter: some View {
-        HStack(spacing: 10) {
-            if let handle = auth.session?.handle {
-                Button {
-                    store.navigationPath.append(ProfileDestination(actor: handle))
-                    onNavigate()
-                } label: {
-                    HStack(spacing: 8) {
-                        AvatarView(url: store.currentUserAvatar, size: 32)
-                        Text("@\(handle)")
-                            .font(.inter(13))
-                            .foregroundStyle(Color.nbTextSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-            Button {
-                confirmSignOut = true
-            } label: {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.red)
-                    .padding(8)
-            }
-            .accessibilityLabel("Sign out")
-            // A small icon next to your avatar is easy to hit by accident.
-            .confirmationDialog("Sign out of Bsky Dreams?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-                Button("Sign Out", role: .destructive) { auth.logout() }
-                Button("Cancel", role: .cancel) {}
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.nbWhite)
-    }
-
-    private func badgeCount(for tab: AppStore.AppTab) -> Int {
-        switch tab {
-        case .notifications: store.unreadNotificationCount
-        case .dms: store.unreadDMCount
-        default: 0
-        }
-    }
-}
-
-// MARK: - Sidebar Nav Button
-
-struct SidebarNavButton: View {
-    let tab: AppStore.AppTab
-    let isActive: Bool
-    let badge: Int
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 16, weight: isActive ? .bold : .regular))
-                    .foregroundStyle(isActive ? Color.white : Color.nbBlack)
-                    .frame(width: 20)
-
-                Text(tab.label)
-                    .font(.syne(14, weight: isActive ? .bold : .regular))
-                    .foregroundStyle(isActive ? Color.white : Color.nbBlack)
-
-                Spacer()
-
-                if badge > 0 {
-                    Circle()
-                        .fill(isActive ? Color.nbWhite : Color.nbAccent)
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(isActive ? Color.nbAccent : Color.clear)
-            .overlay(
-                isActive ? Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2) : nil
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Sidebar Channel Button
-
-struct SidebarChannelButton: View {
-    let channel: SavedSearch
-    let isActive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: channel.channelType == "timeline"
-                      ? "calendar.day.timeline.leading"
-                      : "number")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.nbLinkColor)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(channel.name)
-                        .font(.syne(13))
-                        .foregroundStyle(Color.nbBlack)
-                    Text(channel.query)
-                        .font(.inter(11))
-                        .foregroundStyle(Color.nbTextTertiary)
-                }
-
-                Spacer()
-
-                if channel.unreadCount > 0 {
-                    Text("\(channel.unreadCount)")
-                        .font(.inter(10, weight: .bold))
-                        .foregroundStyle(Color(hex: "#0A0A0A"))   // white on lime failed contrast
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.nbLime)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 1.5))
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Detail Router
 
 struct DetailView: View {
-    /// Which view this column shows (the primary column passes `selectedTab`).
+    /// Which destination this column shows.
     let tab: AppStore.AppTab
-    let toggleSidebar: () -> Void
 
     var body: some View {
-        Group {
-            switch tab {
-            case .home:
-                // FeedView manages its own custom nav bar (hides UIKit toolbar to eliminate
-                // system rounded-rect on POST button), so it owns the hamburger button too.
-                FeedView(toggleSidebar: toggleSidebar)
-            case .search:         SearchView()
-            case .notifications:  NotificationsView()
-            case .dms:            DMsView()
-            case .gallery:        GalleryView()
-            case .tv:             TVView()
-            case .stream:         StreamView()
-            case .reader:         ReaderView()
-            case .analytics:      AnalyticsView()
-            case .constellation:  ConstellationView()
-            case .timeline:       TimelineScrubberView()
-            case .settings:       SettingsView()
-            }
+        switch tab {
+        case .home:           FeedView()
+        case .search:         SearchView()
+        case .notifications:  NotificationsView()
+        case .dms:            DMsView()
+        case .gallery:        GalleryView()
+        case .tv:             TVView()
+        case .stream:         StreamView()
+        case .reader:         ReaderView()
+        case .analytics:      AnalyticsView()
+        case .constellation:  ConstellationView()
+        case .timeline:       TimelineScrubberView()
+        case .settings:       SettingsView()
+        case .explore:        ExploreView()
+        case .channels:       ChannelsView()
         }
-        // Each tab view manages its own NBNavBar header via .nbNavBar(...) extension.
-        // No toolbar set here — avoids UIKit UIBarButtonItem rounded-rect rendering.
     }
 }
 

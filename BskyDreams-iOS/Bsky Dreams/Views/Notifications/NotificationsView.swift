@@ -57,17 +57,7 @@ struct NotificationsView: View {
             }
         }
         .nbNavBar(title: "NOTIFICATIONS", leading: { NBHamburger() }, trailing: {
-            Text("MARK READ")
-                .font(.syne(10, weight: .bold))
-                .tracking(0.5)
-                .foregroundStyle(Color.nbBlack)
-                .padding(.horizontal, 8)
-                .frame(height: 36)   // match the 36pt hamburger box beside it
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .contentShape(Rectangle())
-                .onTapGesture { markAllRead() }
-                .accessibilityLabel("Mark all as read")
-                .accessibilityAddTraits(.isButton)
+            Button("Mark All Read", systemImage: "checkmark.circle") { markAllRead() }
         })
         .task {
             // Ask for notification permission HERE, in context (HIG): the person has

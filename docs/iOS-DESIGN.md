@@ -12,11 +12,17 @@ this doc is the practical checklist.
 
 ## 1. Navigation & Information Architecture
 
-1.1 **One navigation stack per column.** All push navigation goes through the single
-`NavigationStack(path: store.navigationPath)` at the app root. Never nest a
-second `NavigationStack` for push flows (DMs proved `NavigationSplitView`
-collapses poorly on compact iPhone — it was replaced with `NavigationStack` +
-`NavigationLink`).
+1.0 **Navigation chrome is Apple's.** The shell is a system `TabView` with
+`.sidebarAdaptable` (MainAppView): a tab bar on every iPhone — Home, Search,
+Notifications, Messages, More — that the iPhone Duo moves into its vertical bar, and
+the system's own collapsible sidebar listing every destination at regular width (the
+open Duo). Screens use the system navigation bar: a title, Apple's back button, and
+toolbar items that are each a `Label` (title + symbol). **Never a custom bar, drawer,
+rail or button standing in for a system element** — custom chrome can't move into the
+Duo's vertical bar or follow the system (owner, 2026-11-10).
+
+1.1 **One navigation stack per tab.** Each tab owns a `NavigationStack` bound to
+`store.pathBinding(tab)` (`store.paths`); the native TabView keeps each tab's place.
 **The only exceptions are the open iPhone Duo's columns (§10.3):** the second column
 (`store.secondaryPath`) and the detail pane (`store.detailPanePath`) each own a stack —
 exactly what a split view's columns would own. Only `MainAppView.secondaryStack` and
@@ -37,14 +43,18 @@ stale/empty data (Rule violated → empty lightbox).
 replaced with a "Continue this conversation →" link. Below that, indentation
 overflows a 375px screen.
 
-1.5 **Translucent nav bar everywhere.** Every view applies
-`.toolbarBackground(.regularMaterial, for: .navigationBar)` +
-`.toolbarBackground(.visible, for: .navigationBar)` so content never scrolls
-unreadably behind the bar.
+1.5 **System nav bar everywhere.** Every screen calls `nbNavBar(title:leading:trailing:)`,
+which now configures the SYSTEM bar (NBNavBar.swift): `NBHamburger`/`NBBackButton` are
+markers — tab roots get nothing (the tab bar/sidebar navigates), pushed screens get
+Apple's back button, and a root that would go back (sheet, cover, Duo detail pane) gets
+a system Close item. Trailing items are `Button(title, systemImage:)` / `Menu { } label:
+{ Label(...) }` — never a styled custom view.
 
-1.6 **All nav lives in the sidebar order** (Post, Home, Search, Notifications,
-Messages, Gallery, TV, Stream, Reader, Analytics, Constellation, Timeline).
-Match this order with web.
+1.6 **Destination order** (Home, Search, Notifications, Messages, then Gallery, TV,
+Stream, Reader, Analytics, Constellation, Timeline, Channels, Settings) matches web's
+sidebar. Tab bar = the first four + More (`AppTab.phoneTabs`); the rest are sidebar
+places at regular width and rows in More at compact width (`AppTab.sidebarPlaces`).
+Go anywhere with `store.select(_:)`, which knows where a destination lives.
 
 ---
 
@@ -201,21 +211,17 @@ so it keeps the phone layout. The iPhone-only app runs phone-sized on iPad, so i
 never sees regular/regular there.) Width-only decisions (e.g. Gallery's second
 column) key on the view's MEASURED width, never the screen's.
 
-10.2 **Collapsible sidebar column.** On the open Duo the sidebar is a 260pt column
-(web desktop parity). The hamburger becomes a show/hide-sidebar toggle (`sidebar.left`
-icon; `\.sidebarIsColumn`) so content can take the whole width; the choice is
-remembered (`store.sidebarCollapsed`). When a right column is open on the portrait
-inner display (~670pt) the sidebar can't fit as a column, so it is the drawer and the
-hamburger opens it. Everywhere else it is the slide-in drawer, unchanged.
+10.2 **The sidebar is the system's.** At regular width (the open Duo) the
+`.sidebarAdaptable` TabView shows Apple's sidebar with every destination; the person
+shows/hides it with the system control, and may reorder/hide entries (system tab
+customization, kept in `tabCustomization`). At compact width it is the tab bar.
 
 10.3 **Columns — two views side by side.** The open Duo shows the PRIMARY column
 (`selectedTab`, picked in the sidebar) and, on the right, either:
 - **A second column (`store.secondaryTab`) showing ANY sidebar view** — Search beside
   Home, Following beside Trending, Gallery beside Reader, Notifications beside
-  Messages… Added from the sidebar's COLUMNS section ("Add Right Column") or any
-  sidebar row's context menu ("Open in Right Column"); changed or closed from the
-  column's own leading button (`NBColumnMenu`, which takes the hamburger's place in
-  that column). Remembered across launches; hidden (not lost) on the closed Duo.
+  Messages… Chosen, changed or closed from the column's own leading toolbar item
+  (`NBColumnMenu`, a system `Menu` with a `Label`). Remembered across launches; hidden (not lost) on the closed Duo.
   Each column has its OWN stack (`secondaryPath`): whatever you open in a column
   opens in that column. Home keeps a per-column feed (`store.secondaryFeedMode`,
   default Following) so two home feeds can differ.
@@ -229,9 +235,10 @@ hamburger opens it. Everywhere else it is the slide-in drawer, unchanged.
   `store.openPost(…, column:)` / `store.openChat(_:column:)` / `store.push(_:column:)`
   with their `@Environment(\.navColumn)`. One-shot handoffs from the sidebar or a
   notification (`pending*`) are consumed only by the primary column.
-- **Geometry.** Landscape inner (~950pt): sidebar (unless hidden) + two equal columns.
-  Portrait inner (~670pt): two columns split the screen exactly in half — on the
-  center line, where the fold runs when the device is half-open like a book.
+- **Container: Apple's `ArrangementView`** (`.split.axes(.horizontal)`,
+  `splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5)`) — in book
+  pose the system puts the divider on the fold. With nothing open the right side is a
+  system-style empty state ("Tap a post and its conversation opens here"), as in Mail.
 - **Shared destinations:** every stack registers the same destinations via
   `.withAppDestinations(myDid:)`.
 
@@ -248,11 +255,7 @@ sit in a strip down the trailing edge (closed Duo; inner display in landscape).
 Full-bleed art that reaches that edge uses `.nbExtendsUnderBars()`
 (`backgroundExtensionEffect`, iOS 26+). Controls stay inside the safe area; custom
 bars (`NBNavBar`, `FeedNavBar`) sit inside it already.
-**Rounded display corners:** with the status bar in the side strip the top safe-area
-inset is ~0, so a custom bar touches the top edge and its 36pt corner buttons fall
-inside the display's rounded corner (seen on device, build 52). Every custom bar
-applies `.nbBarCornerClearance()` — +12pt top, +8pt each side, only when
-`\.barCornerClearance` (top inset < 20pt) is true.
+The system bars avoid the display's rounded corners and the status bar on their own.
 
 10.9 **Narrow and wide columns.** A Duo column can be ~310pt (portrait, two
 columns) or ~860pt (landscape, sidebar hidden). Both must read well:
@@ -265,30 +268,19 @@ columns) or ~860pt (landscape, sidebar hidden). Both must read well:
 - **Reading lists cap at ~680pt and centre** (`.nbReadableWidth()`) — long lines and
   giant images in a wide column are as hard to read as cramped ones in a narrow one.
 
-10.10 **The side strip carries navigation.** With the iOS 27.1+ SDK the Duo's status
-bar sits in a vertical strip (~84pt) down one edge — the closed Duo, and the inner
-display in landscape — and the system fills the rest of that strip with tab bars and
-toolbar items. Our chrome is custom (§ "Liquid Glass — not adopted"), so `NBStripRail`
-fills it: **New Post on top, then the sidebar's destinations in sidebar order for as
-many as fit, then a More menu with the rest** — the job a system tab bar does there,
-in neubrutalist squares (44pt, accent fill = current, badge dot = unread).
-- **Where:** the strip edge is the system's `toolbarVerticalEdge` (iOS 27.1, read in
-  `NBVerticalBarEdgeReader`), else inferred from the insets (top < 20pt and a side
-  ≥ 60pt). The rail starts under the strip's status bar (`statusBarFrame` when it is
-  vertical; else 176pt, from the device screenshot) and stops 28pt short of the
-  rounded bottom corner.
-- **When not:** while the sidebar column is on screen (open Duo, landscape, shown) —
-  it already carries the same destinations.
-- Reserved regions can't place it: the outer display reports none, and the status bar
-  is not one (observed in the simulator by the iPhone-Duo-by-Examples project).
+10.10 **The vertical bar is the system's.** With the iOS 27.1+ SDK the Duo puts the
+status bar in a vertical strip down one edge (closed Duo; inner display in landscape)
+and moves the tab bar and toolbar items into it — automatically, because they are the
+system TabView and system toolbar items (§1.0, §1.5). Nothing of ours is drawn there.
+(Build 54's custom `NBStripRail` was removed: it drew into the content, not the strip.)
 
 10.7 **Build with the newest released SDK.** The edge-to-edge Duo layout needs the
 iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 `xcode-27` image and logs the SDK.
 
 10.8 **Deliberately NOT adopted (yet)** — revisit on a physical Duo:
-- `ArrangementView` / `ReservedRegion` / `reservedRegions(kind:)` fold-aware APIs —
-  not compiled or verified here; the centered split (10.3) covers the book pose.
+- `ReservedRegion` / `reservedRegions(kind:)` for custom views — nothing custom needs
+  it now that the split is `ArrangementView` and the chrome is the system's.
 - Hinge-angle effects (`onHingeChange`) — Apple: effects only, never layout; none
   worth adding.
 - Tabletop-specific TV/Stream layout — Apple says use the same controls in every
@@ -313,7 +305,9 @@ iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 - ❌ Ad-hoc `UIImpactFeedbackGenerator` — use the `Haptics` taxonomy.
 - ❌ Disabling Constellation physics/gestures for Reduce Motion (decorative only).
 - ❌ A new standalone `.swift` file when the type can be inlined into a compiled file.
-- ❌ A second `NavigationStack` for push flows (the Duo columns, §10.3, are the only exceptions).
+- ❌ A custom bar, drawer, rail or styled button in place of the system TabView, sidebar, navigation bar, back button or toolbar items (§1.0).
+- ❌ A toolbar item that isn't a `Label` (title + symbol) — it can't move into the Duo's vertical bar.
+- ❌ A `NavigationStack` outside a tab, the Duo's second column or detail pane (§1.1, §10.3).
 - ❌ `store.navigationPath.append(…)` in a view — use `store.openPost` / `openChat` / `push` with `\.navColumn` (§10.3).
 - ❌ `UIScreen.main` anywhere — measure the container; use `displayScale` (§10.4).
 - ❌ Branching on device / idiom / orientation for layout — size classes and measured width only (§10.1).

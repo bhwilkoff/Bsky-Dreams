@@ -42,15 +42,7 @@ struct DMsView: View {
         }
         .nbOfflineBanner()
         .nbNavBar(title: "MESSAGES", leading: { NBHamburger() }, trailing: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.nbAccentLegible)
-                .frame(width: 36, height: 36)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .contentShape(Rectangle())
-                .onTapGesture { showNewConvo = true }
-                .accessibilityLabel("New conversation")
-                .accessibilityAddTraits(.isButton)
+            Button("New Message", systemImage: "square.and.pencil") { showNewConvo = true }
         })
         .task { await loadConversations() }
         .task { await loadRequests() }
@@ -368,30 +360,15 @@ struct ChatView: View {
             leading: { NBBackButton() },
             trailing: {
                 if isGroup {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.nbBlack)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        .contentShape(Rectangle())
-                        .onTapGesture { showGroupSheet = true }
-                        .accessibilityLabel("Group details")
-                        .accessibilityAddTraits(.isButton)
+                    Button("Group Details", systemImage: "person.2") { showGroupSheet = true }
                 } else {
                     Menu {
                         Button(role: .destructive) { showLeaveConfirm = true } label: {
                             Label("Leave Conversation", systemImage: "rectangle.portrait.and.arrow.right")
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 36, height: 36)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            .contentShape(Rectangle())
+                        Label("Conversation Options", systemImage: "ellipsis")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Conversation options")
                 }
             }
         )

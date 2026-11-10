@@ -59,9 +59,32 @@ struct FeedView: View {
                 feedList
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            feedNavBar
+        // System navigation bar (iOS-DESIGN §1.5, §10): on iPhone Duo the New Post item
+        // moves into the vertical bar beside the status bar, as Apple's own apps do.
+        .navigationTitle("Home")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button { scrollToTopTrigger += 1 } label: {
+                    ZStack {
+                        Image(systemName: "cloud.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(Color.nbAccent)
+                        Image(systemName: "cloud")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(Color.nbBlack)
+                            .fontWeight(.black)
+                    }
+                    .frame(height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Bsky Dreams — scroll to top")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("New Post", systemImage: "square.and.pencil") { showCompose = true }
+            }
         }
         .task {
             // Load seen URIs from SwiftData once, then manage in memory.
@@ -97,15 +120,6 @@ struct FeedView: View {
                 Task { await loadFeed() }
             }
         }
-    }
-
-    // Extracted to a struct so SwiftUI can skip re-renders when inputs haven't changed
-    private var feedNavBar: some View {
-        FeedNavBar(
-            onToggleSidebar: toggleSidebar,
-            onScrollToTop: { scrollToTopTrigger += 1 },
-            onCompose: { showCompose = true }
-        )
     }
 
     private var feedList: some View {
@@ -460,67 +474,6 @@ struct FeedView: View {
             guard generation == loadGeneration else { return }
             Haptics.error()
             errorMessage = error.localizedDescription
-        }
-    }
-}
-
-// MARK: - Feed Navigation Bar
-// Extracted as a struct so SwiftUI identity-diffs inputs and skips re-renders
-// when the feed state changes but the nav bar inputs haven't.
-
-private struct FeedNavBar: View {
-    let onToggleSidebar: () -> Void
-    let onScrollToTop: () -> Void
-    let onCompose: () -> Void
-
-    var body: some View {
-        ZStack(alignment: .center) {
-            // Logo — absolutely centered, scaled to 36pt tall to match button box height
-            Button(action: onScrollToTop) {
-                ZStack {
-                    Image(systemName: "cloud.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color.nbAccent)
-                    Image(systemName: "cloud")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color.nbBlack)
-                        .fontWeight(.black)
-                }
-                .frame(height: 36)
-            }
-            .buttonStyle(.plain)
-
-            // Hamburger and compose icon at edges — both 36×36 bordered squares
-            HStack(spacing: 0) {
-                // Hamburger — on the open Duo: sidebar show/hide (primary column) or the
-                // column's view picker (second column). See NBHamburger.
-                NBHamburger()
-                    .padding(.leading, NBWindowControls.leadingInset)
-
-                Spacer()
-
-                // Compose / new post
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                    .frame(width: 36, height: 36)
-                    .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .contentShape(Rectangle())
-                    .onTapGesture { onCompose() }
-                    .accessibilityLabel("New post")
-                    .accessibilityAddTraits(.isButton)
-            }
-        }
-        .padding(.horizontal, 12)
-        .nbBarCornerClearance()
-        .frame(maxWidth: .infinity, minHeight: 56)
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // chrome cap (see NBNavBar)
-        .background(Color.nbWhite)
-        .overlay(alignment: .bottom) {
-            Color.nbBorder.frame(height: 1)
         }
     }
 }

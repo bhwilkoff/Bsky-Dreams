@@ -333,9 +333,7 @@ struct ConstellationView: View {
             }
         }
         .nbOfflineBanner()
-        .nbNavBar(title: "CONSTELLATION", leading: {
-            if initialActor != nil { NBBackButton() } else { NBHamburger() }
-        })
+        .nbNavBar(title: "CONSTELLATION")   // tab root: system tab bar/sidebar; pushed: system back button
         // Color scheme adapts to system setting — all graph colors use adaptive nbBlack/nbBorder
         // tokens so labels, edges, and borders remain legible in both light and dark mode.
         .sheet(item: $profileToOpen) { node in

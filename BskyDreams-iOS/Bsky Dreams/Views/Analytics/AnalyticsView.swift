@@ -124,9 +124,7 @@ struct AnalyticsView: View {
         // When pushed as a navigation destination (initialActor set), show a back button.
         // When shown as the sidebar tab (initialActor nil), show the hamburger.
         .nbOfflineBanner()
-        .nbNavBar(title: "ANALYTICS", leading: {
-            if initialActor != nil { NBBackButton() } else { NBHamburger() }
-        })
+        .nbNavBar(title: "ANALYTICS")   // tab root: system tab bar/sidebar; pushed: system back button
         .task {
             if let actor = initialActor {
                 // Pushed from a profile page — actor is known at init, load immediately.

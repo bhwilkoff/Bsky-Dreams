@@ -576,13 +576,8 @@ struct ArticleReaderSheet: View {
                         avc.popoverPresentationController?.sourceRect = CGRect(x: top.view.bounds.midX, y: 40, width: 0, height: 0)
                         top.present(avc, animated: true)
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 36, height: 36)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(.plain)
                 }
             )
         }
