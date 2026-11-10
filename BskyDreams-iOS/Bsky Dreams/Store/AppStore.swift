@@ -475,7 +475,7 @@ final class AppStore {
         /// Duo's vertical bar). Five, so the system never adds its own More tab.
         static let phoneTabs: [AppTab] = [.home, .search, .notifications, .dms, .explore]
         /// The system sidebar's other places at regular width (the open Duo), in the
-        /// sidebar order of iOS-DESIGN §1.6. At compact width they are rows in More.
+        /// sidebar order of iOS-DESIGN §1.7. At compact width they are rows in More.
         static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .reader, .analytics,
                                               .constellation, .timeline, .channels, .settings]
         /// Views a column can show (the open Duo's right column picker).

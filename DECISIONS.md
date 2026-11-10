@@ -913,3 +913,21 @@ unverified), DM beside a shared post, profile + interaction graph (needs the gra
 port), multi-window event columns (needs per-scene state), outer-display camera
 preview (`CameraCaptureAccessory`; no camera UI today).
 
+**Update 2026-11-10 — Right Side, rotation, rail, haptic storms.** Owner, on device: *"I
+can no longer put any two columns next to one another … the vertical interface … does
+not allow for two columns at all … sort out the menu bar on the right rail (More in the
+middle in addition to the three dots) … I'd like the side-by-side conversation view to
+be the default for two columns, but I'd still like to be able to decide what to put next
+to one another."* Also: the constant vibration returned.
+- **Right Side menu everywhere** (§10.3): the column picker lived only inside the second
+  column, so a closed column could never come back. Now it's on the pane, its empty
+  state, the second column and full-display screens; "Conversations" is the default.
+- **Rotated inner display** (§10.3): logs showed 669×835pt, regular/regular, split
+  requested — and `ArrangementView` with `.axes(.horizontal)` silently showed only the
+  primary. `.split` on both axes stacks the halves along the fold. Verified on device.
+- **Rail** (§1.6): More was in the tab bar at regular width beside the system's "…".
+  It's now compact-only.
+- **Haptics** (§5): no reproduction yet; the storm breaker stops any burst after six in a
+  second and logs the call stack to Documents/haptic-storm.log. TV's paging haptic is
+  suppressed while TV is laid out at zero size (a hidden tab).
+

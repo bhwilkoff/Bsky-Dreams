@@ -50,7 +50,11 @@ Apple's back button, and a root that would go back (sheet, cover, Duo detail pan
 a system Close item. Trailing items are `Button(title, systemImage:)` / `Menu { } label:
 { Label(...) }` — never a styled custom view.
 
-1.6 **Destination order** (Home, Search, Notifications, Messages, then Gallery, TV,
+1.6 **More exists only at compact width.** At regular width the sidebar / Duo vertical
+bar lists every place and the system's own "…" overflow covers what doesn't fit; a More
+tab there is a duplicate overflow (owner, device).
+
+1.7 **Destination order** (Home, Search, Notifications, Messages, then Gallery, TV,
 Stream, Reader, Analytics, Constellation, Timeline, Channels, Settings) matches web's
 sidebar. Tab bar = the first four + More (`AppTab.phoneTabs`); the rest are sidebar
 places at regular width and rows in More at compact width (`AppTab.sidebarPlaces`).
@@ -138,7 +142,13 @@ Use the `Haptics` enum's semantic cases — never ad-hoc
 - `light` / `medium` / `heavy` — discrete user actions, by weight
 - `success` / `warning` / `error` — operation outcomes
 
-`Haptics.error` always accompanies a surfaced `NBErrorBanner`. Don't sprinkle
+`Haptics.error` always accompanies a surfaced `NBErrorBanner`.
+
+**Storm breaker:** more than 6 haptics in a second is never intentional — `Haptics` drops
+the rest for 5s and appends the call stack to `Documents/haptic-storm.log` (pull with
+`devicectl device copy from --domain-type appDataContainer`). Never drive a haptic from
+state that also changes on load or layout (`.sensoryFeedback(trigger:)` on a synced
+value, a paging position in a hidden tab). Don't sprinkle
 haptics where they add noise; pick the meaning, not the generator.
 
 ---
@@ -220,8 +230,12 @@ customization, kept in `tabCustomization`). At compact width it is the tab bar.
 (`selectedTab`, picked in the sidebar) and, on the right, either:
 - **A second column (`store.secondaryTab`) showing ANY sidebar view** — Search beside
   Home, Following beside Trending, Gallery beside Reader, Notifications beside
-  Messages… Chosen, changed or closed from the column's own leading toolbar item
-  (`NBColumnMenu`, a system `Menu` with a `Label`). Remembered across launches; hidden (not lost) on the closed Duo.
+  Messages… Chosen from **Right Side** (`NBColumnMenu`, a system `Menu` with a
+  `Label`): always reachable — the leading item of whatever fills the right side (pane,
+  empty state, second column), or a trailing item on full-display screens (TV, Stream…).
+  Its first option, **Conversations**, is the default and turns the column back into the
+  detail pane. (Build 55 put the picker only INSIDE the second column, so once closed a
+  column could never be reopened — owner, device.) Remembered across launches; hidden (not lost) on the closed Duo.
   Each column has its OWN stack (`secondaryPath`): whatever you open in a column
   opens in that column. Home keeps a per-column feed (`store.secondaryFeedMode`,
   default Following) so two home feeds can differ.
@@ -235,9 +249,12 @@ customization, kept in `tabCustomization`). At compact width it is the tab bar.
   `store.openPost(…, column:)` / `store.openChat(_:column:)` / `store.push(_:column:)`
   with their `@Environment(\.navColumn)`. One-shot handoffs from the sidebar or a
   notification (`pending*`) are consumed only by the primary column.
-- **Container: Apple's `ArrangementView`** (`.split.axes(.horizontal)`,
-  `splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5)`) — in book
-  pose the system puts the divider on the fold. With nothing open the right side is a
+- **Container: Apple's `ArrangementView`** (`.split`, BOTH axes;
+  `splitArrangementLayoutRatio` 0.34 min / 0.5 ideal on each axis) — side by side when
+  the fold runs top to bottom (book), stacked top/bottom when the device is rotated and
+  the fold runs across; in book pose the divider lands on the fold (device-verified).
+  Never restrict to `.axes(.horizontal)`: rotated, the system then DROPS the right side
+  rather than straddle the fold (device-verified 2026-11-10). With nothing open the right side is a
   system-style empty state ("Tap a post and its conversation opens here"), as in Mail.
 - **Shared destinations:** every stack registers the same destinations via
   `.withAppDestinations(myDid:)`.

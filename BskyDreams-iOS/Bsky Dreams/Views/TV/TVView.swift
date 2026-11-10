@@ -369,7 +369,9 @@ struct TVView: View {
                 .onChange(of: scrollPositionID) { old, id in
                     let idx = id ?? 0
                     // Haptic when advancing to a new video (swipe or auto-advance)
-                    if let oldID = old, oldID != id { Haptics.selection() }
+                    // Only for a visible TV: a hidden tab lays out at zero size, where the
+                    // paging position can churn without any swipe.
+                    if let oldID = old, oldID != id, tvSize.height > 1 { Haptics.selection() }
                     playVideo(at: idx)
                     if idx < videos.count {
                         markVideoSeen(videos[idx])

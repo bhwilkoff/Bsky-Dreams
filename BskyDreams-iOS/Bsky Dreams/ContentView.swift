@@ -62,6 +62,10 @@ struct MainAppView: View {
     var body: some View {
         TabView(selection: tabSelection) {
             phoneTabs
+            // More: compact width only. At regular width the sidebar / vertical bar lists
+            // its places, and the system's own "…" overflow covers what doesn't fit — a
+            // More tab there was a second, duplicate overflow (owner, 2026-11-10).
+            if !showsSidebarPlaces { exploreTab }
             // Sidebar places only at regular width: hidden-for-tab-bar tabs still count
             // toward the phone's bar and make the system add its own More tab.
             if showsSidebarPlaces { sidebarPlaces }
@@ -186,13 +190,15 @@ struct MainAppView: View {
         }
         .badge(store.unreadDMCount)
         .customizationID("dms")
-        // More: compact width only — the sidebar lists its rows as places instead.
+    }
+
+    @TabContentBuilder<AppStore.AppTab>
+    private var exploreTab: some TabContent<AppStore.AppTab> {
         Tab(AppStore.AppTab.explore.label, systemImage: AppStore.AppTab.explore.icon,
             value: AppStore.AppTab.explore) {
             TabColumns(tab: .explore)
         }
         .customizationID("explore")
-        .defaultVisibility(.hidden, for: .sidebar)
     }
 
     @TabContentBuilder<AppStore.AppTab>
@@ -281,6 +287,13 @@ struct TabColumns: View {
         NavigationStack(path: store.pathBinding(tab)) {
             DetailView(tab: tab)
                 .withAppDestinations(myDid: auth.session?.did ?? "")
+                .toolbar {
+                    // Full-display screens on the open Duo (TV, Stream…): no right side to
+                    // hold the menu, so it sits here (§10.3).
+                    if isSplitLayout && !hasRightPane {
+                        ToolbarItem(placement: .topBarTrailing) { NBColumnMenu() }
+                    }
+                }
         }
     }
 
@@ -290,11 +303,15 @@ struct TabColumns: View {
             ArrangementView {
                 primary
                     // Half each; at least a third for the list. No max (it fights the fold).
-                    .splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5)
+                    .splitArrangementLayoutRatio(minHorizontal: 0.34, idealHorizontal: 0.5,
+                                                 minVertical: 0.34, idealVertical: 0.5)
             } secondary: {
                 rightPane
             }
-            .arrangementViewStyle(.split.axes(.horizontal))
+            // Both axes: side by side when the fold runs top to bottom (book), stacked when
+            // it runs across (rotated). Horizontal-only made the system DROP the right side
+            // when rotated — device, 2026-11-10 (§10.3).
+            .arrangementViewStyle(.split)
         } else {
             HStack(spacing: 0) {
                 primary
@@ -320,11 +337,12 @@ struct TabColumns: View {
                     icon: tab == .dms ? "bubble.left.and.bubble.right" : "text.bubble",
                     title: tab == .dms ? "No chat open" : "No conversation open",
                     message: tab == .dms
-                        ? "Pick a chat and it opens here, beside your messages."
-                        : "Tap a post and its conversation opens here, beside the list."
+                        ? "Pick a chat and it opens here."
+                        : "Tap a post and its conversation opens here. Use Right Side to show another view instead."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.nbBackground)
+                .toolbar { ToolbarItem(placement: .topBarLeading) { NBColumnMenu() } }
             }
         }
     }
@@ -515,6 +533,7 @@ struct DetailPaneView: View {
         NavigationStack(path: Bindable(store).detailPanePath) {
             paneRoot
                 .withAppDestinations(myDid: auth.session?.did ?? "")
+                .toolbar { ToolbarItem(placement: .topBarLeading) { NBColumnMenu() } }
         }
         .environment(\.navColumn, .detail)
         .environment(\.closeDetailPane, { store.closeDetailPane() })

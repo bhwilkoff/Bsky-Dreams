@@ -314,19 +314,54 @@ extension UIColor {
 ///   • `.success/.warning/.error` — an outcome (post sent, hit a limit, request failed)
 /// All calls are no-ops if the user has reduced/!supported haptics; UIKit handles that.
 enum Haptics {
+    // Storm breaker (owner, 2026-11-10: "constant vibration", cause not yet reproduced).
+    // More than `stormLimit` haptics inside a second is never intentional, so the rest
+    // are dropped for a few seconds and what fired them is appended to
+    // Documents/haptic-storm.log for diagnosis. Haptics are main-thread UI calls.
+    nonisolated(unsafe) private static var recent: [Date] = []
+    nonisolated(unsafe) private static var mutedUntil: Date = .distantPast
+    private static let stormLimit = 6
+
+    private static func allow(_ kind: String) -> Bool {
+        let now = Date()
+        if now < mutedUntil { return false }
+        recent = recent.filter { now.timeIntervalSince($0) < 1 } + [now]
+        guard recent.count > stormLimit else { return true }
+        mutedUntil = now.addingTimeInterval(5)
+        recent.removeAll()
+        recordStorm(kind)
+        return false
+    }
+
+    private static func recordStorm(_ kind: String) {
+        let stack = Thread.callStackSymbols.prefix(14).joined(separator: "\n")
+        let entry = "=== \(Date()) haptic storm (\(kind)) ===\n\(stack)\n\n"
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = entry.data(using: .utf8) else { return }
+        let url = dir.appendingPathComponent("haptic-storm.log")
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
     static func selection() {
+        guard allow("selection") else { return }
         UISelectionFeedbackGenerator().selectionChanged()
     }
     static func light()  { impact(.light) }
     static func medium() { impact(.medium) }
     static func heavy()  { impact(.heavy) }
     static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        guard allow("impact") else { return }
         UIImpactFeedbackGenerator(style: style).impactOccurred()
     }
     static func success() { notify(.success) }
     static func warning() { notify(.warning) }
     static func error()   { notify(.error) }
     static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        guard allow("notify") else { return }
         UINotificationFeedbackGenerator().notificationOccurred(type)
     }
 }

@@ -152,14 +152,26 @@ struct NBBackButton: View {
 
 // MARK: - Second-column view picker (open iPhone Duo, §10.3)
 
-/// The right column's leading toolbar item: a system menu to pick which view the column
-/// shows, or close it. A `Label`, so it moves into the vertical bar with the rest.
+/// "Right Side" — what the open Duo shows beside the primary column. Always reachable:
+/// it's the leading toolbar item of whatever fills the right side (the conversation
+/// pane, its empty state, or a second column), and a trailing item on full-display
+/// screens (TV, Stream…). Default "Conversations": tapped posts open beside the list.
+/// Any other choice makes the right side a second column showing that view.
+/// A `Label`, so it moves into the vertical bar with the rest.
 struct NBColumnMenu: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
         Menu {
-            Section("Right Column") {
+            Section("Right Side") {
+                Button {
+                    Haptics.selection()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
+                } label: {
+                    Label("Conversations", systemImage: store.secondaryTab == nil ? "checkmark" : "text.bubble")
+                }
+            }
+            Section("Show a View") {
                 ForEach(AppStore.AppTab.columnChoices, id: \.self) { tab in
                     Button {
                         Haptics.selection()
@@ -169,14 +181,8 @@ struct NBColumnMenu: View {
                     }
                 }
             }
-            Button(role: .destructive) {
-                Haptics.light()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
-            } label: {
-                Label("Close Column", systemImage: "xmark.rectangle")
-            }
         } label: {
-            Label("Right Column", systemImage: "rectangle.split.2x1")
+            Label("Right Side", systemImage: "rectangle.split.2x1")
         }
     }
 }
