@@ -69,6 +69,13 @@ final class AppStore {
         didSet { UserDefaults.standard.set(secondaryTab?.rawValue, forKey: "duo_secondary_tab") }
     }
     var secondaryPath = NavigationPath()
+    /// Rotated open Duo (taller than wide, fold across): columns side by side instead of
+    /// the default top/bottom along the fold. The person's choice; remembered (§10.3).
+    var columnsSideBySideWhenTall: Bool = UserDefaults.standard.bool(forKey: "duo_tall_side_by_side") {
+        didSet { UserDefaults.standard.set(columnsSideBySideWhenTall, forKey: "duo_tall_side_by_side") }
+    }
+    /// The open Duo's columns are taller than wide (rotated) — shows the Layout choice.
+    var columnsAreTall = false
     /// Home's feed in the second column — independent of the primary column's, so two
     /// home feeds can sit side by side. Defaults to Following (primary defaults to Conversations).
     var secondaryFeedMode: FeedMode = .following
@@ -868,6 +875,7 @@ enum DebugLaunchDoors {
         if let view = env["BSKY_START_VIEW"], let tab = AppStore.AppTab(rawValue: view) {
             store.select(tab)
         }
+        if let v = env["BSKY_TALL_SIDE_BY_SIDE"] { store.columnsSideBySideWhenTall = (v == "1") }
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
         if let col = env["BSKY_SECOND_COLUMN"] {
             if let tab = AppStore.AppTab(rawValue: col) { store.openSecondColumn(tab) } else { store.closeSecondColumn() }

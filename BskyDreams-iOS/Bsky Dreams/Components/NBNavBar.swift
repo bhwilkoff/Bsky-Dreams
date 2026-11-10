@@ -171,6 +171,22 @@ struct NBColumnMenu: View {
                     Label("Conversations", systemImage: store.secondaryTab == nil ? "checkmark" : "text.bubble")
                 }
             }
+            if store.columnsAreTall {
+                Section("Layout") {
+                    Button {
+                        Haptics.selection()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.columnsSideBySideWhenTall = false }
+                    } label: {
+                        Label("Top & Bottom", systemImage: store.columnsSideBySideWhenTall ? "rectangle.split.1x2" : "checkmark")
+                    }
+                    Button {
+                        Haptics.selection()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.columnsSideBySideWhenTall = true }
+                    } label: {
+                        Label("Side by Side", systemImage: store.columnsSideBySideWhenTall ? "checkmark" : "rectangle.split.2x1")
+                    }
+                }
+            }
             Section("Show a View") {
                 ForEach(AppStore.AppTab.columnChoices, id: \.self) { tab in
                     Button {

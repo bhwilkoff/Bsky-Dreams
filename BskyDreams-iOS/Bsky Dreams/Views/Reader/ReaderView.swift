@@ -541,11 +541,13 @@ struct ArticleReaderSheet: View {
         if #available(iOS 27.1, *) {
             ArrangementView {
                 articleStack
-                    .splitArrangementLayoutRatio(minHorizontal: 0.4, idealHorizontal: 0.5)
+                    .splitArrangementLayoutRatio(minHorizontal: 0.4, idealHorizontal: 0.5,
+                                                 minVertical: 0.4, idealVertical: 0.5)
             } secondary: {
                 discussion
             }
-            .arrangementViewStyle(.split.axes(.horizontal))
+            // Both axes: horizontal-only drops the discussion when rotated (§10.3).
+            .arrangementViewStyle(.split)
         } else {
             HStack(spacing: 0) { articleStack; Divider(); discussion }
         }

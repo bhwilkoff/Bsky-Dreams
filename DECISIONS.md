@@ -930,4 +930,11 @@ to one another."* Also: the constant vibration returned.
 - **Haptics** (§5): no reproduction yet; the storm breaker stops any burst after six in a
   second and logs the call stack to Documents/haptic-storm.log. TV's paging haptic is
   suppressed while TV is laid out at zero size (a hidden tab).
+- **Rotated side by side, by choice.** Owner: *"I'd also like to be able to do side by
+  side in the vertical layout."* Right Side gains a Layout section when the columns are
+  taller than wide: Top & Bottom (default, the system's fold-aware split) or Side by
+  Side — an HStack, because `ArrangementView` refuses a split across the fold. The
+  columns then cross the crease; that's the person's call, not ours. Verified on device.
+  The article reader's split also moved to both axes (it had the same drop-when-rotated
+  restriction).
 

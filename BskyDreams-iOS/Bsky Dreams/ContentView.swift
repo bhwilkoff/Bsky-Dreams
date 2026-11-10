@@ -299,6 +299,26 @@ struct TabColumns: View {
 
     @ViewBuilder
     private var split: some View {
+        Group {
+            if store.columnsAreTall && store.columnsSideBySideWhenTall {
+                // The person chose side by side while rotated. ArrangementView won't split
+                // across the fold (it drops the right side), so a plain HStack, halves.
+                HStack(spacing: 0) {
+                    primary.frame(maxWidth: .infinity)
+                    Divider()
+                    rightPane.frame(maxWidth: .infinity)
+                }
+            } else {
+                arrangedSplit
+            }
+        }
+        .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: { tall in
+            if isCurrent { store.columnsAreTall = tall }
+        }
+    }
+
+    @ViewBuilder
+    private var arrangedSplit: some View {
         if #available(iOS 27.1, *) {
             ArrangementView {
                 primary

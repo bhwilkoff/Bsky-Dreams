@@ -254,7 +254,12 @@ customization, kept in `tabCustomization`). At compact width it is the tab bar.
   the fold runs top to bottom (book), stacked top/bottom when the device is rotated and
   the fold runs across; in book pose the divider lands on the fold (device-verified).
   Never restrict to `.axes(.horizontal)`: rotated, the system then DROPS the right side
-  rather than straddle the fold (device-verified 2026-11-10). With nothing open the right side is a
+  rather than straddle the fold (device-verified 2026-11-10).
+- **Rotated layout is the person's choice.** When the columns are taller than wide, Right
+  Side shows a **Layout** section: Top & Bottom (default, `ArrangementView` along the
+  fold) or Side by Side (`store.columnsSideBySideWhenTall`, remembered) — a plain HStack
+  of the same two panes, since `ArrangementView` won't split across the fold. Owner:
+  "I'd also like to be able to do side by side in the vertical layout." With nothing open the right side is a
   system-style empty state ("Tap a post and its conversation opens here"), as in Mail.
 - **Shared destinations:** every stack registers the same destinations via
   `.withAppDestinations(myDid:)`.
