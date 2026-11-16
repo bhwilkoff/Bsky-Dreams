@@ -1,0 +1,43 @@
+I wanted a Bluesky app that helps me think more, not scroll more. So I built one.
+
+Bsky Dreams is a different way into Bluesky. It's made for reading, for following a conversation all the way down, and for seeing who is actually talking with whom. It's also one of the first apps designed from the ground up for iPhone Duo.
+
+MADE FOR IPHONE DUO
+
+Open the Duo and Bsky Dreams becomes a two-page spread.
+
+• Tap a post and its conversation opens beside your feed. Your place in the list stays put.
+• Put any two views side by side: Search beside Home, two feeds at once, Gallery beside Reader, Notifications beside Messages.
+• Prefer one big column? Pick One Column and the whole display is yours.
+• Fold it like a book and everything splits right on the fold. Turn it on its side and choose top and bottom, or side by side.
+• Close the Duo mid-thought and you keep going on the outer display, same post, same spot.
+• A conversation or a profile gets two pages when there's room: the post on one side, what people are saying on the other.
+
+STREAM: A SCREEN SAVER YOU CAN STEP INTO
+
+Set the Duo on the table and let Bluesky drift by, one post at a time, in big type on a slow wash of each post's own colors. Pictures show whole, never cropped. After a post, you see a few of its best replies. Because the conversation is the point.
+
+When something catches you, tap it. The conversation opens beside the post and the stream waits. Swipe back to the one you just missed, double tap to like, save it for later. Stream a topic, a person, or your saved posts. It works great on any iPhone, too.
+
+BUILT FOR READING
+
+• Posts in a real reading face (Editorial or Modern, your choice).
+• Reader pulls the articles your network is sharing and lets you read them without the clutter, with the Bluesky discussion right beside it on the Duo.
+• Gallery shows pictures from your feeds, whole.
+• TV pairs each video with its conversation.
+
+SEE HOW IDEAS MOVE
+
+• Constellation maps who is talking with whom around any person or topic.
+• Timeline lays posts along real time, so you can see how a conversation grew.
+• Analytics shows how your own posts land.
+
+EVERYTHING ELSE YOU'D EXPECT
+
+Home feeds that explain why a post is there, search with real filters, saved channels, notifications, direct and group messages, full compose with images, video, GIFs and link previews, and a Share Extension.
+
+PRIVACY
+
+No ads. No trackers. No third-party code. Your app password lives in the iOS Keychain and goes only to Bluesky. Bsky Dreams is built on the open AT Protocol.
+
+Bsky Dreams is an independent app. It is not affiliated with or endorsed by Bluesky Social, PBC.

@@ -1151,3 +1151,18 @@ the paper on the hosting and navigation controllers' views too. Verified on devi
   asking the owner to tap (owner: "You have full control over the device").
 - *Type roles* (iOS-DESIGN §13.11): Syne / reading face / SF; titles hide while the
   masthead is visible.
+
+---
+
+## [iOS] App Store listing 1.50 — positioned as an iPhone Duo app
+*2026-11-16*
+
+Owner: *"take new screenshots and fully document the duo support so that it gets picked up on
+the app store for newly designed iPhone Duo Apps … update all of the descriptions and fields …
+(using my voice/tone)."* Done via the App Store Connect API (no UI): a new **APP_IPHONE_DUO**
+screenshot set (10, inner display) leading with Stream; the 6.7" set replaced with the new
+design; subtitle "Bluesky, made for iPhone Duo"; description, promo text, keywords and What's New
+rewritten in Ben's voice with a "MADE FOR IPHONE DUO" section first. Sources and the Duo
+feature list for editors live in `docs/appstore/`. Notes: App Store Connect accepted the Duo shots
+in landscape at the inner display's 2853×2007; a screenshot set lives on the version
+localization, so each new version starts from the previous one's set.

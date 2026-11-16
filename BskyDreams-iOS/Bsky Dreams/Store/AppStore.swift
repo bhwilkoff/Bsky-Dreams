@@ -942,6 +942,8 @@ enum DebugLaunchDoors {
             store.select(tab)
         }
         if let q = env["BSKY_TIMELINE_QUERY"] { store.openChannel(query: q, isTimeline: true) }
+        // App Store screenshots: run a search in the primary column (calm, chosen content).
+        if let q = env["BSKY_SEARCH_QUERY"] { store.openChannel(query: q, isTimeline: false) }
         if let v = env["BSKY_TV_FULL_SCREEN"] { store.tvFullScreen = (v == "1") }
         if let v = env["BSKY_TALL_SIDE_BY_SIDE"] { store.columnsSideBySideWhenTall = (v == "1") }
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
@@ -956,6 +958,7 @@ enum DebugLaunchDoors {
             store.openPost(uri: uri, post: nil)
         }
         if let uri = env["BSKY_OPEN_POST"], uri.hasPrefix("at://") {
+            try? await Task.sleep(for: .seconds(0.6))   // let a tab switch settle (it clears the pane)
             // Through openPost so the open Duo shows it in the detail pane, as a tap would.
             store.openPost(uri: uri, post: nil)
         }

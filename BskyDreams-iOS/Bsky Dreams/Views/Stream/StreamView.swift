@@ -251,6 +251,10 @@ final class StreamSession {
     fileprivate let engagement = StreamEngagement()
     fileprivate var userPaused = false
     fileprivate var explore: StreamExplore? = nil
+    /// DEBUG screenshots: ask the player to show its controls.
+    fileprivate var debugShowControls = false
+    /// DEBUG screenshots: hold the current post without the Paused pill.
+    fileprivate var debugQuietHold = false
 
     /// Something to stream, from anywhere in the app.
     enum Request { case author(did: String, handle: String), search(String), saved }
@@ -521,6 +525,8 @@ struct StreamView: View {
         if let f = env["BSKY_STREAM_FILTER"] { streamFilter = f }
         if let t = env["BSKY_STREAM_THEME"] { themeRaw = t }
         if let t = env["BSKY_STREAM_TYPEFACE"] { typeface = t }
+        // App Store screenshots: stream a chosen topic instead of the live feed.
+        if let q = env["BSKY_STREAM_SEARCH"] { source = .search(q) }
         try? await Task.sleep(for: .seconds(1))
         start()
         try? await Task.sleep(for: .seconds(5))
@@ -529,7 +535,8 @@ struct StreamView: View {
             step = steps(scene) - 1
             updateDwell()
         }
-        if env["BSKY_STREAM_CONTROLS"] == "1" { userPaused = true; showControls(autoHide: false) }
+        if env["BSKY_STREAM_CONTROLS"] == "1" { userPaused = true; session.debugShowControls = true }
+        if env["BSKY_STREAM_HOLD"] == "1" { session.debugQuietHold = true; userPaused = true }
         if env["BSKY_STREAM_EXPLORE"] == "1", let scene = currentScene { openExplore(.post(scene.post)) }
         #endif
     }
@@ -992,6 +999,7 @@ struct StreamView: View {
         }
         .onChange(of: scenes.count) { _, _ in prefetch(after: currentIndex) }
         .onChange(of: streamDuration) { _, _ in updateDwell() }
+        .onChange(of: session.debugShowControls) { _, show in if show { showControls(autoHide: false) } }
         .onChange(of: showReplies) { _, _ in
             if let scene = currentScene, step >= steps(scene) { step = steps(scene) - 1 }
             updateDwell()
@@ -1219,7 +1227,7 @@ struct StreamView: View {
                 HStack(alignment: .top) {
                     if showClock { StreamClockView(color: foreground, serif: serif) }
                     Spacer()
-                    if userPaused {
+                    if userPaused && !session.debugQuietHold {
                         Label("Paused", systemImage: "pause.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(foreground)
