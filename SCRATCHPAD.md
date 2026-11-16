@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-11-10
+## Current Date: 2026-11-16
 
 ---
 
@@ -43,6 +43,12 @@
 | TV: trending video feed source | ✅ | ✅ | `thevids` official Bluesky feed added as third source |
 | Stream (full-screen post slideshow) | ✅ | ✅ | Web: any orientation; iOS: landscape via fullScreenCover |
 | Stream: conversation overlay | 🌐 | ✅ | iOS: ThreadView in fullScreenCover; web: navigates to thread |
+| Stream: screen-saver redesign (scene per post, whole images, fitted type, explore beside + resume) | ⏳ | ✅ | 2026-11-16, iOS-DESIGN §10.5; web follow-up: one slide per post + uncropped images + resume after viewing a thread |
+| Duo: One Column (Right Side choice, not default) | — | ✅ | 2026-11-16; iOS-DESIGN §10.3 |
+| Design Language 2: reading typeface (Editorial/Modern), color from content, glass controls | ⏳ | ✅ | 2026-11-16, iOS-DESIGN §11. Web: a reading-face setting + serif post text are cheap wins |
+| Saved posts (app-wide) + Saved place | ⏳ | ✅ | iOS: device-local; web follow-up could use localStorage |
+| Stream from anywhere (profile, author, search/#tag, Saved) | ⏳ | ✅ | |
+| Two-page conversation + profile (≥760pt) | — | ✅ | Web desktop could do the same at wide widths |
 | Reader (article cards, Direct/Readable/Archive modes) | ✅ | ✅ | |
 | Reader: verified news feed source | ✅ | ✅ | `verified-news` feed merged with timeline + discover |
 | Reader: seen-post filtering | ✅ | ✅ | Posts seen in home feed are filtered from Reader |
@@ -101,7 +107,7 @@
 
 **All primary views implemented.** App is live on the App Store (v1.26).
 
-**2026-11-10: 1.49 (56) submitted for App Review (WAITING_FOR_REVIEW, auto-release on approval)** — the iPhone Duo release, device-verified on the owner's Duo.
+**2026-11-16: 1.50 (57) — the redesign release** (Stream rebuilt as a screen saver, One Column, Design Language 2 → Editorial Native → magazine typography, Saved, Stream from anywhere, Constellation rebuilt on SwiftUI gestures, every string in Ben's voice; iOS-DESIGN §10.5, §11–§13). 1.49 (56) is live.
 App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Completed

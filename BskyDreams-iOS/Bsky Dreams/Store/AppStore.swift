@@ -70,6 +70,12 @@ final class AppStore {
         didSet { UserDefaults.standard.set(secondaryTab?.rawValue, forKey: "duo_secondary_tab") }
     }
     var secondaryPath = NavigationPath()
+    /// One column on the open Duo: no right side at all — the primary view takes the
+    /// whole display and posts push in place, as on the outer display. Not the default
+    /// (the conversation pane is); the person's choice in Right Side; remembered (§10.3).
+    var singleColumn: Bool = UserDefaults.standard.bool(forKey: "duo_single_column") {
+        didSet { UserDefaults.standard.set(singleColumn, forKey: "duo_single_column") }
+    }
     /// Rotated open Duo (taller than wide, fold across): columns side by side instead of
     /// the default top/bottom along the fold. The person's choice; remembered (§10.3).
     var columnsSideBySideWhenTall: Bool = UserDefaults.standard.bool(forKey: "duo_tall_side_by_side") {
@@ -92,9 +98,13 @@ final class AppStore {
 
     /// `.companion`: the discussion beside an article on the open Duo (ArticleReaderSheet,
     /// §10.12) — a sibling stack in the article's full-screen cover.
-    enum NavColumn: Hashable { case primary, secondary, detail, companion }
+    /// `.explore`: the panel Stream opens beside a post (StreamView, §10.5) — a sibling
+    /// stack in Stream's full-screen cover.
+    enum NavColumn: Hashable { case primary, secondary, detail, companion, explore }
     /// The companion conversation's stack (open Duo only).
     var companionPath = NavigationPath()
+    /// Stream's explore panel stack.
+    var explorePath = NavigationPath()
 
     enum DetailPaneItem: Hashable, Identifiable {
         case post(PostDestination)
@@ -113,7 +123,7 @@ final class AppStore {
     /// A second column is on screen (open Duo + one chosen).
     var secondaryColumnVisible: Bool { splitLayoutActive && secondaryTab != nil }
     /// Posts from the primary column open in the detail pane (open Duo, one column).
-    private var detailPaneAvailable: Bool { splitLayoutActive && secondaryTab == nil }
+    private var detailPaneAvailable: Bool { splitLayoutActive && secondaryTab == nil && !singleColumn }
 
     /// Push any destination in the column the tap came from.
     func push<D: Hashable>(_ value: D, column: NavColumn = .primary) {
@@ -121,6 +131,7 @@ final class AppStore {
         case .secondary where secondaryColumnVisible: secondaryPath.append(value)
         case .detail where detailPane != nil:          detailPanePath.append(value)
         case .companion:                                  companionPath.append(value)
+        case .explore:                                    explorePath.append(value)
         default:                                       navigationPath.append(value)
         }
     }
@@ -185,11 +196,30 @@ final class AppStore {
         closeDetailPane()
         secondaryPath = NavigationPath()
         secondaryTab = tab
+        singleColumn = false
     }
 
+    /// Right Side → Conversations: the detail pane (the default).
     func closeSecondColumn() {
         secondaryTab = nil
         secondaryPath = NavigationPath()
+        singleColumn = false
+    }
+
+    /// Right Side → One Column: nothing on the right; the primary takes the display.
+    /// An open conversation moves onto the primary stack, so the person keeps it.
+    func useSingleColumn() {
+        if let item = detailPane {
+            switch item {
+            case .post(let d): navigationPath.append(d)
+            case .chat(let c): navigationPath.append(c)
+            case .profile(let p): navigationPath.append(p)
+            }
+        }
+        closeDetailPane()
+        secondaryTab = nil
+        secondaryPath = NavigationPath()
+        singleColumn = true
     }
 
     /// Called by MainAppView when the layout changes (Duo opens/closes, Split View).
@@ -495,6 +525,8 @@ final class AppStore {
 
     enum AppTab: String, CaseIterable {
         case home, search, notifications, dms, gallery, tv, stream, reader, analytics, constellation, timeline, settings
+        /// Posts saved for later, from any post's menu or Stream (§11).
+        case saved
         /// Compact width only: the list of everything that isn't a tab-bar tab.
         case explore
         /// Regular width only: the saved channels, as a sidebar place.
@@ -507,7 +539,7 @@ final class AppStore {
         /// sidebar order of iOS-DESIGN §1.7. At compact width they are rows in More.
         // Reader and Messages swapped places (owner, 2026-11-10): Reader is a tab (in the
         // Duo's vertical bar), Messages is a place (sidebar / overflow / More).
-        static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .dms, .analytics,
+        static let sidebarPlaces: [AppTab] = [.gallery, .tv, .stream, .saved, .dms, .analytics,
                                               .constellation, .timeline, .channels, .settings]
         /// Views a column can show (the open Duo's right column picker).
         static let columnChoices: [AppTab] = ([.home, .search, .notifications, .reader] + sidebarPlaces)
@@ -535,6 +567,7 @@ final class AppStore {
             case .settings: "Settings"
             case .explore: "More"
             case .channels: "Channels"
+            case .saved: "Saved"
             }
         }
         var icon: String {
@@ -553,13 +586,14 @@ final class AppStore {
             case .settings: "gearshape"
             case .explore: "square.grid.2x2"
             case .channels: "number"
+            case .saved: "bookmark"
             }
         }
         /// Reading surfaces whose post taps open the Duo detail pane. Full-screen media
         /// (TV, Stream), the graph, Messages (which hosts chats) and Settings push instead.
         var hostsPostPane: Bool {
             switch self {
-            case .home, .search, .notifications, .gallery, .reader, .analytics: true
+            case .home, .search, .notifications, .gallery, .reader, .analytics, .saved: true
             // Timeline takes the whole display like Constellation (§10.14).
             case .dms, .tv, .stream, .constellation, .timeline, .settings, .explore, .channels: false
             }
@@ -846,7 +880,9 @@ enum DiscoverEngine {
     static func why(_ item: FeedItem, interestTags: Set<String>) -> String? {
         let post = item.post
         if let by = item.reason?.by?.name { return "Reposted by \(by)" }
-        if post.author.viewer?.isFollowing == true { return "From someone you follow" }
+        // Following someone is the default reason a post is here; saying so on every post
+        // is noise (owner, 2026-11-16). Same for reply counts: they're under the post.
+        if post.author.viewer?.isFollowing == true { return nil }
         if let kf = post.author.viewer?.knownFollowers, kf.count > 0 {
             if let first = kf.followers.first?.name {
                 return kf.count == 1 ? "Followed by \(first)" : "Followed by \(first) +\(kf.count - 1) you know"
@@ -856,7 +892,6 @@ enum DiscoverEngine {
         if !interestTags.isEmpty, let m = hashtags(in: post).first(where: { interestTags.contains($0) }) {
             return "Matches your interest in #\(m)"
         }
-        if let r = post.replyCount, r >= 5 { return "Active conversation · \(r) replies" }
         return nil
     }
 }
@@ -910,8 +945,11 @@ enum DebugLaunchDoors {
         if let v = env["BSKY_TV_FULL_SCREEN"] { store.tvFullScreen = (v == "1") }
         if let v = env["BSKY_TALL_SIDE_BY_SIDE"] { store.columnsSideBySideWhenTall = (v == "1") }
         // Duo testing: BSKY_SECOND_COLUMN=<tab> opens a second column; "none" closes it.
+        // "single" = One Column.
         if let col = env["BSKY_SECOND_COLUMN"] {
-            if let tab = AppStore.AppTab(rawValue: col) { store.openSecondColumn(tab) } else { store.closeSecondColumn() }
+            if let tab = AppStore.AppTab(rawValue: col) { store.openSecondColumn(tab) }
+            else if col == "single" { store.useSingleColumn() }
+            else { store.closeSecondColumn() }
         }
         if let uri = env["BSKY_REPLY_POST"], uri.hasPrefix("at://") {
             store.pendingReplyURI = uri      // as AppStore.openReply, for a URI-only door

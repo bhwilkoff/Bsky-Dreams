@@ -230,7 +230,7 @@ struct ComposeView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(canPost ? Color.nbAccent : Color.nbBlue.opacity(0.4))
-                .overlay(Rectangle().strokeBorder(Color.nbBlack.opacity(canPost ? 1 : 0.3), lineWidth: 2))
+                .nbBorder()
                 .contentShape(Rectangle())
                 .onTapGesture { if canPost && !isPosting { post() } }
                 .accessibilityLabel(isPosting ? "Posting" : "POST")
@@ -303,7 +303,7 @@ struct ComposeView: View {
                     .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
             .accessibilityLabel("Attach GIF")
 
@@ -458,7 +458,7 @@ struct ComposeView: View {
                 images.append(ComposeImage(imageData: resized))
             } else {
                 Haptics.error()
-                errorMessage = "Couldn't load that photo — try another."
+                errorMessage = "That photo didn't load. Try another one."
             }
         }
         selectedItems = []
@@ -466,7 +466,7 @@ struct ComposeView: View {
 
     private func loadVideo(from item: PhotosPickerItem) async {
         guard let transferable = try? await item.loadTransferable(type: VideoFileTransferable.self) else {
-            errorMessage = "Could not load video — try a different file"
+            errorMessage = "That video didn't load. Try a different file."
             selectedVideoItem = nil
             return
         }
@@ -476,14 +476,14 @@ struct ComposeView: View {
         // actor — a synchronous 50 MB read on main froze the composer.
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         guard size > 0, size <= maxVideoBytes else {
-            errorMessage = "Video must be under 50 MB"
+            errorMessage = "Videos need to be under 50 MB."
             selectedVideoItem = nil
             return
         }
         guard let data = await Task.detached(priority: .userInitiated, operation: {
             try? Data(contentsOf: url, options: .mappedIfSafe)
         }).value else {
-            errorMessage = "Could not load video — try a different file"
+            errorMessage = "That video didn't load. Try a different file."
             selectedVideoItem = nil
             return
         }
@@ -1066,7 +1066,7 @@ struct AltTextSheet: View {
                 }
 
                 NBTextField(
-                    placeholder: "Describe this image for screen readers...",
+                    placeholder: "Describe the picture for folks who can't see it…",
                     text: $image.altText,
                     label: "Alt Text"
                 )

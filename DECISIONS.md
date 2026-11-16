@@ -973,3 +973,181 @@ screen. Device: left root 350 → 434pt.
   screen when one was set. Now in `isFullScreenExperience` with Stream. Verified on
   device with Search set as the second view.
 
+
+---
+
+## [iOS] iPhone Duo — One Column; Stream Rebuilt as a Screen Saver
+*2026-11-16*
+
+**One Column.** Owner: *"allow for a single column mode for when the screen is open (it
+shouldn't be the default, but it should still be possible)."* A third Right Side choice
+(`store.singleColumn`, remembered) beside Conversations (default) and Show a View. It is a
+flag rather than a fake `AppTab` so the existing `secondaryTab` semantics stay intact;
+`detailPaneAvailable` honors it, so every `openPost`/`openProfile`/`openChat` pushes in
+place exactly as on the outer display. Choosing it moves an open conversation onto the
+primary stack instead of discarding it. Device-verified on the inner display.
+
+**Stream.** Owner: *"redesign the Stream view to be the ultimate screen saver for the
+iPhone Duo … text is too small, the images show at odd times and with bad cropping or
+layout, and the posts are almost entirely non-interactive (you should be able to explore a
+post and then resume Stream from where you left off) … the best design language and
+interface elements for the latest version of iOS."* Rules in iOS-DESIGN §10.5. Root causes
+of the old problems: a post was split into separate text / image / link slides (so its
+pictures arrived a slide later), images were `scaledToFill` into a fixed 38% column (the
+crop), and type sizes were fixed points chosen for a phone in landscape.
+- **Scene per post, steps per image**; layout from the measured canvas + the fold; type
+  from a binary search on UIKit text measurement (cheaper and more predictable than a
+  ten-variant `ViewThatFits`).
+- **Explore beside, not over.** The conversation opens in a `FoldSplitLayout` half (the
+  same container as the Duo columns), with its own `.explore` stack — a sibling stack in
+  Stream's cover, like the article's companion (§1.1). A full-screen cover over the stream
+  (the old Reply) hid the post you were asking about.
+- **One clock.** Elapsed time accrues only while nothing holds it (pause, panel, lightbox,
+  article, prompt, background), in its own `@Observable` so only the progress bar
+  re-renders at 10 Hz. Resume = same post, same point.
+- **Liquid Glass for the floating controls only** (iOS 26+, material fallback for 18.6).
+  Content keeps the neubrutalist frame/shadow.
+- **Device lesson:** a view that measures itself must sit in a
+  `frame(minWidth: 0, maxWidth: .infinity, …)`. With only `maxWidth`, the frame grows to
+  oversized content, the measurement reports the grown size, and the stale layout confirms
+  itself — opening the panel left the post laid out full width under it. Found on the
+  first device screenshot; fixed and re-verified.
+- Removed: the "Combine Text + Image" setting (always combined now). Added: "Blur Images
+  Behind Posts". "Keep Screen Awake" now defaults on.
+Web parity: Stream on web could adopt scene-per-post + explore-beside; noted in SCRATCHPAD.
+
+**Update 2026-11-16 — Stream redesign, second pass.** Owner, after the first pass: *"It
+still feels stuck in the previous version with a better layout. Let's actually do some
+design work and functionally improve all aspects of the stream experience (great
+screensaver viewing AND great interactions for when you see a post you'd like to dig
+into more)."* Diagnosis: still a slideshow of feed cards — flat brand fills, a Stories
+bar, a feed footer always on, no way back to a post that just passed, and posts shown
+without the conversation around them. Decisions (iOS-DESIGN §10.5):
+- **Two modes, one surface** (Watching / Interacting) instead of always-on controls —
+  a screen saver should be calm until touched, then fully actionable.
+- **Conversation beat** — after a post, its top replies. The project's values put
+  conversation over virality; a stream of posts alone is the virality view. One
+  `getPostThread(depth: 1)` per post, prefetched two ahead.
+- **Filmstrip** — glanceable displays need memory: the post you half-saw is one tap back.
+- **Color from the post** (3×3 sample → `MeshGradient`, slowly drifting) rather than a
+  rotating brand palette: calmer, ties the backdrop to the content, and the gentle motion
+  is kinder to an OLED left on. Bold keeps the brand palette for those who want it.
+- **Editorial serif by default** (New York; system font so emoji render) — reads as a
+  pull quote, not a feed.
+- **Save for later** is device-local (UserDefaults URIs, newest first, cap 300), streamed
+  back via `getPosts` — no new lexicon or server.
+- **Hold-to-keep** uses a simultaneous zero-distance drag so it never steals taps.
+- Device-verified on the Duo's inner display: watching, interacting (filmstrip +
+  transport), conversation beat, Paper, explore panel, setup.
+
+**Fix 2026-11-16 — closing the Duo ended the stream.** Owner: *"Everything works except
+for closing it while the stream is running. When you do that, it takes you back to the
+stream setup screen."* Cause: Stream is a sidebar place on the open Duo; closing it
+switches the shell to the tab bar, where Stream lives inside More, so SwiftUI destroyed
+the Stream screen and built a new one. The player was that screen's `fullScreenCover`,
+and its `@State` held the session, so both went with it. Fix: `StreamSession.shared`
+(an `@Observable` holding scenes, position, source, replies, colors, clock, saves) and
+the cover presented from MainAppView. The setup screen and the player are two roles of
+one `StreamView` reading the same session; the setup screen's `onDisappear` no longer
+ends a playing stream. Rejected: keeping the Stream tab alive across the size-class
+change (the system TabView drops sidebar-only tabs at compact width by design).
+
+---
+
+## [iOS] Design Language 2 — Stream's lessons, app-wide
+*2026-11-16*
+
+Owner: *"take all that you have learned from this redesign for the Stream interface and
+make updates across all surfaces for the far more sophisticated design language and
+interface elements and spread them across the whole app, especially for the iPhone Duo
+screen size and functionality."* Audit on the Duo first: dense phone-size cards and 15pt
+text on a 951pt display; half the display a capitalized "NO CONVERSATION OPEN"; profile,
+TV and settings in the older flat style; none of Stream's reading type, content color,
+glass or conversation-first layout. Rules in iOS-DESIGN §11. Decisions:
+- **Reading typeface, default Editorial (New York).** Posts read like writing, not
+  chrome; system serif keeps emoji. Modern (SF) one tap away in Settings → Reading.
+  Size follows the measured column, not the device (§10.1).
+- **Color from content, sparingly.** Only where a surface is about one thing (a
+  person, a post, a photo). A list of many things on a moving field is noise.
+- **Two pages at ≥760pt**, fold-aware: the conversation and the profile, the two places
+  you stay with one thing. Keyed on measured width, so it applies in One Column, not
+  in the ~434pt Duo columns.
+- **Saved is app-wide and device-local** (same UserDefaults key Stream used, so nothing
+  is lost); a Saved place (sidebar/More). No new lexicon.
+- **Stream from anywhere**, and no more "turn your phone": the player lays out for any
+  shape, so it starts at once and the phone may rotate (orientation mask
+  `.allButUpsideDown` while streaming, never forced).
+- **Found while in there:** TV's like button never called the API (it only flipped the
+  heart). It likes for real now, with rollback.
+- **Voice:** every sentence of UI copy rewritten against `LearningIsChange/BEN.md`
+  (no em dashes, "folks", plain and a little wry); added to the pre-ship checklist.
+Verified on the Duo (inner display: right pane, two-page conversation and profile,
+Gallery, Reader, TV, Settings, Saved) and the iPhone 12 (home, profile, conversation).
+
+---
+
+## [iOS] Editorial Native — neubrutalism retires on iOS
+*2026-11-16*
+
+Owner: *"the old interface elements and the harsh difference between the old and new
+across columns is pretty glaring now. Is there any way to update all of the interface
+elements for this new approach to editorial and modern interface elements that take full
+advantage of the latest APIs and design patterns on iOS?"* Asked how far; owner chose
+**editorial native** over "soft neubrutalism" and "controls only". Rules: iOS-DESIGN §12.
+How: change the shared primitives first so every surface moves at once (Font.syne/inter
+→ SF text styles, nbBorder → soft clipped corners, nbShadow → nothing, NBEmptyState →
+ContentUnavailableView, the button style → capsule, Memphis stripes → content field),
+then convert by hand what primitives can't reach: post rows, segmented toggles → system
+pickers, Settings → Form, the search field, 29 inline black outlines and 8 offset
+shadows (mechanical). Supersedes the 2026-03 Neubrutalism + Memphis rules FOR iOS; web
+keeps them (iOS is ahead of web here by choice; SCRATCHPAD notes the parity question).
+The CLAUDE.md "Design Tokens" neubrutalist rules now describe web only.
+
+---
+
+## [iOS] Personality on native controls — magazine typography
+*2026-11-16*
+
+Owner, after Editorial Native: *"the app has lost a lot of its personality … What can we
+add back … or develop further to ensure that the personality of a custom Bluesky app
+isn't lost by moving to the native interface elements? Also, the individual posts …
+are very difficult to differentiate."* Also: drop "Active conversation" and "From
+someone you follow" chips (redundant). A first attempt scattered small Memphis shapes on
+empty areas; owner: *"It is AI slop. We need an actual design pattern."* Removed
+entirely. Offered three rule-based systems (magazine typography, the cloud mark, place
+colors); owner chose **magazine typography**. Kept from the earlier pass: Syne back as
+the brand voice, the signature lift (old offset shadow, rounded, accent-tinted),
+accent-tinted paper, posts as distinct cards. Then, owner: *"blend the two columns in
+the middle so that the colors aren't as stark in opposition"* → `nbBlendsIntoPaper`.
+Lesson: personality comes from a small number of rules applied everywhere, not from
+ornament. Rules: iOS-DESIGN §13.
+
+**Update 2026-11-16 — rules and the Reader flash.** Owner: *"do a little more design work
+on the dividing line between the two columns … it matches exactly with the dividing line
+between notifications … The column divider should not match the list divider exactly, but
+they should both be well designed."* Column gutter = fading accent rule with an upright
+dash cap; list rule = dotted, text-inset; unread = the dash. Owner also saw *"a weird
+redrawing color"* in Reader: device frames showed a white block behind the column that
+shrank over ~2s. Cause: the hosting controllers' default white background, exposed while
+`BarInsetCanceller` resized the content; the paper was only drawn in SwiftUI. Fix: paint
+the paper on the hosting and navigation controllers' views too. Verified on device.
+
+**Update 2026-11-16 — Constellation rebuilt, Messages verified, type roles.**
+- *Constellation* (owner: "you may have to rewrite the constellation view for a modern
+  interface"): a device UI test showed 0 touches reaching the custom UIKit recognizer
+  inside the native TabView/Duo columns (the pre-session build failed the same way, so
+  it broke with the native shell, not this session). Interaction is now SwiftUI's own
+  `SpatialTapGesture` + `DragGesture` + `MagnifyGesture` on the graph; people are
+  accessibility elements (VoiceOver can select them). Physics and data unchanged. Owner
+  verified drag and pan by hand. Note for testing: synthetic drags that start near the
+  leading edge or in the top band are taken by the system's sidebar/bar gestures, so
+  they prove nothing about the app.
+- *Messages*: "cannot select the messages": the device test opened chats, switched
+  between them and went back, in both layouts, on the current build; not reproducible
+  after the UIKit paper fix (the closed Duo can't be tested by machine). Dotted list
+  rules added.
+- *UI test*: `BskyDreamsScreenshots/DuoInteractionTests` drives the device with real
+  taps (`xcodebuild test -scheme BskyDreamsScreenshots -only-testing:…`). Use it before
+  asking the owner to tap (owner: "You have full control over the device").
+- *Type roles* (iOS-DESIGN §13.11): Syne / reading face / SF; titles hide while the
+  masthead is visible.

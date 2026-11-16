@@ -124,7 +124,14 @@ struct LightboxView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(backgroundOpacity).ignoresSafeArea()
+            // The photo's own colors behind it (§11), fading as you swipe it away.
+            ZStack {
+                Color.black
+                NBContentField(url: images[safe: selectedPage].flatMap { URL(string: $0.thumb) }, tone: .deep)
+                    .animation(.easeInOut(duration: 0.6), value: selectedPage)
+            }
+            .opacity(backgroundOpacity)
+            .ignoresSafeArea()
 
             TabView(selection: $selectedPage) {
                 ForEach(Array(images.enumerated()), id: \.offset) { i, img in
@@ -161,7 +168,7 @@ struct LightboxView: View {
             // is always constrained ABOVE it — the alt text never overlaps the photo.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomChrome
-                    .background(Color.black.opacity(backgroundOpacity))
+                    .opacity(backgroundOpacity)
             }
         }
         .overlay(alignment: .top) { headerBar }
@@ -180,7 +187,7 @@ struct LightboxView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("To save images, allow Bsky Dreams to add to your photo library in Settings.")
+            Text("To save pictures, Bsky Dreams needs permission to add to your photo library. You can turn that on in Settings.")
         }
     }
 
@@ -214,26 +221,23 @@ struct LightboxView: View {
                             .foregroundStyle(.white)
                     }
                 }
-                .font(.system(size: 18))
-                .frame(width: 44, height: 44)
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .nbGlass(in: Circle())
             .disabled(isSaving)
             .accessibilityLabel("Save image")
-            .padding(.leading, 8)
+            .padding(.leading, 16)
 
             Spacer()
 
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.2), in: Circle())
-            }
-            .accessibilityLabel("Close")
-            .padding(.trailing, 12)
+            NBGlassButton(label: "Close", systemImage: "xmark", size: 48) { dismiss() }
+                .padding(.trailing, 16)
         }
         .padding(.top, 8)
+        .opacity(backgroundOpacity)
     }
 
     private var bottomChrome: some View {
@@ -243,8 +247,8 @@ struct LightboxView: View {
                 Divider().background(Color.white.opacity(0.15))
                 ScrollView {
                     Text(alt)
-                        .font(.inter(12))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .nbReadingFont(15)
+                        .foregroundStyle(.white.opacity(0.88))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
@@ -834,7 +838,7 @@ struct QuotedPostView: View {
                         .foregroundStyle(Color.nbLinkColor)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBlue, lineWidth: 1))
                 }
             } else if let card = post.embed?.external {
                 HStack(spacing: 6) {

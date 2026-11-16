@@ -101,13 +101,13 @@ struct AnalyticsView: View {
                     NBEmptyState(
                         icon: "chart.bar.xaxis",
                         title: "Pick an account",
-                        message: "Enter a handle above and tap LOAD, or tap MY ANALYTICS for your own stats."
+                        message: "Type a handle above and tap LOAD. Or tap MY ANALYTICS to see your own."
                     )
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else if posts.isEmpty {
                     NBEmptyState(
                         icon: "chart.bar.xaxis",
-                        title: "No posts to analyze",
+                        title: "Nothing to look at yet",
                         message: "This account hasn't posted anything original yet."
                     )
                     .frame(maxWidth: .infinity, minHeight: 200)
@@ -173,7 +173,7 @@ struct AnalyticsView: View {
                         .padding(.horizontal, 14)
                         .frame(maxHeight: .infinity)
                         .background(canLoad ? Color.nbAccent : Color.nbWhite)
-                        .overlay(Rectangle().strokeBorder(canLoad ? Color.nbBlack : Color.nbTextSecondary, lineWidth: 2))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(canLoad ? Color.nbBlack : Color.nbTextSecondary, lineWidth: 2))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             guard canLoad else { return }
@@ -194,8 +194,7 @@ struct AnalyticsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(Color.nbWhite)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .background(Color.nbBlack.offset(x: 3, y: 3))
+                .nbBorder()
                 .contentShape(Rectangle())
                 .onTapGesture { Task { await loadSelf() } }
         }
@@ -250,7 +249,7 @@ struct AnalyticsView: View {
 
     private var engagementCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("ENGAGEMENT — LAST 25 POSTS")
+            sectionTitle("ENGAGEMENT · LAST 25 POSTS")
 
             Chart(chartItems) { item in
                 BarMark(
@@ -313,7 +312,7 @@ struct AnalyticsView: View {
 
     private var heatmapCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("POST FREQUENCY — 12 WEEKS")
+            sectionTitle("POST FREQUENCY · 12 WEEKS")
 
             // Non-scrolling grid centered within the card. 12 columns × 7 rows.
             // Cell size 16×16pt, spacing 4pt → total width ≈ 250pt, fits all iPhone widths.
@@ -416,7 +415,7 @@ struct AnalyticsView: View {
                             .accessibilityAddTraits(sortBy == opt ? [.isButton, .isSelected] : .isButton)
                     }
                 }
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
             }
 
             ForEach(Array(sortedPosts.prefix(15).enumerated()), id: \.offset) { i, post in

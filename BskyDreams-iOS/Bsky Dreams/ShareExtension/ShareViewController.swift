@@ -63,7 +63,7 @@ class ShareViewController: UIViewController {
 
         guard let groupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupID) else {
-            setStatus("Couldn't reach Bsky Dreams — open the app once, then try again")
+            setStatus("Bsky Dreams didn't open. Open the app once, then try sharing again.")
             try? await Task.sleep(for: .seconds(2))
             extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             return

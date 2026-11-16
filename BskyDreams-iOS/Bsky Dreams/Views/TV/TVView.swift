@@ -23,6 +23,7 @@ struct TVView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.nbReadingSerif) private var readingSerif
     /// TV's measured size — picks the companion split's axis (§10.13).
     @State private var tvSize: CGSize = .zero
     @Query private var seenPosts: [SeenPost]
@@ -161,23 +162,28 @@ struct TVView: View {
             Color.nbBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                VStack(spacing: 10) {
-                    Image(systemName: "play.tv.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(Color.nbAccentLegible)
-                    Text("BSKY TV")
-                        .font(.syne(28, weight: .bold))
-                        .foregroundStyle(Color.nbBlack)
-                        .tracking(4)
-                    Text("Select a topic or start browsing your feed")
-                        .font(.inter(13))
-                        .foregroundStyle(Color.nbTextSecondary)
-                }
-                .padding(.top, 24)
-                .padding(.bottom, 28)
-
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
+                        // A hero in the post-colors language (§11).
+                        ZStack(alignment: .bottomLeading) {
+                            NBContentField(url: nil, tone: .deep)
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Video from the folks on Bluesky, one clip at a time. Swipe up for the next one.")
+                                    .font(nbReadingFace(21, weight: .semibold, serif: readingSerif))
+                                    .foregroundStyle(.white)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Label("BSKY TV", systemImage: "play.tv.fill")
+                                    .font(.syne(12, weight: .bold))
+                                    .tracking(1.5)
+                                    .foregroundStyle(.white.opacity(0.75))
+                            }
+                            .padding(20)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 116, alignment: .bottomLeading)
+                        .clipped()
+                        .nbBorder()
+                        .nbShadow(size: 4)
+                        .padding(.top, 16)
 
                         // Topic chips
                         VStack(alignment: .leading, spacing: 12) {
@@ -257,7 +263,7 @@ struct TVView: View {
                                     .font(.syne(12, weight: .bold))
                                     .tracking(0.5)
                                     .foregroundStyle(Color.nbBlack)
-                                Text("Filters posts labeled as explicit or adult")
+                                Text("Hides posts labeled explicit or adult")
                                     .font(.inter(11))
                                     .foregroundStyle(Color.nbTextTertiary)
                             }
@@ -300,7 +306,7 @@ struct TVView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Color.nbAccent)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .nbBorder()
                 }
                 .disabled(isLoading)
                 .padding(.horizontal, 20)
@@ -334,7 +340,7 @@ struct TVView: View {
                     Text("No Videos Found")
                         .font(.syne(20, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Try a different topic or search term")
+                    Text("Try a different topic or word")
                         .font(.inter(14))
                         .foregroundStyle(.white.opacity(0.5))
                     Button("← Back to Topics") { goToSelector() }
@@ -343,7 +349,7 @@ struct TVView: View {
                         .foregroundStyle(Color.nbAccentLegible)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .overlay(Rectangle().strokeBorder(Color.nbAccent, lineWidth: 2))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbAccent, lineWidth: 2))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -388,52 +394,24 @@ struct TVView: View {
                 }
             }
 
-            // Back-to-topics button — top-left, clear safe area for Dynamic Island
+            // Back to topics, and full screen ⇄ conversation: glass over the video (§11).
             HStack {
-                Button { goToSelector() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .bold))
-                        Text("TOPICS")
-                            .font(.syne(11, weight: .bold))
-                            .tracking(0.5)
-                    }
-                    .foregroundStyle(Color.nbBlack)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .background(Color.nbBlack.offset(x: 2, y: 2))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to topics")
-                .padding(.leading, 16)
-                .padding(.top, backButtonTopPadding)
+                NBGlassCapsule(title: "Topics", systemImage: "chevron.left", height: 44) { goToSelector() }
+                    .accessibilityLabel("Back to topics")
+                    .padding(.leading, 16)
+                    .padding(.top, backButtonTopPadding)
                 Spacer()
                 // Open Duo: full screen ⇄ with the conversation (§10.13). Remembered.
                 if horizontalSizeClass == .regular && verticalSizeClass == .regular {
-                    Button {
+                    NBGlassCapsule(title: store.tvFullScreen ? "Conversation" : "Full Screen",
+                                   systemImage: store.tvFullScreen ? "rectangle.split.2x1"
+                                                                   : "arrow.up.left.and.arrow.down.right",
+                                   height: 44) {
                         Haptics.selection()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                             store.tvFullScreen.toggle()
                         }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: store.tvFullScreen ? "rectangle.split.2x1"
-                                                                 : "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 13, weight: .bold))
-                            Text(store.tvFullScreen ? "CONVERSATION" : "FULL SCREEN")
-                                .font(.syne(11, weight: .bold))
-                                .tracking(0.5)
-                        }
-                        .foregroundStyle(Color.nbBlack)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.nbWhite)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        .background(Color.nbBlack.offset(x: 2, y: 2))
                     }
-                    .buttonStyle(.plain)
                     .accessibilityLabel(store.tvFullScreen ? "Show the conversation beside the video"
                                                            : "Watch full screen")
                     .padding(.trailing, store.tvFullScreen ? windowTrailingInset + 16 : 16)
@@ -538,7 +516,7 @@ struct TVView: View {
             let filtered = applyFilters(allPosts)
             if filtered.isEmpty {
                 errorMessage = query.isEmpty
-                    ? "No videos found in your timeline right now."
+                    ? "No videos in your timeline right now."
                     : "No videos matched \"\(query)\". Try a different topic."
             } else {
                 videos = filtered
@@ -653,7 +631,7 @@ struct TVVideoCell: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(Color.black.opacity(0.6))
-                            .overlay(Rectangle().strokeBorder(.white.opacity(0.4), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.4), lineWidth: 1))
                             .padding(.trailing, 16)
                             .padding(.top, 60)
                     }
@@ -722,7 +700,10 @@ struct TVOverlayView: View {
     let isActive: Bool
 
     @State private var isLiked = false
+    @State private var likeURI: String? = nil
+    @State private var likeCount = 0
     @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
     @Environment(\.navColumn) private var navColumn
 
     var body: some View {
@@ -735,22 +716,22 @@ struct TVOverlayView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
-            HStack(alignment: .bottom) {
-                // Post info (left)
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 16) {
+                // Who and what (left)
+                VStack(alignment: .leading, spacing: 8) {
                     Spacer()
                     Button {
                         store.push(ProfileDestination(actor: post.author.did), column: navColumn)
                     } label: {
-                        HStack(spacing: 8) {
-                            AvatarView(url: post.author.avatar, size: 36)
+                        HStack(spacing: 10) {
+                            AvatarView(url: post.author.avatar, size: 40)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(post.author.name)
-                                    .font(.inter(14, weight: .semibold))
+                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(.white)
                                 Text("@\(post.author.handle)")
-                                    .font(.inter(12))
-                                    .foregroundStyle(.white.opacity(0.7))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.white.opacity(0.75))
                             }
                         }
                     }
@@ -758,57 +739,74 @@ struct TVOverlayView: View {
 
                     if !post.record.text.isEmpty {
                         Text(post.record.text)
-                            .font(.inter(13))
+                            .nbReadingFont(16)
                             .foregroundStyle(.white)
-                            .lineLimit(2)
+                            .lineLimit(3)
+                            .onTapGesture { store.openPost(uri: post.uri, post: post, column: navColumn) }
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Action buttons (right)
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    // Pop-out: open post thread
-                    Button {
-                        store.openPost(uri: post.uri, post: post, column: navColumn)
-                    } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 24))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityLabel("Open conversation")
-
-                    // Mute — controls the shared player directly
-                    Button {
-                        isMuted.toggle()
-                        if isActive { player.isMuted = isMuted }
-                    } label: {
-                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityLabel(isMuted ? "Unmute" : "Mute")
-
-                    // Like
-                    Button {
-                        Haptics.medium()
-                        withAnimation { isLiked.toggle() }
-                    } label: {
+                // Actions (right): Liquid Glass over the video (§11).
+                NBGlassGroup(spacing: 14) {
+                    VStack(spacing: 14) {
+                        Spacer()
+                        NBGlassButton(label: "Open conversation", systemImage: "text.bubble", size: 50) {
+                            store.openPost(uri: post.uri, post: post, column: navColumn)
+                        }
+                        NBGlassButton(label: isMuted ? "Unmute" : "Mute",
+                                      systemImage: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                                      size: 50) {
+                            isMuted.toggle()
+                            if isActive { player.isMuted = isMuted }
+                        }
+                        NBGlassButton(label: SavedPosts.shared.contains(post.uri) ? "Remove from Saved" : "Save for Later",
+                                      systemImage: SavedPosts.shared.contains(post.uri) ? "bookmark.fill" : "bookmark",
+                                      size: 50) {
+                            Haptics.light()
+                            SavedPosts.shared.toggle(post.uri)
+                        }
                         VStack(spacing: 4) {
-                            Image(systemName: isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 28))
-                                .foregroundStyle(isLiked ? Color.nbAccentLegible : .white)
-                            Text(nbCompactCount(post.likeCount ?? 0))
-                                .font(.inter(12))
+                            NBGlassButton(label: isLiked ? "Unlike, \(likeCount)" : "Like, \(likeCount)",
+                                          systemImage: isLiked ? "heart.fill" : "heart", size: 50,
+                                          tint: isLiked ? Color(hex: "#FF2D55") : .white,
+                                          action: toggleLike)
+                            Text(nbCompactCount(likeCount))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
+                                .accessibilityHidden(true)
                         }
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 48)
+        }
+        .onAppear {
+            isLiked = post.viewer?.like != nil
+            likeURI = post.viewer?.like
+            likeCount = post.likeCount ?? 0
+        }
+    }
+
+    /// A real like (it used to only change the heart on screen).
+    private func toggleLike() {
+        guard let did = auth.session?.did else { return }
+        let wasLiked = isLiked
+        let prevCount = likeCount
+        Haptics.medium()
+        withAnimation { isLiked.toggle() }
+        likeCount += isLiked ? 1 : -1
+        Task {
+            do {
+                likeURI = try await ATProtocolClient.shared.setLiked(!wasLiked, post: post, recordURI: likeURI, did: did)
+            } catch {
+                isLiked = wasLiked
+                likeCount = prevCount
+                Haptics.error()
+                store.showActionError(wasLiked ? "Couldn't undo that like." : "That like didn't go through.")
+            }
         }
     }
 }

@@ -39,6 +39,7 @@ func articleIsEnglish(post: PostView, card: ExternalCard) -> Bool {
 }
 
 struct ReaderView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
     private let newsFeedURI = "at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news"
 
@@ -90,7 +91,7 @@ struct ReaderView: View {
                 articleList
             }
         }
-        .nbNavBar(title: "READER", leading: { NBHamburger() })
+        .nbNavBar(title: mastheadVisible ? "" : "Reader", leading: { NBHamburger() })
         .task {
             // Load seen URIs from SwiftData once, then manage in memory
             if seenURISet.isEmpty {
@@ -123,14 +124,18 @@ struct ReaderView: View {
                     .padding(.top, 10)
                 }
 
-                HintBanner(id: "reader.welcome", text: "Tap an article to read it distraction-free in Readable mode.")
+                NBMasthead(kicker: "Reader", headline: "Today's reading",
+                           deck: "Articles your network is sharing, without the clutter.",
+                           onVisibleChange: { mastheadVisible = $0 })
+
+                HintBanner(id: "reader.welcome", text: "Tap an article to read it without the clutter.")
                     .padding(.top, 10)
 
                 if articlesWithCards.isEmpty && !isLoading && errorMessage == nil {
                     NBEmptyState(
                         icon: "doc.text",
                         title: "You're all caught up",
-                        message: "No new articles right now",
+                        message: "Nothing new to read right now. Check back in a bit.",
                         actionTitle: "Refresh",
                         action: {
                             Task {
@@ -384,15 +389,16 @@ struct ArticleCardView: View {
                                 .tracking(1)
                         }
 
+                        // Headlines read as headlines: the reading face, large (§11).
                         Text(card.title)
-                            .font(.syne(16, weight: .bold))
+                            .nbReadingFont(21, weight: .bold)
                             .foregroundStyle(Color.nbBlack)
 
                         if !card.description.isEmpty {
                             Text(card.description)
-                                .font(.inter(13))
+                                .nbReadingFont(15)
                                 .foregroundStyle(Color.nbTextSecondary)
-                                .lineLimit(2)
+                                .lineLimit(3)
                         }
 
                         HStack(spacing: 8) {
@@ -574,7 +580,7 @@ struct ArticleReaderSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
                 .padding(8)
                 .background(Color.nbWhite)
 
@@ -904,6 +910,10 @@ struct ArticleWebView: UIViewRepresentable {
         // MARK: Reader HTML template (matches web app reader style)
 
         private func buildReaderHTML(title: String, content: String) -> String {
+            // The person's reading face (Settings → Reading): New York via WebKit's ui-serif,
+            // or the system sans (§11).
+            let serif = (UserDefaults.standard.string(forKey: "reading_typeface") ?? "serif") == "serif"
+            let bodyFace = serif ? "ui-serif, 'New York', Georgia, serif" : "-apple-system, 'Helvetica Neue', sans-serif"
             let escapedTitle = title
                 .replacingOccurrences(of: "&", with: "&amp;")
                 .replacingOccurrences(of: "<", with: "&lt;")
@@ -917,8 +927,8 @@ struct ArticleWebView: UIViewRepresentable {
             <style>
             * { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
             body {
-                font-family: Georgia, 'Times New Roman', serif;
-                font-size: 18px;
+                font-family: \(bodyFace);
+                font-size: 19px;
                 line-height: 1.75;
                 max-width: 680px;
                 margin: 0 auto;
@@ -935,8 +945,8 @@ struct ArticleWebView: UIViewRepresentable {
                 hr { border-color: #3A3A3A; }
             }
             h1.reader-title {
-                font-family: -apple-system, 'Helvetica Neue', sans-serif;
-                font-size: 26px;
+                font-family: \(bodyFace);
+                font-size: 30px;
                 font-weight: 800;
                 line-height: 1.25;
                 margin: 0 0 20px;

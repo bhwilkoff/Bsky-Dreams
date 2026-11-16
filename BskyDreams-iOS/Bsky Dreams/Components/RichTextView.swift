@@ -17,16 +17,14 @@ struct RichTextView: View {
         // Default iOS line height ≈ 18pt → additional spacing ≈ 5pt.
         if let facets, !facets.isEmpty {
             Text(buildAttributedString())
-                .scaledSystemFont(15)
-                .lineSpacing(5)
+                .nbReadingFont(16)   // reading type: typeface + column width (§11)
                 .foregroundStyle(Color.nbBlack)
                 .environment(\.openURL, OpenURLAction { url in
                     handleInternalURL(url)
                 })
         } else {
             Text(text)
-                .scaledSystemFont(15)
-                .lineSpacing(5)
+                .nbReadingFont(16)   // reading type: typeface + column width (§11)
                 .foregroundStyle(Color.nbBlack)
         }
     }

@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct GalleryView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     private let discoverURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
     private let followPicsURI = "at://did:plc:vpkhqolt662uhesyj6nxm7ys/app.bsky.feed.generator/followpics"
     private let artTrendURI   = "at://did:plc:y7crv2yh74s7qhmtx3mvbgv5/app.bsky.feed.generator/art-new"
@@ -39,14 +40,14 @@ struct GalleryView: View {
                 NBEmptyState(
                     icon: "photo.on.rectangle",
                     title: "No photos yet",
-                    message: "Image posts from your feeds will show up here."
+                    message: "Pictures from your feeds will show up here."
                 )
             } else {
                 cardFeed
             }
         }
         .nbOfflineBanner()
-        .nbNavBar(title: "GALLERY", leading: { NBHamburger() })
+        .nbNavBar(title: mastheadVisible ? "" : "Gallery", leading: { NBHamburger() })
         .task {
             if seenURISet.isEmpty {
                 let descriptor = FetchDescriptor<SeenPost>()
@@ -62,6 +63,10 @@ struct GalleryView: View {
         ScrollViewReader { proxy in
         ScrollView {
             Color.clear.frame(height: 0).id("gallery-top")
+            NBMasthead(kicker: "Gallery", headline: "Pictures worth a look",
+                       deck: "Images from your feeds, shown whole.",
+                       onVisibleChange: { mastheadVisible = $0 })
+                .padding(.bottom, 6)
             // One column on a phone; two once the column itself is wide (open iPhone Duo
             // landscape, a Pro Max on its side) — keyed on measured width, not device.
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0, alignment: .top),
@@ -189,6 +194,7 @@ struct GalleryCardView: View {
     @State private var repostCount: Int = 0
     @State private var showRepostSheet = false
     @State private var lightboxPresentation: LightboxPresentation? = nil
+    @Environment(\.nbColumnWidth) private var columnWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -213,6 +219,15 @@ struct GalleryCardView: View {
                     Text(post.relativeTime)
                         .font(.inter(11))
                         .foregroundStyle(Color.nbTextTertiary)
+                }
+
+                // What they said about it (galleries used to drop the words entirely).
+                if !post.record.text.isEmpty {
+                    Text(post.record.text)
+                        .nbReadingFont(15)
+                        .foregroundStyle(Color.nbBlack)
+                        .lineLimit(4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // Action row
@@ -281,6 +296,9 @@ struct GalleryCardView: View {
         }
     }
 
+    /// Taller cells in wide columns, so a four-up grid isn't a strip of slivers.
+    private var gridCellHeight: CGFloat { max(140, min(columnWidth, 680) * 0.32) }
+
     private func imageGrid(_ images: [EmbedImage]) -> some View {
         Group {
             if images.count == 1 {
@@ -296,7 +314,7 @@ struct GalleryCardView: View {
                         }
                         // Both width and height must be constrained before .clipped()
                         // otherwise scaledToFill expands past the column boundary
-                        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                        .frame(maxWidth: .infinity, minHeight: gridCellHeight, maxHeight: gridCellHeight)
                         .clipped()
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -310,7 +328,7 @@ struct GalleryCardView: View {
     }
 
     private func singleImage(_ img: EmbedImage, allImages: [EmbedImage]) -> some View {
-        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 400) { phase in
+        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 900) { phase in
             switch phase {
             case .success(let i):
                 i.resizable().scaledToFit()

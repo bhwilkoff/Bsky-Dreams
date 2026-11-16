@@ -86,7 +86,7 @@ extension View {
             || ObjectIdentifier(L.self) == ObjectIdentifier(EmptyView.self)
         let hasTrailing = ObjectIdentifier(T.self) != ObjectIdentifier(EmptyView.self)
         return self
-            .navigationTitle(title)
+            .navigationTitle(nbTitleCase(title))
             .navigationBarTitleDisplayMode(.inline)
             .modifier(NBRootCloseItem(enabled: isBack))
             .toolbar {
@@ -156,7 +156,8 @@ struct NBBackButton: View {
 /// it's the leading toolbar item of whatever fills the right side (the conversation
 /// pane, its empty state, or a second column), and a trailing item on full-display
 /// screens (TV, Stream…). Default "Conversations": tapped posts open beside the list.
-/// Any other choice makes the right side a second column showing that view.
+/// Any other choice makes the right side a second column showing that view; One Column
+/// removes the right side (the menu then sits in the primary's trailing toolbar).
 /// A `Label`, so it moves into the vertical bar with the rest.
 struct NBColumnMenu: View {
     @Environment(AppStore.self) private var store
@@ -168,10 +169,17 @@ struct NBColumnMenu: View {
                     Haptics.selection()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.closeSecondColumn() }
                 } label: {
-                    Label("Conversations", systemImage: store.secondaryTab == nil ? "checkmark" : "text.bubble")
+                    Label("Conversations", systemImage: store.secondaryTab == nil && !store.singleColumn ? "checkmark" : "text.bubble")
+                }
+                // One column: the primary takes the whole display (not the default).
+                Button {
+                    Haptics.selection()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.useSingleColumn() }
+                } label: {
+                    Label("One Column", systemImage: store.singleColumn ? "checkmark" : "rectangle")
                 }
             }
-            if store.columnsAreTall {
+            if store.columnsAreTall && !store.singleColumn {
                 Section("Layout") {
                     Button {
                         Haptics.selection()
@@ -201,4 +209,16 @@ struct NBColumnMenu: View {
             Label("Right Side", systemImage: "rectangle.split.2x1")
         }
     }
+}
+
+
+/// Screen titles read as titles, not shouts (§12): "CONVERSATION" → "Conversation",
+/// "BSKY TV" → "Bsky TV". Handles and mixed-case titles are left alone.
+func nbTitleCase(_ title: String) -> String {
+    guard title == title.uppercased(), title.contains(where: \.isLetter) else { return title }
+    let keep: Set<String> = ["TV", "DM", "DMS"]
+    return title.split(separator: " ").map { word -> String in
+        let w = String(word)
+        return keep.contains(w) ? w : w.prefix(1) + w.dropFirst().lowercased()
+    }.joined(separator: " ")
 }

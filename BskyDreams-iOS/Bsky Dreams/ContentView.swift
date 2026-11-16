@@ -92,7 +92,7 @@ struct MainAppView: View {
         }
         .overlay(alignment: .bottom) {
             if let failed = store.failedPost {
-                NBErrorBanner(message: "Your post didn't send — \(failed.reason)",
+                NBErrorBanner(message: "Your post didn't send. \(failed.reason)",
                               retry: { store.retryFailedPost() },
                               onDismiss: { store.failedPost = nil })
                     .padding(.bottom, 24)
@@ -100,6 +100,13 @@ struct MainAppView: View {
                 NBErrorBanner(message: message, onDismiss: { store.actionError = nil })
                     .padding(.bottom, 24)
             }
+        }
+        // Stream's full-screen player lives here, at the root, not on the Stream screen:
+        // closing the Duo rebuilds that screen inside More, and a cover owned by it would
+        // be dismissed with it (iOS-DESIGN §10.5).
+        .fullScreenCover(isPresented: Bindable(StreamSession.shared).presented,
+                         onDismiss: { StreamSession.shared.playerDismissed() }) {
+            StreamView(role: .player)
         }
         .sheet(isPresented: Bindable(store).showComposeSheet, onDismiss: {
             store.composeQuote = nil
@@ -272,6 +279,7 @@ struct TabColumns: View {
     private var hasRightPane: Bool {
         guard isSplitLayout, !tab.isFullScreenExperience else { return false }
         if tab == .tv && store.tvFullScreen { return false }   // TV's own full-screen choice
+        if store.singleColumn { return false }                 // Right Side → One Column
         return store.secondaryTab != nil || tab.hostsPostPane || tab == .dms
     }
 
@@ -283,6 +291,7 @@ struct TabColumns: View {
     var body: some View {
         FoldSplitLayout(stacked: stacked, fold: foldGap) {
             primary
+                .nbColumnWidthReader()
                 // With a right side, the primary never touches the trailing (or, stacked,
                 // bottom) edge — the vertical bar / tab bar's inset belongs to the right
                 // side. Without this the column was laid out 84pt narrower than its frame
@@ -291,9 +300,14 @@ struct TabColumns: View {
                 .environment(\.barInsetEdges, primaryIgnoredEdges)
             if hasRightPane {
                 rightPane
+                    .nbColumnWidthReader()
                     .overlay(alignment: stacked ? .top : .leading) {
-                        Rectangle().fill(Color.nbBorder)
-                            .frame(width: stacked ? nil : 1, height: stacked ? 1 : nil)
+                        // A hairline between two views; none where the empty pane's color
+                        // field blends into the list (§13).
+                        if !showsPlaceholder {
+                            NBColumnGutter(stacked: stacked)
+                                .offset(x: stacked ? 0 : -1, y: stacked ? -1 : 0)
+                        }
                     }
             }
         }
@@ -336,6 +350,10 @@ struct TabColumns: View {
         }
     }
 
+    private var showsPlaceholder: Bool {
+        store.secondaryTab == nil && !(isCurrent && store.detailPane != nil)
+    }
+
     @ViewBuilder
     private var rightPane: some View {
         if let column = store.secondaryTab {
@@ -348,18 +366,44 @@ struct TabColumns: View {
             DetailPaneView(item: item)
         } else {
             NavigationStack {
-                NBEmptyState(
-                    icon: tab == .dms ? "bubble.left.and.bubble.right" : "text.bubble",
-                    title: tab == .dms ? "No chat open" : "No conversation open",
-                    message: tab == .dms
-                        ? "Pick a chat and it opens here."
-                        : "Tap a post and its conversation opens here. Use Right Side to show another view instead."
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.nbBackground)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { NBColumnMenu() } }
+                RightPanePlaceholder(isChats: tab == .dms)
+                    .toolbar { ToolbarItem(placement: .topBarLeading) { NBColumnMenu() } }
             }
         }
+    }
+}
+
+/// The open Duo's right side before anything is open in it: a calm color field and one
+/// plain sentence about what goes here (iOS-DESIGN §11). Half the display shouldn't
+/// shout "nothing" in capitals.
+struct RightPanePlaceholder: View {
+    let isChats: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.nbReadingSerif) private var serif
+
+    var body: some View {
+        let ink: Color = colorScheme == .dark ? .white : Color(hex: "#161616")
+        ZStack(alignment: .bottomLeading) {
+            NBContentField(url: nil, tone: colorScheme == .dark ? .deep : .pale)
+                .nbBlendsIntoPaper(edge: .leading)   // melts into the list beside it
+                .ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 14) {
+                NBKicker(text: isChats ? "Messages" : "The conversation")
+                Text(isChats ? "Pick a chat." : "Pick a post.")
+                    .font(.syne(40, weight: .bold))
+                Text(isChats
+                     ? "It opens right here, and your list stays put."
+                     : "Its conversation opens right here, so you can read the replies without losing your place. Or use Right Side to put another view here instead.")
+                    .font(nbReadingFace(19, serif: serif))
+                    .opacity(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(ink)
+            .frame(maxWidth: 440, alignment: .leading)
+            .padding(36)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -444,7 +488,7 @@ struct ChannelsSection: View {
     var body: some View {
         Section("Channels") {
             if savedSearches.isEmpty {
-                Text("Save a search or a timeline to keep it here.")
+                Text("Save a search or a timeline and it will live here.")
                     .foregroundStyle(.secondary)
             }
             ForEach(savedSearches) { channel in
@@ -484,7 +528,7 @@ struct ChannelsSection: View {
             }
             Button("Cancel", role: .cancel) { editingChannel = nil }
         } message: {
-            Text("Enter a new name for this channel")
+            Text("Give this channel a new name.")
         }
     }
 }
@@ -500,42 +544,49 @@ extension View {
                 DetailView(tab: place.tab)
                     .modifier(BarInsetCancelling())
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: PostDestination.self) { dest in
                 ThreadView(uri: dest.uri, initialPost: dest.post)
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: ProfileDestination.self) { dest in
                 ProfileView(actor: dest.actor)
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: HashtagDestination.self) { dest in
                 SearchView(initialQuery: "#\(dest.tag)")
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: Conversation.self) { convo in
                 ChatView(conversation: convo, myDid: myDid)
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: AnalyticsDestination.self) { dest in
                 AnalyticsView(initialActor: dest.actor)
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
             .navigationDestination(for: ConstellationDestination.self) { dest in
                 ConstellationView(initialActor: dest.actor)
                     .modifier(BarInsetCancelling())
                     .enableNavigationBackSwipe()
                     .environment(\.nbIsPushed, true)
+                    .nbPaper()
             }
     }
 }
@@ -554,6 +605,7 @@ struct DetailPaneView: View {
     var body: some View {
         NavigationStack(path: Bindable(store).detailPanePath) {
             paneRoot
+                .nbPaper()
                 .withAppDestinations(myDid: auth.session?.did ?? "")
                 .toolbar { ToolbarItem(placement: .topBarLeading) { NBColumnMenu() } }
         }
@@ -582,6 +634,11 @@ struct DetailView: View {
     let tab: AppStore.AppTab
 
     var body: some View {
+        content.nbPaper()   // accent-tinted paper behind every place (§13)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch tab {
         case .home:           FeedView()
         case .search:         SearchView()
@@ -597,6 +654,7 @@ struct DetailView: View {
         case .settings:       SettingsView()
         case .explore:        ExploreView()
         case .channels:       ChannelsView()
+        case .saved:          SavedView()
         }
     }
 }
@@ -614,89 +672,134 @@ struct SettingsView: View {
     @State private var showLogoutConfirm = false
     @State private var cacheCleared = false
     @State private var hints = HintsManager.shared
+    @AppStorage("reading_typeface") private var readingTypeface = "serif"
 
     private var prefs: CachedPreferences? { cachedPrefs.first }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                settingsHeader
-                VStack(spacing: 12) {
-                    settingsSection("APPEARANCE") {
-                        accentColorRow
-                        colorSchemeRow
-                        defaultFeedRow
-                    }
-                    settingsSection("DATA & HISTORY") {
-                        seenPostsRow
-                        clearCacheRow
-                        notificationSettingsRow
-                    }
-                    settingsSection("TIPS & HINTS") {
-                        hintsToggleRow
-                        resetHintsRow
-                    }
-                    settingsSection("ACCOUNT") {
-                        if let handle = auth.session?.handle {
-                            settingsRow(title: "Signed in as", value: "@\(handle)")
+        // A native Form (§12): grouped sections, system rows, system controls.
+        Form {
+            Section("Appearance") {
+                accentColorRow
+                Picker("Appearance", selection: Binding(
+                    get: { store.colorSchemeOverride },
+                    set: { store.setColorScheme($0) }
+                )) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                Picker("Default Feed", selection: Binding(
+                    get: {
+                        // Legacy default "discover" maps to the Conversations feed.
+                        let stored = prefs?.defaultFeedTab ?? "conversations"
+                        return stored == "discover" ? "conversations" : stored
+                    },
+                    set: { tab in
+                        updateDefaultFeed(tab)
+                        if let mode = AppStore.FeedMode.allCases.first(where: { $0.rawValue.lowercased() == tab }) {
+                            store.feedMode = mode
                         }
-                        Button { showLogoutConfirm = true } label: {
-                            HStack {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(.red)
-                                Text("Log Out")
-                                    .font(.inter(15))
-                                    .foregroundStyle(.red)
-                                Spacer()
-                            }
-                            .padding(14)
-                            .background(Color.nbWhite)
-                            .nbBorder()
-                        }
-                        .buttonStyle(.plain)
                     }
-                    settingsSection("ABOUT") {
-                        settingsRow(
-                            title: "Version",
-                            value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-                        )
-                        externalLinkRow(title: "Privacy Policy", subtitle: "bskydreams.com/privacy", url: "https://bskydreams.com/privacy")
-                        externalLinkRow(title: "Web App", subtitle: "bskydreams.com", url: "https://bskydreams.com")
-                        externalLinkRow(title: "Bluesky", subtitle: "@laserdiscleftist.bsky.social", url: "https://bsky.app/profile/laserdiscleftist.bsky.social")
-                        externalLinkRow(title: "Contact Support", subtitle: "ben@bskydreams.com", url: "mailto:ben@bskydreams.com")
-                        // App Review 4.1: a brand name in the app name needs a clear independence line.
-                        Text("Bsky Dreams is an independent app and is not affiliated with or endorsed by Bluesky Social, PBC.")
-                            .font(.inter(12))
-                            .foregroundStyle(Color.nbTextSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 4)
+                )) {
+                    ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode.rawValue.lowercased())
                     }
                 }
-                .padding(16)
+            }
+
+            Section {
+                Text("Posts are for reading, so they get a reading face. The rest of the app stays as it is.")
+                    .font(nbReadingFace(17, serif: readingTypeface == "serif"))
+                    .lineSpacing(4)
+                    .padding(.vertical, 4)
+                Picker("Typeface for Posts", selection: $readingTypeface) {
+                    Text("Editorial").tag("serif")
+                    Text("Modern").tag("sans")
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Reading")
+            } footer: {
+                Text("Editorial is New York, a serif made for long reading. Modern is San Francisco.")
+            }
+
+            Section("Data & History") {
+                LabeledContent {
+                    Button("Clear", role: .destructive) { showClearSeenConfirm = true }
+                        .buttonStyle(.borderless)
+                } label: {
+                    Text("Seen Posts")
+                    Text("\(seenPosts.filter { $0.seenAt >= Date().addingTimeInterval(-7 * 24 * 3600) }.count) in the last 7 days")
+                }
+                LabeledContent {
+                    Button(cacheCleared ? "Cleared" : "Clear") {
+                        NBImageLoader.clearCache()
+                        Haptics.success()
+                        withAnimation { cacheCleared = true }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(cacheCleared)
+                    .accessibilityLabel("Clear image cache")
+                } label: {
+                    Text("Image Cache")
+                    Text("Frees up the space saved pictures take. They load again as you scroll.")
+                }
+                Button {
+                    if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                } label: {
+                    Label("Notification Settings", systemImage: "bell.badge")
+                }
+                .accessibilityHint("Opens your iPhone's notification settings")
+            }
+
+            Section("Tips") {
+                Toggle(isOn: Binding(
+                    get: { hints.hintsEnabled },
+                    set: { hints.hintsEnabled = $0; Haptics.selection() }
+                )) {
+                    Text("Show Tips")
+                    Text("Small tips that show up the first time you use something")
+                }
+                Button("Bring Back Dismissed Tips") {
+                    hints.resetAll()
+                    Haptics.success()
+                }
+            }
+
+            Section("Account") {
+                if let handle = auth.session?.handle {
+                    LabeledContent("Signed in as", value: "@\(handle)")
+                }
+                Button("Log Out", role: .destructive) { showLogoutConfirm = true }
+            }
+
+            Section {
+                LabeledContent("Version",
+                               value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
+                externalLinkRow(title: "Privacy Policy", url: "https://bskydreams.com/privacy")
+                externalLinkRow(title: "Web App", url: "https://bskydreams.com")
+                externalLinkRow(title: "Ben on Bluesky", url: "https://bsky.app/profile/laserdiscleftist.bsky.social")
+                externalLinkRow(title: "Contact Support", url: "mailto:ben@bskydreams.com")
+            } header: {
+                Text("About")
+            } footer: {
+                // App Review 4.1: a brand name in the app name needs a clear independence line.
+                Text("Bsky Dreams is an independent app. It is not affiliated with or endorsed by Bluesky Social, PBC.")
             }
         }
+        .tint(Color.nbAccent)
         .nbNavBar(title: "SETTINGS", leading: { NBHamburger() })
         .alert("Clear Seen Posts?", isPresented: $showClearSeenConfirm) {
             Button("Clear All", role: .destructive) { clearSeenPosts() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will reset your feed to show all posts again.")
+            Text("Your feeds will show posts you've already seen again.")
         }
         .confirmationDialog("Log Out?", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
             Button("Log Out", role: .destructive) { auth.logout() }
             Button("Cancel", role: .cancel) {}
         }
-    }
-
-    /// The Memphis stripe as a thin band — the nav bar already says SETTINGS, so the old
-    /// 22pt duplicate title (≈52pt tall) is gone.
-    private var settingsHeader: some View {
-        DiagonalStripeBackground()
-            .frame(height: 12)
-            .nbBorder()
-            .padding(.bottom, 16)
-            .accessibilityHidden(true)
     }
 
     private let accentColors: [(name: String, hex: String)] = [
@@ -707,10 +810,6 @@ struct SettingsView: View {
     private var accentColorRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Accent Color")
-                .font(.inter(14, weight: .semibold))
-                .foregroundStyle(Color.nbBlack)
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
             HStack(spacing: 0) {
                 ForEach(accentColors, id: \.hex) { item in
                     let isSelected = store.accentColorHex == item.hex
@@ -718,11 +817,19 @@ struct SettingsView: View {
                         VStack(spacing: 4) {
                             Circle()
                                 .fill(Color(hex: item.hex))
-                                .frame(width: 32, height: 32)
-                                .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: isSelected ? 3 : 1.5))
+                                .frame(width: 30, height: 30)
+                                .overlay {
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 13, weight: .bold))
+                                            .foregroundStyle(Color.nbLabel(on: Color(hex: item.hex)))
+                                    }
+                                }
+                                .padding(3)
+                                .overlay(Circle().strokeBorder(isSelected ? Color(hex: item.hex) : .clear, lineWidth: 2))
                             Text(item.name)
-                                .font(.inter(10))
-                                .foregroundStyle(Color.nbTextSecondary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                         }
@@ -733,251 +840,22 @@ struct SettingsView: View {
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
-            // Seven swatches across 390pt: names split mid-word ("Cor/al") at
-            // accessibility sizes (device run). Chrome caps; the labels stay readable.
+            // Seven swatches across a phone: chrome caps; the labels stay readable.
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
         }
-        .background(Color.nbWhite)
-        .nbBorder()
+        .padding(.vertical, 4)
     }
 
-    private var colorSchemeRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Appearance")
-                .font(.inter(14, weight: .semibold))
-                .foregroundStyle(Color.nbBlack)
-            HStack(spacing: 0) {
-                ForEach([("System", "system"), ("Light", "light"), ("Dark", "dark")], id: \.1) { label, value in
-                    let isSelected = store.colorSchemeOverride == value
-                    Button { store.setColorScheme(value) } label: {
-                        Text(label.uppercased())
-                            .font(.syne(12, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                            .foregroundStyle(isSelected ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(isSelected ? Color.nbAccent : Color.nbWhite)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // segmented chrome cap
-        }
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
-    }
-
-    private var defaultFeedRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Default Feed")
-                .font(.inter(14, weight: .semibold))
-                .foregroundStyle(Color.nbBlack)
-            HStack(spacing: 0) {
-                ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
-                    // Legacy default "discover" maps to the new Conversations feed.
-                    let stored = (prefs?.defaultFeedTab ?? "conversations")
-                    let normalized = stored == "discover" ? "conversations" : stored
-                    let isSelected = normalized == mode.rawValue.lowercased()
-                    Button {
-                        updateDefaultFeed(mode.rawValue.lowercased())
-                        store.feedMode = mode
-                    } label: {
-                        Text(mode.rawValue.uppercased())
-                            .font(.syne(11, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // segmented chrome cap
-                            .foregroundStyle(isSelected ? Color.nbLabel(on: .nbAccent) : Color.nbBlack)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 4)
-                            .background(isSelected ? Color.nbAccent : Color.nbWhite)
-                    }
-                }
-            }
-            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-        }
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
-    }
-
-    private var seenPostsRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Seen Posts")
-                    .font(.inter(15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                Text("\(seenPosts.filter { $0.seenAt >= Date().addingTimeInterval(-7 * 24 * 3600) }.count) posts tracked (last 7 days)")
-                    .font(.inter(12))
-                    .foregroundStyle(Color.nbTextSecondary)
-            }
-            Spacer()
-            Button { showClearSeenConfirm = true } label: {
-                Text("CLEAR")
-                    .font(.syne(12, weight: .bold))
-                    .foregroundStyle(Color.nbBlack)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .background(Color.nbBlack.offset(x: 2, y: 2))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
-    }
-
-    private var clearCacheRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Image Cache")
-                    .font(.inter(15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                Text(cacheCleared ? "Cleared" : "Free up space used by cached images")
-                    .font(.inter(12))
-                    .foregroundStyle(cacheCleared ? Color.nbLinkColor : Color.nbTextSecondary)
-            }
-            Spacer()
-            Button {
-                NBImageLoader.clearCache()
-                Haptics.success()
-                withAnimation { cacheCleared = true }
-            } label: {
-                Text("CLEAR")
-                    .font(.syne(12, weight: .bold))
-                    .foregroundStyle(Color.nbBlack)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .background(Color.nbBlack.offset(x: 2, y: 2))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Clear image cache")
-        }
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
-    }
-
-    private var notificationSettingsRow: some View {
-        Button {
-            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
-        } label: {
+    private func externalLinkRow(title: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
             HStack {
-                Text("Notification Settings")
-                    .font(.inter(15))
-                    .foregroundStyle(Color.nbBlack)
+                Text(title).foregroundStyle(Color.primary)
                 Spacer()
-                Text("System")
-                    .font(.inter(13))
-                    .foregroundStyle(Color.nbLinkColor)
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.nbLinkColor)
-            }
-            .padding(14)
-            .background(Color.nbWhite)
-            .nbBorder()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open notification settings in the system Settings app")
-    }
-
-    private var hintsToggleRow: some View {
-        Toggle(isOn: Binding(
-            get: { hints.hintsEnabled },
-            set: { hints.hintsEnabled = $0; Haptics.selection() }
-        )) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Show Tips")
-                    .font(.inter(15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                Text("In-context hints on feeds and tools")
-                    .font(.inter(12))
-                    .foregroundStyle(Color.nbTextSecondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
-        .tint(Color.nbAccent)
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
-    }
-
-    private var resetHintsRow: some View {
-        Button {
-            hints.resetAll()
-            Haptics.success()
-        } label: {
-            HStack {
-                Text("Reset All Tips")
-                    .font(.inter(15))
-                    .foregroundStyle(Color.nbBlack)
-                Spacer()
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.nbAccentLegible)
-            }
-            .padding(14)
-            .background(Color.nbWhite)
-            .nbBorder()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Reset all dismissed tips")
-    }
-
-    private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.syne(11, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Color.nbTextTertiary)
-                .padding(.leading, 4)
-            content()
-        }
-    }
-
-    private func externalLinkRow(title: String, subtitle: String, url: String) -> some View {
-        Button {
-            if let u = URL(string: url) { UIApplication.shared.open(u) }
-        } label: {
-            HStack {
-                Text(title)
-                    .font(.inter(15))
-                    .foregroundStyle(Color.nbBlack)
-                Spacer()
-                Text(subtitle)
-                    .font(.inter(13))
-                    .foregroundStyle(Color.nbLinkColor)
-                    .lineLimit(1)
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.nbLinkColor)
-            }
-            .padding(14)
-            .background(Color.nbWhite)
-            .nbBorder()
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func settingsRow(title: String, value: String) -> some View {
-        HStack {
-            Text(title).font(.inter(15)).foregroundStyle(Color.nbBlack)
-            Spacer()
-            Text(value).font(.inter(14)).foregroundStyle(Color.nbTextSecondary)
-        }
-        .padding(14)
-        .background(Color.nbWhite)
-        .nbBorder()
     }
 
     private func clearSeenPosts() {
@@ -1111,6 +989,14 @@ struct BarInsetCanceller: UIViewRepresentable {
             var r: UIResponder? = self
             while let next = r?.next, !(next is UIViewController) { r = next }
             guard let vc = r?.next as? UIViewController, vc.view.window != nil else { return }
+            // Paint the paper in UIKit too (§13.5). The hosting controller's default white
+            // showed through while this canceller resized the SwiftUI content a beat after
+            // the screen appeared: a white block that redrew and shrank (owner, Reader).
+            let paper = UIColor(Color.nbBackground)
+            if vc.view.backgroundColor != paper { vc.view.backgroundColor = paper }
+            if let nav = vc.navigationController, nav.view.backgroundColor != paper {
+                nav.view.backgroundColor = paper
+            }
             let added = vc.additionalSafeAreaInsets
             let total = vc.view.safeAreaInsets
             var want = UIEdgeInsets.zero

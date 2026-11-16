@@ -235,7 +235,7 @@ struct TimelineScrubberView: View {
                 .padding(.vertical, 9)
                 .frame(maxWidth: .infinity)
                 .background(Color.nbWhite)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
 
                 // GO button
                 Button { Task { await doSearch() } } label: {
@@ -247,7 +247,7 @@ struct TimelineScrubberView: View {
                         .background(query.trimmingCharacters(in: .whitespaces).isEmpty
                                     ? Color.nbTextTertiary
                                     : Color.nbAccent)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        .nbBorder()
                 }
                 .buttonStyle(.plain)
                 .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -264,7 +264,7 @@ struct TimelineScrubberView: View {
                                          : Color.nbBlack)
                         .frame(width: 38, height: 38)
                         .background(Color.nbWhite)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        .nbBorder()
                 }
                 .buttonStyle(.plain)
                 .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -296,7 +296,7 @@ struct TimelineScrubberView: View {
                     .padding(.horizontal, 8)
                     .frame(height: 32)
                     .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .nbBorder()
                     .nbShadow(size: 2)
 
                 // Zoom in
@@ -327,7 +327,7 @@ struct TimelineScrubberView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(showDatePickers ? Color.nbBlack.opacity(0.07) : Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    .nbBorder()
                     .nbShadow(size: 2)
                 }
                 .buttonStyle(.plain)
@@ -343,7 +343,7 @@ struct TimelineScrubberView: View {
                 .foregroundStyle(Color.nbBlack)
                 .frame(width: 32, height: 32)
                 .background(Color.nbWhite)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
                 .nbShadow(size: 2)
         }
         .buttonStyle(.plain)
@@ -387,7 +387,7 @@ struct TimelineScrubberView: View {
     private var emptyView: some View {
         NBEmptyState(
             icon: "chart.xyaxis.line",
-            title: "NO POSTS FOUND",
+            title: "Nothing turned up",
             message: "Try zooming out or widening the date range."
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -403,8 +403,7 @@ struct TimelineScrubberView: View {
                     .foregroundStyle(Color.nbAccent.opacity(0.6))
             }
             .frame(width: 110, height: 110)
-            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-            .background(Color.nbBlack.offset(x: 3, y: 3))
+            .nbBorder()
 
             VStack(spacing: 8) {
                 Text("TIMELINE")
@@ -870,8 +869,7 @@ struct TLPostCard: View {
         .padding(.vertical, 5)
         .frame(width: large ? 220 : 158, height: large ? 100 : 72, alignment: .topLeading)
         .background(Color.nbWhite)
-        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-        .background(Color.nbBlack.offset(x: 2, y: 2))
+        .nbBorder()
     }
 
     private func engagementCell(_ icon: String, _ count: Int) -> some View {

@@ -64,7 +64,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // reports .phone — so test the HARDWARE. A portrait lock there made iPadOS
         // draw the whole app rotated 90° whenever the iPad was held landscape.
         if AppDelegate.isIPadHardware { return .all }
-        return AppDelegate.streamingActive ? .landscape : .portrait
+        // Stream lays out for any shape, so while it plays the phone may turn either
+        // way; it is never forced sideways (iOS-DESIGN §10.5).
+        return AppDelegate.streamingActive ? .allButUpsideDown : .portrait
     }
 
     static let isIPadHardware = UIDevice.current.model.hasPrefix("iPad")
@@ -102,6 +104,13 @@ struct BskyDreamsApp: App {
     }
 
     init() {
+        // Screen titles are display type (§13.11): Syne, like the mastheads.
+        if let syne = UIFont(name: "Syne-Bold", size: 18) {
+            UINavigationBar.appearance().titleTextAttributes = [.font: syne]
+        }
+        if let syneLarge = UIFont(name: "Syne-Bold", size: 34) {
+            UINavigationBar.appearance().largeTitleTextAttributes = [.font: syneLarge]
+        }
         // Large disk cache so AsyncImage and URLSession responses persist across sessions
         URLCache.shared = URLCache(
             memoryCapacity: 100 * 1024 * 1024,   // 100 MB memory
@@ -273,9 +282,13 @@ struct BskyDreamsApp: App {
         saveDeliveredIDs(deliveredIDs)
     }
 
+    /// Settings → Reading: "serif" (Editorial, New York) or "sans" (Modern, SF).
+    @AppStorage("reading_typeface") private var readingTypeface = "serif"
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(\.nbReadingSerif, readingTypeface == "serif")
                 .environment(authManager)
                 .environment(appStore)
                 .environment(networkMonitor)

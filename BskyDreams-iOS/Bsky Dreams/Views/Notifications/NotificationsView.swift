@@ -21,6 +21,7 @@ struct NotificationGroup: Identifiable {
 }
 
 struct NotificationsView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
     @Environment(NetworkMonitor.self) private var network
@@ -48,15 +49,15 @@ struct NotificationsView: View {
                 } else if groups.isEmpty {
                     NBEmptyState(
                         icon: "bell.slash",
-                        title: "No Notifications",
-                        message: "You're all caught up!"
+                        title: "Nothing new",
+                        message: "You're all caught up."
                     )
                 } else {
                     notificationList
                 }
             }
         }
-        .nbNavBar(title: "NOTIFICATIONS", leading: { NBHamburger() }, trailing: {
+        .nbNavBar(title: mastheadVisible ? "" : "Notifications", leading: { NBHamburger() }, trailing: {
             Button("Mark All Read", systemImage: "checkmark.circle") { markAllRead() }
         })
         .task {
@@ -77,17 +78,30 @@ struct NotificationsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 Color.clear.frame(height: 0).id("notif-top")
+                NBMasthead(kicker: "Notifications", headline: "What's new with you",
+                           deck: "Replies, follows and likes, newest first.",
+                           onVisibleChange: { mastheadVisible = $0 })
+                    .padding(.bottom, 6)
                 ForEach(groups) { group in
                     NotificationGroupRowView(group: group)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(group.primary.isRead ? Color.clear : Color.nbAccent.opacity(0.05))
+                        .padding(.vertical, 8)
+                        // Unread: the accent dash at the leading edge (§13.9).
+                        .overlay(alignment: .topLeading) {
+                            if !group.primary.isRead {
+                                NBUnreadMark().padding(.top, 20).padding(.leading, 3)
+                            }
+                        }
+                        .accessibilityValue(group.primary.isRead ? "" : "Unread")
                         .onAppear {
                             if group.id == groups.last?.id {
                                 Task { await loadMore() }
                             }
                         }
-                    Divider().padding(.horizontal, 12)
+                    // Items in a sequence: the dotted list rule, from where the text starts.
+                    NBListRule()
+                        .padding(.leading, 68)
+                        .padding(.trailing, 12)
                 }
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding()

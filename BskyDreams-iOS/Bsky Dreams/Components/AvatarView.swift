@@ -24,7 +24,7 @@ struct AvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(.circle)
-        .overlay(Circle().strokeBorder(Color.nbBlack, lineWidth: 1.5))
+        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
         .accessibilityHidden(true)
     }
 

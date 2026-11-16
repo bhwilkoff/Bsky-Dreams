@@ -55,7 +55,7 @@ bar lists every place and the system's own "…" overflow covers what doesn't fi
 tab there is a duplicate overflow (owner, device).
 
 1.7 **Destination order** (Home, Search, Notifications, Reader, then Gallery, TV,
-Stream, Messages, Analytics, Constellation, Timeline, Channels, Settings). Reader and
+Stream, Saved, Messages, Analytics, Constellation, Timeline, Channels, Settings). Reader and
 Messages swapped (owner, 2026-11-10): Reader is a tab (in the Duo's vertical bar),
 Messages a place (sidebar / overflow / More). Diverges from web's order — deliberate.
 Tab bar = the first four + More (`AppTab.phoneTabs`); the rest are sidebar
@@ -236,7 +236,12 @@ customization, kept in `tabCustomization`). At compact width it is the tab bar.
   `Label`): always reachable — the leading item of whatever fills the right side (pane,
   empty state, second column), or a trailing item on full-display screens (TV, Stream…).
   Its first option, **Conversations**, is the default and turns the column back into the
-  detail pane. (Build 55 put the picker only INSIDE the second column, so once closed a
+  detail pane. **One Column** (`store.singleColumn`, remembered, never the default) removes
+  the right side entirely: the primary takes the display, posts push in place as on the
+  outer display, an open conversation moves onto the primary stack, and Right Side sits in
+  the primary's trailing toolbar so the choice can be undone. Owner: "allow for a single
+  column mode for when the screen is open (it shouldn't be the default, but it should
+  still be possible)." (Build 55 put the picker only INSIDE the second column, so once closed a
   column could never be reopened — owner, device.) Remembered across launches; hidden (not lost) on the closed Duo.
   Each column has its OWN stack (`secondaryPath`): whatever you open in a column
   opens in that column. Home keeps a per-column feed (`store.secondaryFeedMode`,
@@ -291,9 +296,47 @@ side and the Right Side menu are hidden; a chosen second view returns when you l
 Owner: "Stream is a full screen experience" … "Timeline and Constellation are also full
 screen experiences." TV is not on the list — it has its own full-screen toggle (§10.13).
 
-10.5 **Stream starts flat.** The inner display ignores interface orientation, so on
-the open Duo Stream starts at once — no "turn your phone" step — and rotation
-signals don't dismiss it.
+10.5 **Stream is a screen saver you can step into.** The inner display ignores interface
+orientation, so on the open Duo Stream starts at once — no "turn your phone" step — and
+rotation signals don't dismiss it. Owner (2026-11-16): "the ultimate screen saver for the
+iPhone Duo … great screensaver viewing AND great interactions for when you see a post
+you'd like to dig into more." Two modes on one surface:
+- **Watching (calm).** One post at a time as a pull quote: the largest type that fits
+  (`fittedFontSize`; floor 19pt scaled with Dynamic Type), lines revealed one by one
+  (`LineReveal`, a `TextRenderer`), who said it beneath, quiet counts. Behind it a slow
+  `MeshGradient` of the post's own colors (sampled 3×3 from its image or the author's
+  avatar). A clock (setting) and a hairline of progress — nothing else. Scenes dissolve
+  through a blur. After a post with replies, a **conversation beat**: the post small
+  beside "What people are saying" (top replies by likes) and Join the Conversation.
+- **Interacting (tap).** The post eases back (a visual scale, so type isn't refitted);
+  its actions appear in place of the quiet counts (reply, repost, like, save, share,
+  Conversation — labels then counts drop to fit, never truncate); a **filmstrip** of recent
+  and upcoming posts (tap to go back to one you just missed); prev / play-pause (progress
+  ring) / next. Controls auto-hide after 6s of no use.
+- **Gestures:** double-tap likes (heart burst); a finger on the screen holds the post;
+  swipe left/right changes it; swipe up opens its conversation.
+- **Digging in never loses your place.** Words / reply cards / Conversation → the
+  conversation BESIDE the post (`FoldSplitLayout`, `.explore` NavColumn +
+  `store.explorePath`); author → profile there, long-press → stream that person; a
+  hashtag → stream that tag; image → lightbox; link → article + discussion (§10.12). Save
+  keeps a post for later; **Saved** is a source. Anything open holds the clock; Resume
+  continues the same post; the panel follows if you move to another post.
+- **One post = one scene; media is whole** (fit, framed, prefetched with its colors and
+  replies). Layout from the measured canvas: wide → media beside the words; tall → above.
+  Folded, splits land on the fold (`FoldGeometry`); words alone become a two-page spread.
+- **Looks:** Ambient (default — dark, colored by each post), Bold (brand palette), Paper
+  (light); typeface Editorial (New York) or Modern (SF) — system fonts for emoji.
+- **Liquid Glass** for every floating control (`glassEffect`, `GlassEffectContainer`;
+  material below iOS 26). Status bar and home indicator hidden. Paused under VoiceOver;
+  next/previous/pause/show controls are accessibility actions.
+- **The stream outlives the screen.** Session state lives in `StreamSession.shared` and
+  the player is presented by MainAppView (`StreamView(role: .player)`), never by the
+  Stream screen: closing the Duo swaps the sidebar for the tab bar, which rebuilds the
+  Stream screen inside More, and a cover owned by it was dismissed with it (owner,
+  device). Rule for any full-screen experience that must survive open/close: present it
+  from the root, keep its state out of the view.
+- Seen posts are skipped only in Discover/Following; a topic, a person or Saved shows
+  everything asked for. Setup offers Resume / Start Over, a live preview of the look.
 
 10.6 **Art under the strip.** With the iOS 27.1 SDK, the status bar and system bars
 sit in a strip down the trailing edge (closed Duo; inner display in landscape).
@@ -373,6 +416,167 @@ iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 
 ---
 
+## 11. Design Language 2 (learned from Stream, 2026-11-16)
+
+Owner: "take all that you have learned from this redesign for the Stream interface and
+make updates across all surfaces for the far more sophisticated design language and
+interface elements … especially for the iPhone Duo screen size and functionality."
+The shared pieces live at the end of `DesignSystem.swift`.
+
+11.1 **Post text is reading.** Every post body uses `.nbReadingFont(base)`: the reading
+typeface from Settings → Reading (Editorial = New York, default; Modern = SF; system
+fonts so emoji render), scaled with Dynamic Type AND with the column it sits in
+(`\.nbColumnWidth`, measured by `.nbColumnWidthReader()` on each Duo column, the
+explore panel, two-page halves): +2pt at ≥560pt, +4pt at ≥760pt. Headlines (Reader
+titles, profile names, pull quotes) use `nbReadingFace`. The article reader's HTML uses
+the same face (`ui-serif`). UI chrome stays Syne/Inter.
+
+11.2 **Color from content.** Where a surface is ABOUT one thing, its background is that
+thing's own palette: `NBContentField(url:tone:)` samples 3×3 colors from an avatar or
+image and drifts them slowly as a `MeshGradient` (`.pale` in light mode, `.deep` in dark
+or over media; still under Reduce Motion). Used by: profile headers, the conversation's
+post page, the lightbox, the Duo's empty right pane, TV/Stream heroes. Never behind a
+scrolling list of many things.
+
+11.3 **Glass for what floats.** Controls over content (video, photos, Stream) are
+Liquid Glass: `.nbGlass(in:)`, `NBGlassButton`, `NBGlassCapsule`, grouped in
+`NBGlassGroup` (iOS 26+; material fallback). Content keeps its neubrutalist frames and
+shadows; glass is never a card background.
+
+11.4 **Two pages when there's room.** At ≥760pt measured width (One Column on the open
+Duo, a wide pushed screen) a view about one thing becomes a spread, split on the fold
+when folded (`FoldGeometry`):
+- **Conversation:** the post (and what it answers) at feature size on its author's
+  colors | "What people are saying".
+- **Profile:** who they are on their colors | what they've posted.
+Each page sizes its reading type to its own width.
+
+11.5 **The right pane invites.** With nothing open, the Duo's right side is
+`RightPanePlaceholder`: a color field and one sentence about what goes there. Not an
+uppercase "NOTHING".
+
+11.6 **Keep it, stream it.** `SavedPosts` (device-local URIs) is app-wide: Save for Later
+in every post's ••• menu, TV and Stream; the **Saved** place lists them. "Stream this"
+is offered wherever there's a natural set: a profile (Stream tool), a post's author
+(menu), a search or #hashtag (toolbar), Saved (toolbar). `StreamSession.shared.play(_:)`
+starts it from anywhere; the player is presented at the root (§10.5).
+
+11.7 **Lines arrive, things dissolve.** `NBLineReveal` (a `TextRenderer`) and
+`.nbBlurDissolve` are for a single featured thing changing (Stream), never for lists.
+
+11.8 **Words.** Every string on screen is in Ben's voice (see the pre-ship checklist).
+
+---
+
+## 12. Editorial Native (2026-11-16)
+
+Owner, after §11 shipped beside the old chrome: "the harsh difference between the old and
+new across columns is pretty glaring … update all of the interface elements for this new
+approach to editorial and modern interface elements that take full advantage of the
+latest APIs and design patterns on iOS." Chosen direction (owner): **editorial native**:
+neubrutalism retires on iOS; the brand lives in the blue accent, the cloud mark, color
+from content and the reading face. Web keeps neubrutalism for now (a deliberate
+divergence, like circular avatars).
+
+12.1 **Type is San Francisco text styles.** `Font.inter(size)` maps to the nearest system
+text style (Dynamic Type for free); `Font.syne(size)` is SF **Expanded** at that style,
+for small section labels and the few wide caps that remain. Post text: §11.1. Nav
+titles: New York semibold (UINavigationBar appearance), title case (`nbTitleCase`, so
+"CONVERSATION" reads "Conversation").
+
+12.2 **Containers are soft.** `nbBorder()` = continuous 14pt corners (`NBMetrics.corner`)
+that clip their content + a hairline (`Color.nbBorder`, or a passed tint at 45%).
+`nbShadow()` draws nothing. No hard offset shadows, no 2–3pt black outlines, no square
+corners on containers.
+
+12.3 **Posts are rows.** `PostCardView` is an editorial row: no box, 14pt insets, a
+hairline under it, a rounded depth rule for replies, an accent wash (not an outline)
+for the post open in the Duo pane. Galleries and Reader keep cards (a picture or
+article is a thing), now soft.
+
+12.4 **System controls.** Segmented choices are `Picker(.segmented)` (feed, search
+mode/sort, typeface, Stream pace/content); Settings is a `Form` with `Picker`,
+`Toggle`, `LabeledContent`, `Link`; empty states are `ContentUnavailableView`
+(`NBEmptyState` wraps it, sentence case); text fields are filled rounded fields; primary
+actions are filled capsules or accent buttons; floating controls are glass (§11.3).
+
+12.5 **Media is framed softly**: rounded 18pt corners and a soft shadow (Stream), not
+a black frame with an offset block.
+
+12.6 **Retired**: `DiagonalStripeBackground` (renders a pale content field now),
+the neubrutalist button press travel, uppercase empty-state titles.
+
+---
+
+## 13. Bsky Dreams personality on native controls (2026-11-16)
+
+Owner: "the app has lost a lot of its personality … The whole point of having Bsky Dreams
+look different … is to differentiate it from the default app." Then, on scattered
+decorative shapes: "It is AI slop. We need an actual design pattern." The brand is a
+SYSTEM with rules, not decoration. Owner chose **magazine typography**.
+
+13.1 **Magazine typography.** Personality is typographic. `NBMasthead` = `NBKicker`
+(accent rule + Syne small caps: the place, and the mode) + Syne headline (≤ 6 words) +
+serif deck (one sentence, Ben's voice). One per screen, at the top of the content,
+scrolling away with it; never sticky. Used on Home (per feed), Reader, Gallery,
+Notifications, Saved; the Duo's empty pane is a cover built from the same parts.
+Counts that matter are `NBStat` (big Syne numeral + small caps label): profile stats,
+the conversation's replies/reposts/likes.
+
+13.2 **Syne is the voice; SF is the interface.** `Font.syne` is Syne again (scaled to the
+nearest text style) for kickers, headlines, numerals and buttons. System controls
+(pickers, Form, search) stay SF.
+
+13.3 **The signature lift.** `nbShadow()` is the old hard offset shadow, rounded and tinted
+with the accent (22% light / 38% dark) instead of black. Post cards, gallery and reader
+cards, primary buttons.
+
+13.4 **Posts are cards again** (§12.3 superseded): each post a white card on the paper,
+14pt corners, hairline, signature lift, ~14pt between cards, so posts are easy to tell
+apart. The post open in the Duo pane gets an accent outline.
+
+13.5 **Accent-tinted paper.** `Color.nbBackground` is a 6% (dark: 7%) wash of the
+person's accent, applied to every navigation screen with `.nbPaper()`
+(`containerBackground(for: .navigation)`).
+
+13.6 **Columns blend.** Where a content field meets paper (the empty pane, two-page
+conversation and profile), `nbBlendsIntoPaper(edge:)` softens the field toward the paper
+and fades it out along the shared edge; no hard divider there.
+
+13.9 **Two rules, two meanings** (owner: "if they represent different things, I don't want
+them to look identical"). Both come from the accent rule (the kicker's dash):
+- **Column gutter** (`NBColumnGutter`), between two independent views: a 1pt accent rule
+  (35%) that fades in and out along its length, capped by a solid 3×18 accent dash level
+  with the masthead kicker. None where a content field blends into paper (§13.6).
+- **List rule** (`NBListRule`), between items in a sequence: a dotted rule, inset to
+  where the text starts. Unread items carry `NBUnreadMark` (the dash, upright, at the
+  leading edge) instead of a tinted row.
+Never `Divider()` or a plain gray line between columns or list items.
+
+13.10 **Paper reaches UIKit.** Each screen's hosting controller and its navigation
+controller also get the paper color (set in `BarInsetCanceller`): otherwise their default
+white flashed and redrew while the Duo's inset was applied (owner, Reader).
+
+13.11 **Three type roles, one job each** (owner: "at least four different competing fonts
+and interface elements across the full screen"):
+- **Display = Syne**: screen titles (UINavigationBar appearance), kickers, masthead
+  headlines, big numerals.
+- **Reading = the reading face** (Editorial/Modern, §11.1): posts, decks, articles.
+- **Interface = SF**: lists, controls, metadata, everything else.
+No fourth face. A screen with a masthead shows no bar title until the masthead scrolls
+away (`NBMasthead(onVisibleChange:)` via `onScrollVisibilityChange`), so the screen's
+name is never shown twice and never missing. Messages has a masthead like every place.
+
+13.7 **Never**: scattered or "confetti" shapes, decoration without a job, graphics on
+reading content.
+
+13.8 **Why chips** say something new or nothing: "Reposted by", "Followed by … you
+know", "Popular in your network", "Matches your interest in #…". Never "From someone
+you follow" (that's what Home is) or "Active conversation · N replies" (the count is
+under the post).
+
+---
+
 ## Anti-Patterns (never)
 
 - ❌ Bare `catch {}` that only logs — always surface `NBErrorBanner` + `Haptics.error`.
@@ -391,6 +595,13 @@ iOS 27.1 SDK; older SDKs run "boxed". CI picks the newest non-beta Xcode on the
 - ❌ `store.navigationPath.append(…)` in a view — use `store.openPost` / `openChat` / `push` with `\.navColumn` (§10.3).
 - ❌ `UIScreen.main` anywhere — measure the container; use `displayScale` (§10.4).
 - ❌ Branching on device / idiom / orientation for layout — size classes and measured width only (§10.1).
+- ❌ Black hard offset shadows, thick black outlines or square-cornered containers on iOS (§12.2); the lift is accent-tinted and rounded (§13.3).
+- ❌ Decorative shapes or "confetti" with no job (§13.7).
+- ❌ A hand-rolled segmented toggle where `Picker(.segmented)` fits (§12.4).
+- ❌ Post text in Inter or a fixed `.system(size:)` — use `.nbReadingFont` (§11.1).
+- ❌ A flat fill or black behind a surface about one thing, when its own colors are available (§11.2).
+- ❌ Styled squares/pills floating over video or photos — glass (§11.3).
+- ❌ A full-screen experience presented by a view that can be rebuilt (a tab's screen) — present at the root (§10.5).
 
 ---
 
@@ -411,4 +622,6 @@ For any new/changed feature surface:
 - [ ] New types inlined into compiled files (synchronized-group gotcha).
 - [ ] A Reply button always does something (local box, or `openReply`) (§10.11).
 - [ ] Open iPhone Duo (regular/regular): works as a primary AND a second column, at ~310pt AND ~860pt wide (§10.9); opens go through `openPost`/`openChat`/`push` with `\.navColumn`; any shared store state it reads is per-column or primary-only (§10).
+- [ ] Post text uses `.nbReadingFont`; floating controls are glass; wide (≥760pt) views about one thing are two pages (§11).
 - [ ] Feature serves human learning/agency (see CLAUDE.md "Why We Build").
+- [ ] Every word on screen is in Ben's voice (`LearningIsChange/BEN.md`): plain, a little wry, the why in one clause, "folks", no em dashes (owner, 2026-11-16).

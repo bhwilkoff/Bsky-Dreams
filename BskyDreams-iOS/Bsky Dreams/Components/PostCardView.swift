@@ -82,17 +82,20 @@ struct PostCardView: View {
                 // Action bar
                 actionBar
             }
-            .padding(12)
+            // Each post is its own card on the accent-tinted page, with the signature
+            // lift (§13): easy to tell one post from the next.
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
             .background(Color.nbWhite)
-            .nbBorder()
-            .nbShadow()
             .overlay(alignment: .leading) {
                 if depth > 0 {
                     Rectangle()
                         .fill(depthAccent)
-                        .frame(width: 3)
+                        .frame(width: 4)
                 }
             }
+            .nbBorder()
+            .nbShadow(size: 4)
             .overlay(alignment: .bottom) {
                 if let actionError {
                     NBErrorBanner(message: actionError)
@@ -105,9 +108,10 @@ struct PostCardView: View {
         // Open Duo: the post whose conversation is open in the detail pane is marked in
         // the list beside it — the list/detail "you are here".
         .overlay {
+            // The open Duo: the post whose conversation is open beside the list.
             if navColumn != .detail, store.detailPane?.id == "post:\(post.uri)" {
-                Rectangle()
-                    .strokeBorder(Color.nbAccent, lineWidth: 3)
+                RoundedRectangle(cornerRadius: NBMetrics.corner, style: .continuous)
+                    .strokeBorder(Color.nbAccent, lineWidth: 2.5)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -148,19 +152,19 @@ struct PostCardView: View {
             Button(isMuted ? "Unmute" : "Mute", role: isMuted ? .none : .destructive) { toggleMute() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(isMuted ? "You will see their posts again." : "You won't see their posts in your feed.")
+            Text(isMuted ? "Their posts will show up again." : "You won't see their posts in your feed.")
         }
         .confirmationDialog("Block @\(post.author.handle)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
             Button("Block", role: .destructive) { performBlock() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("They won't be able to interact with you.")
+            Text("You won't see each other's posts, and they can't interact with you.")
         }
         .confirmationDialog("Delete this post?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { deletePost() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This cannot be undone.")
+            Text("There's no undo for this.")
         }
         .onAppear {
             syncState()
@@ -265,6 +269,21 @@ struct PostCardView: View {
 
             // "..." menu — share, open in Bluesky, and owner/other-specific actions
             Menu {
+                // Keep it for later (Saved, and Stream's Saved source) — app-wide (§11).
+                let saved = SavedPosts.shared.contains(post.uri)
+                Button {
+                    Haptics.light()
+                    SavedPosts.shared.toggle(post.uri)
+                } label: {
+                    Label(saved ? "Remove from Saved" : "Save for Later",
+                          systemImage: saved ? "bookmark.slash" : "bookmark")
+                }
+                Button {
+                    StreamSession.shared.play(.author(did: post.author.did, handle: post.author.handle))
+                } label: {
+                    Label("Stream @\(post.author.handle)'s Posts", systemImage: "play.rectangle")
+                }
+                Divider()
                 Button { showShareSheet = true } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -673,7 +692,7 @@ struct InlineReplyView: View {
                     .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
             Spacer()
             if isFocused {
@@ -697,7 +716,7 @@ struct InlineReplyView: View {
                 images.append(ComposeImage(imageData: resized))
             } else {
                 Haptics.error()
-                errorMessage = "Couldn't load that photo — try another."
+                errorMessage = "That photo didn't load. Try another one."
             }
         }
         selectedItems = []
@@ -779,7 +798,7 @@ struct ShareOptionsView: View {
                 VStack(spacing: 0) {
                     shareOption(
                         title: "Share Bluesky Link",
-                        subtitle: "bsky.app — opens in Bluesky",
+                        subtitle: "bsky.app · opens in Bluesky",
                         icon: "cloud",
                         url: bskyURL
                     )
@@ -788,7 +807,7 @@ struct ShareOptionsView: View {
 
                     shareOption(
                         title: "Share Bsky Dreams Link",
-                        subtitle: "bskydreams.com — opens in app or web",
+                        subtitle: "bskydreams.com · opens in the app or on the web",
                         icon: "wand.and.stars",
                         url: dreamsURL
                     )

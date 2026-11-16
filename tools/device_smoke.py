@@ -93,7 +93,7 @@ def launch_and_shoot(udid, outdir, key, view, extra_env):
     # BSKY_TYPE_SIZE=accessibility3 in the CALLER's env → forwarded to the app.
     if os.environ.get("BSKY_TYPE_SIZE"):
         env["DEVICECTL_CHILD_BSKY_TYPE_SIZE"] = os.environ["BSKY_TYPE_SIZE"]
-    for k in ("BSKY_REPLY_POST", "BSKY_OPEN_FIRST_ARTICLE", "BSKY_TV_AUTOSTART", "BSKY_TALL_SIDE_BY_SIDE", "BSKY_TIMELINE_QUERY", "BSKY_TV_FULL_SCREEN"):
+    for k in ("BSKY_REPLY_POST", "BSKY_OPEN_FIRST_ARTICLE", "BSKY_TV_AUTOSTART", "BSKY_TALL_SIDE_BY_SIDE", "BSKY_TIMELINE_QUERY", "BSKY_TV_FULL_SCREEN", "BSKY_STREAM_AUTOSTART", "BSKY_STREAM_FILTER", "BSKY_STREAM_EXPLORE", "BSKY_STREAM_THEME", "BSKY_STREAM_TYPEFACE", "BSKY_STREAM_CONTROLS", "BSKY_STREAM_STEP", "BSKY_OPEN_FIRST_CHAT"):
         if os.environ.get(k):
             env[f"DEVICECTL_CHILD_{k}"] = os.environ[k]
     if os.environ.get("BSKY_SECOND_COLUMN"):
