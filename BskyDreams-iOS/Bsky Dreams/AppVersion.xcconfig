@@ -4,4 +4,4 @@
 // this file and causes targets to drift apart again.
 
 MARKETING_VERSION = 1.50
-CURRENT_PROJECT_VERSION = 57
+CURRENT_PROJECT_VERSION = 58
