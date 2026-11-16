@@ -107,7 +107,7 @@
 
 **All primary views implemented.** App is live on the App Store (v1.26).
 
-**2026-11-16: 1.50 (57) submitted for App Review (auto-release on approval) — the redesign release** (Stream rebuilt as a screen saver, One Column, Design Language 2 → Editorial Native → magazine typography, Saved, Stream from anywhere, Constellation rebuilt on SwiftUI gestures, every string in Ben's voice; iOS-DESIGN §10.5, §11–§13). 1.49 (56) is live.
+**2026-11-16: 1.50 (58) submitted for App Review (57 pulled from the queue to add the GIF fix) (auto-release on approval) — the redesign release** (Stream rebuilt as a screen saver, One Column, Design Language 2 → Editorial Native → magazine typography, Saved, Stream from anywhere, Constellation rebuilt on SwiftUI gestures, every string in Ben's voice; iOS-DESIGN §10.5, §11–§13). 1.49 (56) is live.
 App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Completed

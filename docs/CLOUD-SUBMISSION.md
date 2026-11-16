@@ -30,7 +30,7 @@ path + bundle id are STALE (it predates the current `app.bskydreams.ios` / space
    ids — `app.bskydreams.ios` and `app.bskydreams.ios.ShareExtension` — and uploads to App Store Connect.
 3. **Submit for review — by API, no App Store Connect UI.** `tools/asc_release.py` (ported from
    UniversalAppTemplate) opens/renames the App Store version to `MARKETING_VERSION`, waits for the
-   build to go VALID (10–30 min after upload), attaches it, sets What's New, and submits via the
+   build to go VALID (usually under 10 min after upload), attaches it, sets What's New, and submits via the
    `reviewSubmissions` → `reviewSubmissionItems` → `submitted:true` flow. Pure REST, so it runs fine
    from the beta-OS dev Mac (needs PyJWT — `/usr/bin/python3` has it) or in the cloud:
    ```
