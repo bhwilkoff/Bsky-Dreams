@@ -96,4 +96,18 @@ final class DuoInteractionTests: XCTestCase {
         // band are claimed by the system's sidebar and bar gestures (2026-11-16); the owner
         // verified drag and pan by hand.
     }
+
+    /// GIFs in a list (Search): scroll through and capture; every GIF should be drawn.
+    func testGifsInList() throws {
+        let app = launch(["BSKY_SEARCH_QUERY": "domain:static.klipy.com"])
+        sleep(10)
+        report(app, "gifs-top")
+        let scroll = app.scrollViews.firstMatch
+        for i in 0..<4 { scroll.swipeUp(); sleep(2); report(app, "gifs-scroll-\(i)") }
+        for _ in 0..<4 { scroll.swipeDown() }
+        sleep(3)
+        report(app, "gifs-back-top")
+        let gifs = app.descendants(matching: .any).matching(identifier: "gif").count
+        print("[DuoTest] gif elements now: \(gifs)")
+    }
 }
