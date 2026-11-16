@@ -1166,3 +1166,17 @@ rewritten in Ben's voice with a "MADE FOR IPHONE DUO" section first. Sources and
 feature list for editors live in `docs/appstore/`. Notes: App Store Connect accepted the Duo shots
 in landscape at the inner display's 2853×2007; a screenshot set lives on the version
 localization, so each new version starts from the previous one's set.
+
+---
+
+## [iOS] GIFs in feeds: native decoding, not a WKWebView per GIF
+*2026-11-16*
+
+Owner: *"I just see blank images unless I tap into that individual post."* Each feed GIF was a
+WKWebView rendering an <img>; dozens of web views created and recycled in a lazy list drew
+blank, while a single post (one web view) worked. `GifEmbedView` now downloads once, decodes off
+the main actor with ImageIO (frames downsampled to 600px, max 150 frames, per-frame GIF delays)
+into an animated UIImage in a UIImageView, cached by URL. Verified on the iPhone 12 with a Search
+list of Klipy GIF posts (`domain:static.klipy.com`), scrolling down and back:
+`DuoInteractionTests/testGifsInList`. Also 2026-11-16: the GitHub default branch was a stale
+`claude/…` branch; it is now `main`, like the other repos.

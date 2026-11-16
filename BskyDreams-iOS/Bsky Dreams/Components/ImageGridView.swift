@@ -587,40 +587,94 @@ private final class DismissGestureDelegate: NSObject, UIGestureRecognizerDelegat
 
 // MARK: - GIF Embed View (animated)
 
-/// Detects if an external card is an animated GIF and renders it inline.
-struct GifEmbedView: UIViewRepresentable {
+/// An animated GIF, decoded natively (ImageIO → animated UIImage, downsampled) and shown in a
+/// UIImageView. It used to be a WKWebView per GIF, which drew blank in feeds: many web views
+/// created and recycled in a lazy list (owner, 2026-11-16: "blank images unless I tap into
+/// that individual post"). Decoded GIFs are cached, so scrolling back is instant.
+struct GifEmbedView: View {
     let url: URL
+    @State private var image: UIImage? = nil
+    @State private var failed = false
 
     /// Strip any query string (e.g. Klipy's `?hh=&ww=&mp4=&webm=` animation params)
-    /// so the bare `.gif` file is fetched cleanly by the animated loader.
-    private var bareGifURLString: String {
+    /// so the bare `.gif` file is fetched.
+    private var bareURL: URL {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.query = nil
-        return components?.url?.absoluteString ?? url.absoluteString
+        return components?.url ?? url
     }
 
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = false
-        webView.isOpaque = false
-        webView.backgroundColor = .black
-        webView.scrollView.backgroundColor = .black
-        let html = """
-        <html>
-        <head>
-        <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-        <style>html,body{margin:0;padding:0;background:#000;display:flex;align-items:center;justify-content:center;height:100%;}
-        img{max-width:100%;max-height:100%;object-fit:contain;}</style>
-        </head>
-        <body><img src="\(bareGifURLString)"></body>
-        </html>
-        """
-        webView.loadHTMLString(html, baseURL: nil)
-        return webView
+    var body: some View {
+        ZStack {
+            Color.black
+            if let image {
+                AnimatedImageView(image: image)
+            } else if failed {
+                Image(systemName: "photo").foregroundStyle(.secondary)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .accessibilityLabel("Animated GIF")
+        .accessibilityIdentifier("gif")
+        .task(id: bareURL) {
+            if let hit = GifDecoder.cache.object(forKey: bareURL as NSURL) { image = hit; return }
+            if let decoded = await GifDecoder.load(bareURL) { image = decoded } else { failed = true }
+        }
     }
+}
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+private struct AnimatedImageView: UIViewRepresentable {
+    let image: UIImage
+    func makeUIView(context: Context) -> UIImageView {
+        let v = UIImageView()
+        v.contentMode = .scaleAspectFit
+        v.clipsToBounds = true
+        v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        v.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        v.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return v
+    }
+    func updateUIView(_ v: UIImageView, context: Context) {
+        if v.image !== image { v.image = image; v.startAnimating() }
+    }
+}
+
+enum GifDecoder {
+    nonisolated(unsafe) static let cache: NSCache<NSURL, UIImage> = {
+        let c = NSCache<NSURL, UIImage>()
+        c.countLimit = 40
+        return c
+    }()
+
+    /// Downloads and decodes off the main actor; frames downsampled to `maxPixel`.
+    static func load(_ url: URL, maxPixel: CGFloat = 600) async -> UIImage? {
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+            let count = min(CGImageSourceGetCount(src), 150)
+            guard count > 0 else { return nil }
+            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                         kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+                                         kCGImageSourceCreateThumbnailWithTransform: true]
+            var frames: [UIImage] = []
+            var duration: Double = 0
+            for i in 0..<count {
+                guard let cg = CGImageSourceCreateThumbnailAtIndex(src, i, opts as CFDictionary) else { continue }
+                frames.append(UIImage(cgImage: cg))
+                let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
+                let gif = props?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+                let d = (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+                    ?? (gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
+                duration += d < 0.02 ? 0.1 : d
+            }
+            guard !frames.isEmpty else { return nil }
+            return frames.count == 1 ? frames[0] : UIImage.animatedImage(with: frames, duration: duration)
+        }.value
+        if let image { cache.setObject(image, forKey: url as NSURL) }
+        return image
+    }
 }
 
 func isGifExternalCard(_ card: ExternalCard) -> Bool {
