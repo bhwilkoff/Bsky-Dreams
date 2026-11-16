@@ -53,10 +53,20 @@ extension Color {
     /// Dark: deep navy-black (#0D1421) — the "floor" that cards float above.
     /// Apply this to ScrollView, List, and outer ZStack backgrounds.
     static var nbBackground: Color {
+        // Accent-tinted paper (§13): the page takes a faint wash of the person's accent,
+        // so the app's ground is theirs (and white cards stand off it).
         Color(UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.05, green: 0.08, blue: 0.13, alpha: 1)  // #0D1421 deep navy-black
-                : UIColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1)  // #FAFAFA barely off-white
+            let hex = UserDefaults.standard.string(forKey: "nb_accent_color_hex") ?? "#0047FF"
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(Color(hex: hex)).getRed(&r, green: &g, blue: &b, alpha: &a)
+            if traits.userInterfaceStyle == .dark {
+                let base: (CGFloat, CGFloat, CGFloat) = (0.05, 0.07, 0.11)
+                let t: CGFloat = 0.07
+                return UIColor(red: base.0 + (r - base.0) * t, green: base.1 + (g - base.1) * t,
+                               blue: base.2 + (b - base.2) * t, alpha: 1)
+            }
+            let t: CGFloat = 0.06
+            return UIColor(red: 1 - (1 - r) * t, green: 1 - (1 - g) * t, blue: 1 - (1 - b) * t, alpha: 1)
         })
     }
 
@@ -142,17 +152,36 @@ extension Color {
 // MARK: - Typography
 
 extension Font {
-    /// Syne Bold — headings, nav labels, buttons.
-    /// `relativeTo: .body` makes the custom font scale with Dynamic Type so the
-    /// whole app respects the user's text-size setting (Accessibility). Without
-    /// `relativeTo:`, a custom font is a fixed point size and ignores Dynamic Type.
+    /// Editorial-native type (iOS-DESIGN §12): San Francisco text styles, so everything
+    /// scales with Dynamic Type the way the system does. `syne` keeps the old call sites
+    /// and becomes SF Expanded: the wide, confident labels the brand had, in the system
+    /// face. `inter` becomes plain SF.
     static func syne(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .custom("Syne-Bold", size: size, relativeTo: .body).weight(weight)
+        // Syne is the brand's voice (§13): labels, headings, buttons, the masthead. It
+        // scales with the nearest text style so Dynamic Type still works.
+        .custom("Syne-Bold", size: size, relativeTo: nbTextStyle(for: size)).weight(weight)
     }
 
-    /// Inter — body text. Scales with Dynamic Type (see `syne`).
+    /// Body and UI text: SF at the nearest text style (see `syne`).
     static func inter(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom("Inter", size: size, relativeTo: .body).weight(weight)
+        .system(nbTextStyle(for: size), design: .default, weight: weight)
+    }
+
+    /// The system text style closest to a point size, so a literal size still tracks
+    /// Dynamic Type.
+    static func nbTextStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case ..<11.5: .caption2
+        case ..<12.5: .caption
+        case ..<14:   .footnote
+        case ..<15.5: .subheadline
+        case ..<16.5: .callout
+        case ..<18.5: .body
+        case ..<21:   .title3
+        case ..<24:   .title2
+        case ..<31:   .title
+        default:      .largeTitle
+        }
     }
 }
 
@@ -175,15 +204,20 @@ struct NBShadowModifier: ViewModifier {
 }
 
 extension View {
+    /// The Bsky Dreams signature lift (§13): the old hard offset shadow, kept as the
+    /// brand's mark but rounded and tinted with the person's accent instead of black.
     func nbShadow(size: CGFloat = 3) -> some View {
-        modifier(NBShadowModifier(size: size))
+        modifier(NBSignatureLift(offset: max(3, size)))
     }
 
-    func nbBorder(_ color: Color = .nbBlack, width: CGFloat = 2) -> some View {
-        self.overlay(
-            Rectangle()
-                .strokeBorder(color, lineWidth: width)
-        )
+    /// A soft container edge (§12): continuous rounded corners that clip what's inside,
+    /// and a hairline. A color passed in (an accent for "selected", coral for an error)
+    /// tints the hairline.
+    func nbBorder(_ color: Color? = nil, width: CGFloat = 2) -> some View {
+        let shape = RoundedRectangle(cornerRadius: NBMetrics.corner, style: .continuous)
+        return self
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(color.map { $0.opacity(0.45) } ?? Color.nbBorder, lineWidth: 1))
     }
 
     /// Neubrutalist card styling
@@ -199,6 +233,24 @@ extension View {
         self
             .buttonStyle(NeubrutalistButtonStyle())
     }
+}
+
+/// See `nbShadow`. Light: accent at 22%; dark: accent at 38% (it has to read on navy).
+struct NBSignatureLift: ViewModifier {
+    let offset: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+    func body(content: Content) -> some View {
+        content.background(
+            RoundedRectangle(cornerRadius: NBMetrics.corner, style: .continuous)
+                .fill(Color.nbAccent.opacity(colorScheme == .dark ? 0.38 : 0.22))
+                .offset(x: offset, y: offset)
+        )
+    }
+}
+
+enum NBMetrics {
+    /// The one corner radius for containers (§12).
+    static let corner: CGFloat = 14
 }
 
 // MARK: - Button Style
@@ -217,25 +269,16 @@ struct NeubrutalistButtonStyle: ButtonStyle {
         @Environment(\.colorScheme) private var colorScheme
 
         var body: some View {
-            let isPressed = configuration.isPressed
-            // Larger travel (4px total: -3 resting → +1 pressed) makes the mechanical
-            // "click" feel more dramatic and unmistakably Neubrutalist.
-            let offset: CGFloat = isPressed ? 1 : -3
-            let shadowSize: CGFloat = isPressed ? 1 : 4
-            let shadowColor = colorScheme == .dark
-                ? Color.nbBlack.opacity(0.35)  // soft white glow on dark bg
-                : Color.nbShadowColor
-            return configuration.label
-                .font(.syne(14))
-                .textCase(.uppercase)   // §4.1: buttons are Syne, uppercase
+            // A filled capsule, the system's prominent shape (§12).
+            configuration.label
+                .font(.headline)
                 .foregroundStyle(Color.nbLabel(on: color))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(color)
-                .nbBorder()
-                .background(shadowColor.offset(x: shadowSize, y: shadowSize))
-                .offset(x: offset, y: offset)
-                .animation(.easeOut(duration: 0.08), value: isPressed)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(color, in: Capsule())
+                .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                .opacity(configuration.isPressed ? 0.85 : 1)
+                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
         }
     }
 }
@@ -253,39 +296,14 @@ struct NeubrutalistIconButtonStyle: ButtonStyle {
 
 // MARK: - Memphis diagonal stripe pattern (for sidebar header, banners, empty states)
 
+/// Retired Memphis stripes (§12): call sites now get a calm brand-colored field.
 struct DiagonalStripeBackground: View {
-    var color: Color = .nbAccent.opacity(0.08)
-    var stripeColor: Color = .nbAccent.opacity(0.15)
+    var color: Color = .clear
+    var stripeColor: Color = .clear
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        // In dark mode, use near-white stripes (nbBlack = #F0F4F8) at higher opacity
-        // so the Memphis pattern reads clearly against the deep navy card surface.
-        // In light mode, use the passed-in accent-tinted colors unchanged.
-        let effectiveBase   = colorScheme == .dark ? Color.nbBlack.opacity(0.06)  : color
-        let effectiveStripe = colorScheme == .dark ? Color.nbBlack.opacity(0.14)  : stripeColor
-
-        GeometryReader { geo in
-            ZStack {
-                effectiveBase
-                Canvas { context, size in
-                    let spacing: CGFloat = 12
-                    var x = -size.height
-                    while x < size.width + size.height {
-                        let path = Path { p in
-                            p.move(to: CGPoint(x: x, y: 0))
-                            p.addLine(to: CGPoint(x: x + size.height, y: size.height))
-                            p.addLine(to: CGPoint(x: x + size.height + spacing, y: size.height))
-                            p.addLine(to: CGPoint(x: x + spacing, y: 0))
-                            p.closeSubpath()
-                        }
-                        context.fill(path, with: .color(effectiveStripe))
-                        x += spacing * 2
-                    }
-                }
-                .frame(width: geo.size.width, height: geo.size.height)
-            }
-        }
+        NBContentField(url: nil, tone: colorScheme == .dark ? .deep : .pale)
     }
 }
 
@@ -314,19 +332,54 @@ extension UIColor {
 ///   • `.success/.warning/.error` — an outcome (post sent, hit a limit, request failed)
 /// All calls are no-ops if the user has reduced/!supported haptics; UIKit handles that.
 enum Haptics {
+    // Storm breaker (owner, 2026-11-10: "constant vibration", cause not yet reproduced).
+    // More than `stormLimit` haptics inside a second is never intentional, so the rest
+    // are dropped for a few seconds and what fired them is appended to
+    // Documents/haptic-storm.log for diagnosis. Haptics are main-thread UI calls.
+    nonisolated(unsafe) private static var recent: [Date] = []
+    nonisolated(unsafe) private static var mutedUntil: Date = .distantPast
+    private static let stormLimit = 6
+
+    private static func allow(_ kind: String) -> Bool {
+        let now = Date()
+        if now < mutedUntil { return false }
+        recent = recent.filter { now.timeIntervalSince($0) < 1 } + [now]
+        guard recent.count > stormLimit else { return true }
+        mutedUntil = now.addingTimeInterval(5)
+        recent.removeAll()
+        recordStorm(kind)
+        return false
+    }
+
+    private static func recordStorm(_ kind: String) {
+        let stack = Thread.callStackSymbols.prefix(14).joined(separator: "\n")
+        let entry = "=== \(Date()) haptic storm (\(kind)) ===\n\(stack)\n\n"
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = entry.data(using: .utf8) else { return }
+        let url = dir.appendingPathComponent("haptic-storm.log")
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
     static func selection() {
+        guard allow("selection") else { return }
         UISelectionFeedbackGenerator().selectionChanged()
     }
     static func light()  { impact(.light) }
     static func medium() { impact(.medium) }
     static func heavy()  { impact(.heavy) }
     static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        guard allow("impact") else { return }
         UIImpactFeedbackGenerator(style: style).impactOccurred()
     }
     static func success() { notify(.success) }
     static func warning() { notify(.warning) }
     static func error()   { notify(.error) }
     static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        guard allow("notify") else { return }
         UINotificationFeedbackGenerator().notificationOccurred(type)
     }
 }
@@ -338,7 +391,7 @@ enum Haptics {
 // never hand-roll per view, so the app stays consistent.
 
 /// Empty state: a brand-voiced `ContentUnavailableView` with an optional productive
-/// next action (e.g. "No posts yet — pull to refresh"). Prefer giving users a way
+/// next action (e.g. "No posts yet. Pull down to refresh."). Prefer giving users a way
 /// forward over a dead-end "No items".
 struct NBEmptyState: View {
     let icon: String
@@ -348,32 +401,27 @@ struct NBEmptyState: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 44, weight: .bold))
-                .foregroundStyle(Color.nbAccentLegible)
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.syne(20))
-                    .textCase(.uppercase)   // every empty-state title reads the same
-                    .foregroundStyle(Color.nbBlack)
-                    .multilineTextAlignment(.center)
-                if let message {
-                    Text(message)
-                        .font(.inter(14))
-                        .foregroundStyle(Color.nbTextSecondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
+        // The system's empty state (§12), in sentence case, 
+        ContentUnavailableView {
+            Label(title.nbSentenceCase, systemImage: icon)
+        } description: {
+            if let message { Text(message) }
+        } actions: {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(NeubrutalistButtonStyle())
-                    .accessibilityHint("Double tap to \(actionTitle.lowercased())")
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.nbAccent)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(32)
-        .accessibilityElement(children: .combine)
+    }
+}
+
+extension String {
+    /// "NO POSTS FOUND" → "No posts found"; mixed-case strings are left alone.
+    var nbSentenceCase: String {
+        guard self == uppercased(), contains(where: \.isLetter) else { return self }
+        let lower = lowercased()
+        return lower.prefix(1).uppercased() + lower.dropFirst()
     }
 }
 
@@ -427,17 +475,16 @@ struct NBOfflineBanner: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 12, weight: .bold))
                 .accessibilityHidden(true)
-            Text("You're offline — showing cached content")
+            Text("You're offline. Showing what was already here.")
                 .font(.inter(12, weight: .medium))
         }
         .foregroundStyle(Color.nbBlack)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(Color.nbLime)
-        .overlay(Rectangle().frame(height: 2).foregroundStyle(Color.nbBlack), alignment: .bottom)
+        .background(Color.nbLime.opacity(0.85))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Offline. Showing cached content.")
+        .accessibilityLabel("You're offline. Showing what was already here.")
     }
 }
 
@@ -601,11 +648,11 @@ enum NBImageLoader {
 
     /// Fetch + decode + downsample off the main actor. Returns a display-ready image.
     /// `maxPixel` caps the longest side (in points) so small cells don't decode huge bitmaps.
-    static func load(_ url: URL, maxPixel: CGFloat?) async -> UIImage? {
+    /// `scale` is the view's `displayScale` — never `UIScreen.main.scale`, which is
+    /// ambiguous on a two-display device (iPhone Duo) and slated for deprecation.
+    static func load(_ url: URL, maxPixel: CGFloat?, scale: CGFloat) async -> UIImage? {
         if let hit = cached(url) { return hit }
         guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
-        // UIScreen is main-actor-only; read the scale here, before hopping off-main.
-        let scale = await MainActor.run { UIScreen.main.scale }
         return await Task.detached(priority: .utility) { () -> UIImage? in
             let image: UIImage?
             if let maxPixel, let downsampled = NBImageLoader.downsample(data, maxPixel: maxPixel * scale) {
@@ -652,6 +699,7 @@ struct CachedImage<Content: View>: View {
     @ViewBuilder let content: (CachedImagePhase) -> Content
 
     @State private var phase: CachedImagePhase = .empty
+    @Environment(\.displayScale) private var displayScale
 
     init(url: URL?, maxPixelSize: CGFloat? = nil,
          @ViewBuilder content: @escaping (CachedImagePhase) -> Content) {
@@ -673,7 +721,7 @@ struct CachedImage<Content: View>: View {
         guard let url else { phase = .failure; return }
         if case .success = phase, NBImageLoader.cached(url) != nil { return }
         let target = url
-        if let img = await NBImageLoader.load(url, maxPixel: maxPixelSize) {
+        if let img = await NBImageLoader.load(url, maxPixel: maxPixelSize, scale: displayScale) {
             guard target == url else { return }   // parameter changed mid-flight (fast scroll)
             phase = .success(Image(uiImage: img))
         } else {
@@ -752,5 +800,579 @@ extension Color {
         let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
         let onWhite = 1.05 / (lum + 0.05), onBlack = (lum + 0.05) / 0.053
         return onWhite >= onBlack ? .white : Color(red: 0.04, green: 0.04, blue: 0.04)
+    }
+}
+
+// MARK: - iPhone Duo: art under the vertical strip (iOS-DESIGN §10)
+//
+// On the iPhone Duo (iOS 27.1 SDK) the status bar and system bars sit in a strip down
+// the trailing edge. Full-bleed art that reaches that edge continues under the strip
+// instead of stopping short of it. No-op before iOS 26, so older phones draw exactly
+// what they drew before. (Same helper as Archive Watch's `extendsUnderBars()`.)
+extension View {
+    @ViewBuilder
+    func nbExtendsUnderBars() -> some View {
+        if #available(iOS 26, *) {
+            backgroundExtensionEffect()
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Compact counts (iOS-DESIGN §10.9)
+//
+// Engagement counts render as 398 · 1.2K · 12K · 1.3M so they never wrap or push the
+// action row apart in a narrow column (open Duo: ~335pt per column). VoiceOver keeps
+// the exact number via `accessibilityValue`.
+func nbCompactCount(_ n: Int) -> String {
+    func short(_ v: Double, _ unit: String) -> String {
+        let s = v < 10 ? String(format: "%.1f", v) : String(format: "%.0f", v.rounded(.down))
+        return (s.hasSuffix(".0") ? String(s.dropLast(2)) : s) + unit
+    }
+    if n >= 1_000_000 { return short(Double(n) / 1_000_000, "M") }
+    if n >= 1_000 { return short(Double(n) / 1_000, "K") }
+    return "\(n)"
+}
+
+// MARK: - Readable column width (iOS-DESIGN §10.9)
+//
+// Posts read badly at ~860pt (the open Duo's landscape column with the sidebar hidden):
+// lines get long and images huge. Reading lists cap at a comfortable width and centre;
+// phone-width columns are unaffected (they are narrower than the cap).
+extension View {
+    func nbReadableWidth(_ maxWidth: CGFloat = 680) -> some View {
+        frame(maxWidth: maxWidth).frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Design language 2 (learned from Stream, iOS-DESIGN §11)
+//
+// What the Stream redesign taught, shared by every surface:
+// - READING TYPE: post text is reading, not UI. It takes the person's reading typeface
+//   (Editorial = New York, Modern = SF; system fonts so emoji render) and grows in wide
+//   columns, where 15pt reads like a footnote.
+// - COLOR FROM CONTENT: a slow mesh of colors sampled from the thing itself (an avatar,
+//   an image) instead of a flat fill. Calm, specific, kind to an OLED left on.
+// - GLASS FOR WHAT FLOATS: controls over content use Liquid Glass (iOS 26+), with a
+//   material fallback. Content keeps its neubrutalist frames.
+// - LINES ARRIVE: important text can reveal line by line (a TextRenderer), never for
+//   lists people scroll.
+
+// MARK: Reading type
+
+private struct NBReadingSerifKey: EnvironmentKey { static let defaultValue = true }
+private struct NBColumnWidthKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+
+extension EnvironmentValues {
+    /// Editorial (New York) reading type when true; Modern (SF) when false. Set at the
+    /// root from Settings → Reading.
+    var nbReadingSerif: Bool {
+        get { self[NBReadingSerifKey.self] }
+        set { self[NBReadingSerifKey.self] = newValue }
+    }
+    /// The measured width of the column a view sits in (0 = unknown). Reading type grows
+    /// with it.
+    var nbColumnWidth: CGFloat {
+        get { self[NBColumnWidthKey.self] }
+        set { self[NBColumnWidthKey.self] = newValue }
+    }
+}
+
+/// The reading size for a column: phone-width columns keep the base; the open Duo's wide
+/// columns (One Column, landscape) step up so lines aren't tiny and endless.
+func nbReadingBump(forColumn width: CGFloat) -> CGFloat {
+    if width >= 760 { return 4 }
+    if width >= 560 { return 2 }
+    return 0
+}
+
+private struct NBReadingFont: ViewModifier {
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+    @Environment(\.nbReadingSerif) private var serif
+    @Environment(\.nbColumnWidth) private var columnWidth
+    let base: CGFloat
+    let weight: Font.Weight
+
+    func body(content: Content) -> some View {
+        let size = (base + nbReadingBump(forColumn: columnWidth)) * scale
+        content
+            .font(.system(size: size, weight: weight, design: serif ? .serif : .default))
+            .lineSpacing(size * (serif ? 0.24 : 0.3))
+    }
+}
+
+private struct NBColumnWidthReader: ViewModifier {
+    @State private var width: CGFloat = 0
+    func body(content: Content) -> some View {
+        content
+            .environment(\.nbColumnWidth, width)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+extension View {
+    /// Post text: the reading typeface, scaled with Dynamic Type and the column's width.
+    func nbReadingFont(_ base: CGFloat = 16, weight: Font.Weight = .regular) -> some View {
+        modifier(NBReadingFont(base: base, weight: weight))
+    }
+    /// Measures this column and hands its width to the reading type inside it.
+    func nbColumnWidthReader() -> some View { modifier(NBColumnWidthReader()) }
+}
+
+/// A reading Font at an exact size (headlines, pull quotes) in the reading typeface.
+func nbReadingFace(_ size: CGFloat, weight: Font.Weight = .regular, serif: Bool) -> Font {
+    .system(size: size, weight: weight, design: serif ? .serif : .default)
+}
+
+func nbReadingUIFont(_ size: CGFloat, weight: UIFont.Weight, serif: Bool) -> UIFont {
+    let base = UIFont.systemFont(ofSize: size, weight: weight)
+    guard serif, let d = base.fontDescriptor.withDesign(.serif) else { return base }
+    return UIFont(descriptor: d, size: size)
+}
+
+/// The largest size at which `text` fits `box` (binary search on UIKit's measurement).
+func nbFittedFontSize(_ text: String, box: CGSize, weight: UIFont.Weight, serif: Bool,
+                      range: ClosedRange<CGFloat>, lineSpacing: CGFloat) -> CGFloat {
+    guard box.width > 40, box.height > 30, !text.isEmpty, range.lowerBound < range.upperBound else {
+        return range.lowerBound
+    }
+    func fits(_ size: CGFloat) -> Bool {
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = size * lineSpacing
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: box.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: nbReadingUIFont(size, weight: weight, serif: serif), .paragraphStyle: para],
+            context: nil)
+        return ceil(rect.height) <= box.height * 0.94
+    }
+    if fits(range.upperBound) { return range.upperBound }
+    var lo = range.lowerBound, hi = range.upperBound
+    for _ in 0..<10 {
+        let mid = (lo + hi) / 2
+        if fits(mid) { lo = mid } else { hi = mid }
+    }
+    return floor(lo)
+}
+
+// MARK: Lines arrive
+
+/// Lines arrive one after another, blurring into focus as they rise (iOS 18 TextRenderer).
+struct NBLineReveal: TextRenderer, Animatable {
+    var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        let lines = Array(layout)
+        let n = Double(max(lines.count, 1))
+        for (i, line) in lines.enumerated() {
+            let start = (Double(i) / n) * 0.55
+            let p = min(1, max(0, (progress - start) / 0.45))
+            var c = ctx
+            c.opacity = p
+            if p < 1 {
+                c.addFilter(.blur(radius: (1 - p) * 10))
+                c.translateBy(x: 0, y: (1 - p) * 14)
+            }
+            c.draw(line)
+        }
+    }
+}
+
+/// Content dissolves through a soft blur, drifting a little in the direction of travel.
+struct NBBlurDissolve: ViewModifier {
+    let amount: Double   // 0 = identity, 1 = fully out
+    var dx: CGFloat = 0
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: 22 * amount)
+            .opacity(1 - amount)
+            .scaleEffect(1 + 0.02 * amount)
+            .offset(x: dx * amount)
+    }
+}
+
+extension AnyTransition {
+    /// Blur in, blur out.
+    static var nbBlurDissolve: AnyTransition {
+        .modifier(active: NBBlurDissolve(amount: 1), identity: NBBlurDissolve(amount: 0))
+    }
+}
+
+// MARK: Color from content
+
+/// Nine colors (a 3×3 grid) sampled from an image: the thing's own palette.
+func nbPaletteColors(from image: UIImage) -> [UIColor]? {
+    guard let cg = image.cgImage else { return nil }
+    let w = 3, h = 3
+    var data = [UInt8](repeating: 0, count: w * h * 4)
+    let ok = data.withUnsafeMutableBytes { buf -> Bool in
+        guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        ctx.interpolationQuality = .medium
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return true
+    }
+    guard ok else { return nil }
+    return (0..<(w * h)).map { i in
+        UIColor(red: CGFloat(data[i * 4]) / 255, green: CGFloat(data[i * 4 + 1]) / 255,
+                blue: CGFloat(data[i * 4 + 2]) / 255, alpha: 1)
+    }
+}
+
+enum NBFieldTone { case deep, pale }
+
+/// A sampled color calmed for a background: deep and saturated (white text stays
+/// legible) or pale (ink stays legible).
+func nbToned(_ c: UIColor, _ tone: NBFieldTone) -> Color {
+    var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+    c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+    switch tone {
+    case .pale: return Color(hue: h, saturation: s * 0.25, brightness: 0.93 + b * 0.05)
+    case .deep: return Color(hue: h, saturation: min(1, s * 1.1 + 0.08), brightness: 0.12 + b * 0.24)
+    }
+}
+
+/// Sampled palettes by image URL, computed once.
+@MainActor
+enum NBPaletteCache {
+    private static var cache: [URL: [UIColor]] = [:]
+
+    static func cached(_ url: URL) -> [UIColor]? { cache[url] }
+
+    static func colors(for url: URL, maxPixel: CGFloat = 120, scale: CGFloat = 2) async -> [UIColor]? {
+        if let hit = cache[url] { return hit }
+        guard let image = await NBImageLoader.load(url, maxPixel: maxPixel, scale: scale),
+              let colors = nbPaletteColors(from: image) else { return nil }
+        cache[url] = colors
+        return colors
+    }
+}
+
+/// A slow, drifting mesh of colors: calm motion for a screen left on (Reduce Motion: still).
+struct NBAmbientField: View {
+    let colors: [Color]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if reduceMotion {
+            mesh(0)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 20)) { ctx in
+                mesh(ctx.date.timeIntervalSinceReferenceDate)
+            }
+        }
+    }
+
+    private func mesh(_ t: Double) -> some View {
+        let s = Float(sin(t * 0.13)) * 0.14
+        let c = Float(cos(t * 0.09)) * 0.14
+        let filled = colors.count >= 9 ? Array(colors.prefix(9)) : Array(repeating: colors.first ?? .black, count: 9)
+        return MeshGradient(width: 3, height: 3, points: [
+            [0, 0], [0.5 + c * 0.5, 0], [1, 0],
+            [0, 0.5 + s * 0.6], [0.5 + s, 0.5 + c], [1, 0.5 - c * 0.6],
+            [0, 1], [0.5 - s * 0.5, 1], [1, 1],
+        ], colors: filled)
+    }
+}
+
+/// An ambient field drawn from an image (an avatar, a banner, a photo). Shows the
+/// brand's colors until the image's own have been sampled.
+struct NBContentField: View {
+    let url: URL?
+    var tone: NBFieldTone = .deep
+    @State private var sampled: [UIColor]? = nil
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        NBAmbientField(colors: (sampled ?? NBContentField.brand).map { nbToned($0, tone) })
+            .task(id: url) {
+                guard let url else { return }
+                if let hit = NBPaletteCache.cached(url) { sampled = hit; return }
+                if let colors = await NBPaletteCache.colors(for: url, scale: displayScale) {
+                    withAnimation(.easeInOut(duration: 0.8)) { sampled = colors }
+                }
+            }
+    }
+
+    static let brand: [UIColor] = {
+        let a = UIColor(red: 0, green: 0.28, blue: 1, alpha: 1)          // #0047FF
+        let b = UIColor(red: 0.69, green: 0.32, blue: 0.87, alpha: 1)    // #AF52DE
+        let c = UIColor(red: 1, green: 0.36, blue: 0.21, alpha: 1)       // #FF5C35
+        let d = UIColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1)     // #34C759
+        return [a, b, a, c, a, b, d, a, c]
+    }()
+}
+
+// MARK: Glass for what floats
+
+extension View {
+    /// Floating controls use the system's Liquid Glass (material before iOS 26).
+    @ViewBuilder
+    func nbGlass<S: Shape>(in shape: S) -> some View {
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            self.background(.ultraThinMaterial, in: shape)
+        }
+    }
+}
+
+/// Groups glass controls so they blend and morph together (GlassEffectContainer on 26+).
+struct NBGlassGroup<Content: View>: View {
+    var spacing: CGFloat = 12
+    @ViewBuilder let content: Content
+    var body: some View {
+        if #available(iOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
+}
+
+/// A round glass control with a VoiceOver label.
+struct NBGlassButton: View {
+    let label: String
+    let systemImage: String
+    var size: CGFloat = 52
+    var tint: Color = .white
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: size * 0.36, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: size, height: size)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .nbGlass(in: Circle())
+        .accessibilityLabel(label)
+    }
+}
+
+/// A glass capsule button (title + symbol).
+struct NBGlassCapsule: View {
+    let title: String
+    let systemImage: String
+    var tint: Color = .white
+    var height: CGFloat = 48
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .padding(.horizontal, 18)
+                .frame(height: height)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .nbGlass(in: Capsule())
+    }
+}
+
+// MARK: Saved posts (app-wide)
+
+/// Posts saved for later, newest first. Device-local (a list of URIs), shared by every
+/// post's menu, Stream's Save, the Saved place and Stream's Saved source.
+@Observable @MainActor
+final class SavedPosts {
+    static let shared = SavedPosts()
+    /// Same key Stream used, so saves made there carry over.
+    private(set) var uris: [String] = UserDefaults.standard.stringArray(forKey: "stream_saved_uris") ?? [] {
+        didSet { UserDefaults.standard.set(Array(uris.prefix(500)), forKey: "stream_saved_uris") }
+    }
+
+    func contains(_ uri: String) -> Bool { uris.contains(uri) }
+
+    func toggle(_ uri: String) {
+        if let i = uris.firstIndex(of: uri) { uris.remove(at: i) } else { uris.insert(uri, at: 0) }
+    }
+
+    func remove(_ uri: String) { uris.removeAll { $0 == uri } }
+}
+
+// MARK: - Magazine typography (§13)
+//
+// Bsky Dreams' personality is typographic, the way a magazine has a voice: a Syne KICKER
+// (accent rule + small caps: where you are), a Syne HEADLINE (six words or fewer), and a
+// serif DECK (one sentence, in Ben's voice). One masthead per screen, at the top of the
+// content, scrolling away with it. Counts that matter get big Syne numerals. No
+// decoration, no graphics: type, the accent, and space.
+
+/// "— HOME · CONVERSATIONS": an accent rule and the place in Syne small caps.
+struct NBKicker: View {
+    let text: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Capsule()
+                .fill(Color.nbAccent)
+                .frame(width: 18, height: 3)
+            Text(text.uppercased())
+                .font(.syne(12))
+                .tracking(1.6)
+                .foregroundStyle(Color.nbAccentLegible)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Kicker, headline, deck: the top of a screen, magazine-style.
+struct NBMasthead: View {
+    let kicker: String
+    let headline: String
+    var deck: String? = nil
+    /// Told when the masthead scrolls out of (false) or back into (true) view, so the
+    /// screen can show its bar title only then: the name is never shown twice (§13.11).
+    var onVisibleChange: ((Bool) -> Void)? = nil
+    @Environment(\.nbColumnWidth) private var columnWidth
+    @Environment(\.nbReadingSerif) private var serif
+
+    var body: some View {
+        let wide = columnWidth >= 560
+        VStack(alignment: .leading, spacing: 8) {
+            NBKicker(text: kicker)
+            Text(headline)
+                .font(.syne(wide ? 38 : 30))
+                .foregroundStyle(Color.nbBlack)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let deck {
+                Text(deck)
+                    .font(nbReadingFace(wide ? 19 : 17, serif: serif))
+                    .foregroundStyle(Color.nbTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .onScrollVisibilityChange(threshold: 0.35) { visible in onVisibleChange?(visible) }
+    }
+}
+
+/// A count that matters, as a big Syne numeral over a small caps label.
+struct NBStat: View {
+    let value: Int
+    let label: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(nbCompactCount(value))
+                .font(.syne(26))
+                .foregroundStyle(Color.nbBlack)
+                .lineLimit(1)
+                .fixedSize()
+            Text(label.uppercased())
+                .font(.syne(10))
+                .tracking(1.2)
+                .foregroundStyle(Color.nbTextSecondary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
+    }
+}
+
+extension View {
+    /// The accent-tinted paper behind a navigation screen (§13), via the system's
+    /// container background so it sits where the system background would.
+    func nbPaper() -> some View {
+        containerBackground(Color.nbBackground, for: .navigation)
+    }
+}
+
+
+extension View {
+    /// Lets a content field melt into the paper beside it (§13): a soft wash toward the
+    /// paper color over the whole field, and a fade to paper along the edge it shares
+    /// with the next column, so two columns read as one spread, not two slabs.
+    func nbBlendsIntoPaper(edge: Edge) -> some View {
+        let start: UnitPoint, end: UnitPoint
+        switch edge {
+        case .leading:  start = .leading;  end = UnitPoint(x: 0.38, y: 0.5)
+        case .trailing: start = .trailing; end = UnitPoint(x: 0.62, y: 0.5)
+        case .top:      start = .top;      end = UnitPoint(x: 0.5, y: 0.38)
+        case .bottom:   start = .bottom;   end = UnitPoint(x: 0.5, y: 0.62)
+        }
+        return self
+            .overlay(Color.nbBackground.opacity(0.28))
+            .overlay(LinearGradient(colors: [Color.nbBackground, Color.nbBackground.opacity(0)],
+                                    startPoint: start, endPoint: end))
+    }
+}
+
+// MARK: - Rules (§13.9)
+//
+// Two rules, because they mean two different things. Both come from the brand's accent
+// rule (the kicker's dash), and neither is a default system line.
+// - The COLUMN GUTTER separates two independent views: a 1pt accent rule that fades in
+//   and out along its length, capped by a solid accent dash (the kicker's dash, upright).
+// - The LIST RULE separates items in one sequence: a quiet dotted rule, like a table of
+//   contents, inset to where the text starts. Unread items carry the accent dash instead
+//   of a tinted background.
+
+/// Between two columns (vertical) or two stacked panes (horizontal).
+struct NBColumnGutter: View {
+    var stacked: Bool = false
+    var body: some View {
+        let fade = LinearGradient(stops: [
+            .init(color: .clear, location: 0),
+            .init(color: .black, location: 0.12),
+            .init(color: .black, location: 0.6),
+            .init(color: .clear, location: 1),
+        ], startPoint: stacked ? .leading : .top, endPoint: stacked ? .trailing : .bottom)
+        ZStack(alignment: stacked ? .leading : .top) {
+            Rectangle()
+                .fill(Color.nbAccent.opacity(0.35))
+                .frame(width: stacked ? nil : 1, height: stacked ? 1 : nil)
+                .mask(fade)
+            // The cap: the kicker's dash, stood upright, where the gutter begins.
+            Capsule()
+                .fill(Color.nbAccent)
+                .frame(width: stacked ? 18 : 3, height: stacked ? 3 : 18)
+                // Level with the masthead kicker's dash, so the two read as one mark.
+                .padding(stacked ? .leading : .top, stacked ? 24 : 129)
+        }
+        .frame(width: stacked ? nil : 3, height: stacked ? 3 : nil)
+        .frame(maxWidth: stacked ? .infinity : nil, maxHeight: stacked ? nil : .infinity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Between items in a list: a dotted rule.
+struct NBListRule: View {
+    var body: some View {
+        GeometryReader { geo in
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: 1))
+                p.addLine(to: CGPoint(x: geo.size.width, y: 1))
+            }
+            .stroke(Color.nbTextTertiary.opacity(0.55),
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [0.5, 5]))
+        }
+        .frame(height: 2)
+        .accessibilityHidden(true)
+    }
+}
+
+/// An unread item's mark: the accent dash at its leading edge.
+struct NBUnreadMark: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.nbAccent)
+            .frame(width: 3, height: 18)
+            .accessibilityHidden(true)
     }
 }

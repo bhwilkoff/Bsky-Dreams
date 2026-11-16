@@ -3,8 +3,10 @@ import SwiftUI
 // MARK: - DMs List
 
 struct DMsView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @State private var conversations: [Conversation] = []
     @State private var isLoading = false
     @State private var loadError: String? = nil
@@ -40,30 +42,22 @@ struct DMsView: View {
             }
         }
         .nbOfflineBanner()
-        .nbNavBar(title: "MESSAGES", leading: { NBHamburger() }, trailing: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.nbAccentLegible)
-                .frame(width: 36, height: 36)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .contentShape(Rectangle())
-                .onTapGesture { showNewConvo = true }
-                .accessibilityLabel("New conversation")
-                .accessibilityAddTraits(.isButton)
+        .nbNavBar(title: mastheadVisible ? "" : "Messages", leading: { NBHamburger() }, trailing: {
+            Button("New Message", systemImage: "square.and.pencil") { showNewConvo = true }
         })
         .task { await loadConversations() }
         .task { await loadRequests() }
         .onChange(of: store.pendingDMConvoId) { _, convoId in
-            guard let convoId else { return }
+            guard navColumn == .primary, let convoId else { return }   // deep links target the primary column
             store.pendingDMConvoId = nil
             if let convo = conversations.first(where: { $0.id == convoId }) {
-                store.navigationPath.append(convo)
+                store.openChat(convo, column: navColumn)
             }
         }
         .sheet(isPresented: $showNewConvo, onDismiss: {
             // Navigate after the sheet is fully dismissed to avoid presentation conflicts
             if let created = justCreatedConvo {
-                store.navigationPath.append(created)
+                store.openChat(created, column: navColumn)
                 justCreatedConvo = nil
             }
         }) {
@@ -91,6 +85,12 @@ struct DMsView: View {
 
     private var convoList: some View {
         List {
+            NBMasthead(kicker: "Messages", headline: "Your chats",
+                       deck: "One-on-one and group chats with folks on Bluesky.",
+                       onVisibleChange: { mastheadVisible = $0 })
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             if !requests.isEmpty {
                 Button { showRequests = true } label: {
                     HStack(spacing: 12) {
@@ -98,7 +98,7 @@ struct DMsView: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Color.nbAccentLegible)
                             .frame(width: 48, height: 48)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                            .nbBorder()
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Requests")
                                 .font(.inter(15, weight: .semibold))
@@ -128,11 +128,19 @@ struct DMsView: View {
             }
 
             ForEach(conversations) { convo in
-                NavigationLink(value: convo) {
+                Button { store.openChat(convo, column: navColumn) } label: {
                     ConversationRowView(conversation: convo, myDid: myDid)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .listRowBackground(store.detailPane?.id == "chat:\(convo.id)" ? Color.nbAccent.opacity(0.12) : Color.clear)
                 .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                // Items in a sequence: the dotted list rule, from where the text starts (§13.9).
+                .overlay(alignment: .bottom) {
+                    if convo.id != conversations.last?.id {
+                        NBListRule().padding(.leading, 64).offset(y: 6)
+                    }
+                }
                 .contextMenu {
                     if convo.muted {
                         Button { Task { await toggleMute(convo: convo, mute: false) } } label: {
@@ -147,6 +155,7 @@ struct DMsView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)   // the paper shows through (§13.5)
         .scrollIndicators(.hidden)
         .refreshable { await loadConversations() }
     }
@@ -155,8 +164,8 @@ struct DMsView: View {
         ScrollView {
             NBEmptyState(
                 icon: "bubble.left.and.bubble.right",
-                title: "NO MESSAGES YET",
-                message: "Start a conversation with anyone on Bluesky",
+                title: "No chats yet",
+                message: "Start a chat with anyone on Bluesky.",
                 actionTitle: "Start New Conversation",
                 action: { showNewConvo = true }
             )
@@ -174,10 +183,10 @@ struct DMsView: View {
             let resp = try await ATProtocolClient.shared.listConversations()
             conversations = resp.convos
             // If a DM deep-link is pending and the convo is now loaded, open it
-            if let convoId = store.pendingDMConvoId,
+            if navColumn == .primary, let convoId = store.pendingDMConvoId,
                let convo = conversations.first(where: { $0.id == convoId }) {
                 store.pendingDMConvoId = nil
-                store.navigationPath.append(convo)
+                store.openChat(convo, column: navColumn)
             }
         } catch {
             if conversations.isEmpty {
@@ -365,30 +374,15 @@ struct ChatView: View {
             leading: { NBBackButton() },
             trailing: {
                 if isGroup {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.nbBlack)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                        .contentShape(Rectangle())
-                        .onTapGesture { showGroupSheet = true }
-                        .accessibilityLabel("Group details")
-                        .accessibilityAddTraits(.isButton)
+                    Button("Group Details", systemImage: "person.2") { showGroupSheet = true }
                 } else {
                     Menu {
                         Button(role: .destructive) { showLeaveConfirm = true } label: {
                             Label("Leave Conversation", systemImage: "rectangle.portrait.and.arrow.right")
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 36, height: 36)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                            .contentShape(Rectangle())
+                        Label("Conversation Options", systemImage: "ellipsis")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Conversation options")
                 }
             }
         )
@@ -588,7 +582,7 @@ struct ChatView: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(mine ? Color.nbAccent : Color.nbMessageBubble)
-                    .overlay(Capsule().strokeBorder(Color.nbBlack, lineWidth: 1.5))
+                    .overlay(Capsule().strokeBorder(Color.nbBorder, lineWidth: 1))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -1058,7 +1052,7 @@ struct NewConversationView: View {
                 .tracking(1)
                 .foregroundStyle(Color.nbBlack)
             HStack(spacing: 8) {
-                TextField("Paste link or code...", text: $joinLinkText)
+                TextField("Paste a link or a code…", text: $joinLinkText)
                     .font(.inter(15))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -1097,7 +1091,7 @@ struct NewConversationView: View {
             let resp = try await ATProtocolClient.shared.searchActors(q: searchQuery)
             actors = resp.actors.filter { $0.did != myDid }
         } catch {
-            errorMessage = "Search failed. Try again."
+            errorMessage = "The search didn't go through. Try again."
         }
     }
 
@@ -1126,7 +1120,7 @@ struct NewConversationView: View {
         } catch {
             errorMessage = isGroup
                 ? "Couldn't create the group. Try again."
-                : "Could not start conversation. Check that this account accepts messages and try again."
+                : "That chat didn't start. They may only take messages from folks they follow."
         }
     }
 
@@ -1182,8 +1176,8 @@ struct RequestsInboxView: View {
                 if localRequests.isEmpty {
                     NBEmptyState(
                         icon: "tray",
-                        title: "NO REQUESTS",
-                        message: "Message requests from people you don't follow show up here."
+                        title: "No requests",
+                        message: "Message requests from folks you don't follow show up here."
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -1306,7 +1300,7 @@ struct GroupSheetView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color.nbAccentLegible)
                                     .frame(width: 36, height: 36)
-                                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                                    .nbBorder()
                                 Text("Add People")
                                     .font(.inter(15, weight: .semibold))
                                     .foregroundStyle(Color.nbBlack)
@@ -1650,7 +1644,7 @@ struct AddPeopleView: View {
             let resp = try await ATProtocolClient.shared.searchActors(q: searchQuery)
             actors = resp.actors.filter { $0.did != myDid }
         } catch {
-            errorMessage = "Search failed. Try again."
+            errorMessage = "The search didn't go through. Try again."
         }
     }
 }

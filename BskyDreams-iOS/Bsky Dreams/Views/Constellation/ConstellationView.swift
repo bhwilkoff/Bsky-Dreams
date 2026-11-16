@@ -78,189 +78,9 @@ struct GraphEdge: Identifiable {
     var type: EdgeType = .reply
 }
 
-// MARK: - UIKit Gesture Capture
-//
-// Root cause: SwiftUI's _UIHostingView adds gesture recognizers with
-// delaysTouchesBegan = true. This delays:
-//   (a) raw UIView touchesBegan delivery to descendant views
-//   (b) UIGestureRecognizer recognition on descendant views
-//
-// Neither UIView.touchesBegan overrides nor UIGestureRecognizer subclasses
-// on a UIView are reliably immune to this delay when placed as descendants.
-//
-// The ONLY reliable fix: implement touch logic inside a UIGestureRecognizer
-// SUBCLASS's own touchesBegan/touchesMoved/touchesEnded overrides. The gesture
-// recognizer system dispatches touches to recognizer instances BEFORE applying
-// delaysTouchesBegan delays to the responder chain. A recognizer's touch
-// methods fire immediately, unconditionally, for every touch event — they are
-// structurally immune to ancestor delaysTouchesBegan flags.
-//
-// This recognizer never transitions to .recognized/.began — it stays passive,
-// emitting callbacks and resetting to .failed at end of each gesture sequence.
-// cancelsTouchesInView = false so it never disrupts SwiftUI's own recognizers.
-
-private final class _ConstellationGestureRecognizer: UIGestureRecognizer {
-
-    // viewSize is view?.bounds.size — always the UIView's real laid-out size.
-    // This is passed so callers never need a GeometryProxy in gesture callbacks.
-    // (GeometryProxy captured in SwiftUI closures can be .zero on first render,
-    //  before any @State change triggers a re-render with the correct size.)
-    var onTap:         ((CGPoint, CGSize) -> Void)?   // location, viewSize
-    var onPanChange:   ((CGPoint, CGSize, CGSize) -> Void)?  // start, translation, viewSize
-    var onPanEnd:      ((CGPoint, CGSize) -> Void)?
-    var onPinchChange: ((CGFloat) -> Void)?
-    var onPinchEnd:    (() -> Void)?
-
-    private let dragThreshold: CGFloat = 6
-
-    // Active touch tracking: UITouch → position at touch-down (startPts)
-    //                         UITouch → last known position (curPts)
-    private var startPts: [UITouch: CGPoint] = [:]
-    private var curPts:   [UITouch: CGPoint] = [:]
-
-    private var didDrag        = false
-    private var isPinching     = false
-    private var pinchStartDist: CGFloat = 1
-    private var justEndedPinch = false   // suppresses post-pinch spurious tap
-
-    init() {
-        super.init(target: nil, action: nil)
-        cancelsTouchesInView = false   // never disrupt SwiftUI's own recognizers
-        delaysTouchesBegan   = false
-        delaysTouchesEnded   = false
-    }
-
-    // Never prevent other recognizers; never be prevented — pure passive observer.
-    override func canPrevent(_ other: UIGestureRecognizer) -> Bool { false }
-    override func canBePrevented(by other: UIGestureRecognizer) -> Bool { false }
-
-    // MARK: - Touch handling (called by the recognizer system — immune to delaysTouchesBegan)
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        for t in touches {
-            let pt = t.location(in: view)
-            startPts[t] = pt
-            curPts[t]   = pt
-        }
-        if startPts.count == 2 && !isPinching {
-            isPinching     = true
-            justEndedPinch = false
-            // End any in-progress single-finger drag cleanly before entering pinch mode
-            if didDrag, let p = firstTouch() { emitPanEnd(p); didDrag = false }
-            pinchStartDist = max(pinchDist(), 1)
-        }
-        // 3+ simultaneous touches: ignored
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        for t in touches { curPts[t] = t.location(in: view) }
-
-        if isPinching && startPts.count == 2 {
-            onPinchChange?(max(pinchDist(), 1) / pinchStartDist)
-            return
-        }
-        guard startPts.count == 1, let p = firstTouch() else { return }
-        let s = startPts[p]!, c = curPts[p]!
-        let dx = c.x - s.x, dy = c.y - s.y
-        if hypot(dx, dy) >= dragThreshold {
-            didDrag = true
-            onPanChange?(s, CGSize(width: dx, height: dy), view?.bounds.size ?? .zero)
-        }
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        for t in touches { curPts[t] = t.location(in: view) }
-
-        if isPinching {
-            for t in touches { startPts.removeValue(forKey: t); curPts.removeValue(forKey: t) }
-            if startPts.count < 2 {
-                isPinching = false
-                onPinchEnd?()
-                if !startPts.isEmpty {
-                    // Reset remaining finger's start so it pans from its current position
-                    for k in startPts.keys { startPts[k] = curPts[k] }
-                    didDrag = false; justEndedPinch = true
-                }
-            }
-            if startPts.isEmpty { state = .failed }
-            return
-        }
-
-        guard let p = touches.first ?? firstTouch() else { state = .failed; return }
-        if didDrag {
-            emitPanEnd(p)
-        } else if !justEndedPinch {
-            onTap?(startPts[p] ?? .zero, view?.bounds.size ?? .zero)
-        }
-        startPts.removeValue(forKey: p); curPts.removeValue(forKey: p)
-        didDrag = false; justEndedPinch = false
-        if startPts.isEmpty { state = .failed }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        if didDrag,   let p = firstTouch() { emitPanEnd(p) }
-        if isPinching { onPinchEnd?() }
-        state = .failed
-    }
-
-    override func reset() {
-        super.reset()
-        startPts.removeAll(); curPts.removeAll()
-        didDrag = false; isPinching = false; justEndedPinch = false
-    }
-
-    // MARK: - Helpers
-
-    private func firstTouch() -> UITouch? { startPts.keys.first }
-
-    private func pinchDist() -> CGFloat {
-        let pts = startPts.keys.compactMap { curPts[$0] }
-        guard pts.count >= 2 else { return 1 }
-        return hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
-    }
-
-    private func emitPanEnd(_ touch: UITouch) {
-        guard let s = startPts[touch], let c = curPts[touch] else { return }
-        onPanEnd?(s, CGSize(width: c.x - s.x, height: c.y - s.y))
-    }
-}
-
-private struct ConstellationGestureCapture: UIViewRepresentable {
-    var onTap:         (CGPoint, CGSize) -> Void   // location, viewSize
-    var onPanChange:   (CGPoint, CGSize, CGSize) -> Void  // start, translation, viewSize
-    var onPanEnd:      (CGPoint, CGSize) -> Void
-    var onPinchChange: (CGFloat) -> Void
-    var onPinchEnd:    () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> UIView {
-        let v = UIView()
-        v.backgroundColor        = .clear
-        v.isMultipleTouchEnabled = true
-        let gr = _ConstellationGestureRecognizer()
-        v.addGestureRecognizer(gr)
-        context.coordinator.recognizer = gr
-        updateRecognizer(gr)
-        return v
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        if let gr = context.coordinator.recognizer { updateRecognizer(gr) }
-    }
-
-    private func updateRecognizer(_ gr: _ConstellationGestureRecognizer) {
-        gr.onTap         = onTap
-        gr.onPanChange   = onPanChange
-        gr.onPanEnd      = onPanEnd
-        gr.onPinchChange = onPinchChange
-        gr.onPinchEnd    = onPinchEnd
-    }
-
-    final class Coordinator {
-        var recognizer: _ConstellationGestureRecognizer?
-    }
-}
+// Gestures are SwiftUI's own (SpatialTapGesture, DragGesture, MagnifyGesture) on the
+// graph itself (2026-11-16). The old UIKit recognizer layer stopped receiving touches
+// inside the native TabView / Duo columns (verified by a device UI test: 0 touches).
 
 // MARK: - ConstellationView
 
@@ -326,16 +146,14 @@ struct ConstellationView: View {
                 ContentUnavailableView(
                     "No Network Data",
                     systemImage: "network",
-                    description: Text("Search for a topic or @handle to explore their network")
+                    description: Text("Search a topic or an @handle to see who is talking with whom")
                 )
             } else {
                 graphCanvas
             }
         }
         .nbOfflineBanner()
-        .nbNavBar(title: "CONSTELLATION", leading: {
-            if initialActor != nil { NBBackButton() } else { NBHamburger() }
-        })
+        .nbNavBar(title: "CONSTELLATION")   // tab root: system tab bar/sidebar; pushed: system back button
         // Color scheme adapts to system setting — all graph colors use adaptive nbBlack/nbBorder
         // tokens so labels, edges, and borders remain legible in both light and dark mode.
         .sheet(item: $profileToOpen) { node in
@@ -359,7 +177,7 @@ struct ConstellationView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Color.nbTextTertiary)
-                TextField("Search topic or @handle...", text: $searchQuery)
+                TextField("A topic or an @handle…", text: $searchQuery)
                     .font(.inter(15))
                     .submitLabel(.search)
                     .onSubmit { Task { await buildGraph() } }
@@ -394,44 +212,35 @@ struct ConstellationView: View {
 
     private var graphCanvas: some View {
         GeometryReader { geo in
+            let size = geo.size
             ZStack {
-                Color.nbBackground.ignoresSafeArea()
+                Color.clear
 
-                // (gesture capture is the frontmost ZStack layer below)
-
-                // Edges rendered via Canvas (GPU-accelerated, no per-edge views)
+                // Edges: one Canvas (GPU), never per-edge views.
                 let nodeSnap = nodes
-                Canvas { context, size in
-                    let cx = size.width  / 2 + panOffset.width
-                    let cy = size.height / 2 + panOffset.height
+                let byID = Dictionary(uniqueKeysWithValues: nodeSnap.map { ($0.id, $0) })
+                Canvas { context, canvasSize in
+                    let cx = canvasSize.width  / 2 + panOffset.width
+                    let cy = canvasSize.height / 2 + panOffset.height
                     let s  = zoom
-
                     for edge in edges {
-                        guard
-                            let from = nodeSnap.first(where: { $0.id == edge.from }),
-                            let to   = nodeSnap.first(where: { $0.id == edge.to })
-                        else { continue }
-
+                        guard let from = byID[edge.from], let to = byID[edge.to] else { continue }
                         let dimmed = selectedNode != nil
                             && edge.from != selectedNode?.id
                             && edge.to   != selectedNode?.id
-
                         var path = Path()
                         path.move(to:    CGPoint(x: cx + from.x * s, y: cy + from.y * s))
                         path.addLine(to: CGPoint(x: cx + to.x   * s, y: cy + to.y   * s))
-
                         let color = dimmed ? Color.nbBlack.opacity(0.05) : edge.type.edgeColor
-                        let dash: [CGFloat] = edge.type.isDashed ? [4, 3] : []
-                        context.stroke(
-                            path,
-                            with: .color(color),
-                            style: StrokeStyle(lineWidth: edge.type.lineWidth, dash: dash)
-                        )
+                        context.stroke(path, with: .color(color),
+                                       style: StrokeStyle(lineWidth: edge.type.lineWidth,
+                                                          dash: edge.type.isDashed ? [4, 3] : []))
                     }
                 }
-                .allowsHitTesting(false)    // touches fall through to the background layer
+                .allowsHitTesting(false)
 
-                // Nodes — each positioned by their graph coordinates
+                // People. Drawing only — touches are handled by the graph's gestures below,
+                // so a node never swallows a pan. Each is an accessibility element.
                 let alwaysVisible = alwaysVisibleLabels
                 let md = maxDeg
                 ForEach(nodes) { node in
@@ -442,101 +251,38 @@ struct ConstellationView: View {
                     }
                     let dimmed    = selectedNode != nil && !isSelected && !isConnected
                     let showLabel = alwaysVisible.contains(node.id) || isSelected
-
-                    ConstellationNodeView(
-                        node: node,
-                        isSelected: isSelected,
-                        showLabel: showLabel,
-                        maxDegree: md
-                    )
-                    .opacity(dimmed ? 0.15 : 1.0)
-                    .scaleEffect(zoom)
-                    .position(screenPos(node, geo))
-                    .allowsHitTesting(false)
+                    ConstellationNodeView(node: node, isSelected: isSelected,
+                                          showLabel: showLabel, maxDegree: md)
+                        .opacity(dimmed ? 0.15 : 1.0)
+                        .scaleEffect(zoom)
+                        .position(screenPos(node, size))
+                        .allowsHitTesting(false)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(node.isSeed ? "@\(node.handle), the center" : "@\(node.handle)")
+                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityAction { select(node) }
                 }
-
-                // ── UIKit gesture capture (frontmost layer) ──────────────────────
-                // UIPanGestureRecognizer fires the instant the finger moves — no
-                // arbiter delay. UIPinchGestureRecognizer runs simultaneously via
-                // shouldRecognizeSimultaneouslyWith. Both are on the same UIView so
-                // UIKit itself arbitrates cleanly with no SwiftUI involvement.
-                ConstellationGestureCapture(
-                    onTap: { tapLoc, viewSize in
-                        if let hit = hitNode(tapLoc, viewSize) {
-                            let fresh = nodes.first(where: { $0.id == hit.id })
-                            Haptics.selection()   // node selected/deselected via tap
-                            if reduceMotion {
-                                selectedNode = (selectedNode?.id == hit.id) ? nil : fresh
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    selectedNode = (selectedNode?.id == hit.id) ? nil : fresh
-                                }
-                            }
-                        } else {
-                            if reduceMotion {
-                                selectedNode = nil
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.15)) { selectedNode = nil }
-                            }
-                        }
-                    },
-                    onPanChange: { startLoc, translation, viewSize in
-                        let dist = hypot(translation.width, translation.height)
-
-                        // First significant movement: decide node drag vs background pan
-                        if !dragRoutingDone && dist > 6 {
-                            dragRoutingDone = true
-                            if let hit = hitNode(startLoc, viewSize) {
-                                dragTargetNodeId = hit.id
-                                nodeDragStartPos = CGPoint(x: hit.x, y: hit.y)
-                                fixedNodeId      = hit.id
-                                if let idx = nodes.firstIndex(where: { $0.id == hit.id }) {
-                                    nodes[idx].vx = 0
-                                    nodes[idx].vy = 0
-                                }
-                                kickSim(alpha: 0.7)
-                            }
-                        }
-
-                        if let nodeId = dragTargetNodeId {
-                            if let idx = nodes.firstIndex(where: { $0.id == nodeId }) {
-                                nodes[idx].x  = nodeDragStartPos.x + translation.width  / zoom
-                                nodes[idx].y  = nodeDragStartPos.y + translation.height / zoom
-                                nodes[idx].vx = 0
-                                nodes[idx].vy = 0
-                            }
-                        } else if dist > 6 {
-                            panOffset = CGSize(
-                                width:  basePan.width  + translation.width,
-                                height: basePan.height + translation.height
-                            )
-                        }
-                    },
-                    onPanEnd: { _, _ in
-                        // Tap detection is handled by onTap (UITapGestureRecognizer).
-                        // onPanEnd only needs to finalize drag/pan state.
-                        if dragTargetNodeId != nil {
-                            fixedNodeId = nil
-                            kickSim(alpha: 0.4)
-                        } else {
-                            basePan = panOffset
-                        }
-
-                        dragTargetNodeId = nil
-                        dragRoutingDone  = false
-                    },
-                    onPinchChange: { scale in
-                        zoom = max(0.3, min(4.0, baseZoom * scale))
-                    },
-                    onPinchEnd: {
-                        baseZoom = zoom
-                    }
-                )
-                // ↑ Must fill the entire ZStack so hitTest covers all touch positions.
-                // Without this, UIViewRepresentable defaults to zero intrinsic size and
-                // bounds.contains(point) returns false for all touches on first render.
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .contentShape(Rectangle())
+            // Tap a person to select them; tap empty space to clear.
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        if let hit = hitNode(value.location, size) { select(hit) } else { select(nil) }
+                    }
+            )
+            // Drag a person to move them, or drag the background to pan.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in dragChanged(value, size: size) }
+                    .onEnded { _ in dragEnded() }
+            )
+            // Pinch to zoom.
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in zoom = max(0.3, min(4.0, baseZoom * value.magnification)) }
+                    .onEnded { _ in baseZoom = zoom }
+            )
             .clipped()
         }
         .overlay(alignment: .bottomTrailing) { graphControls }
@@ -544,14 +290,10 @@ struct ConstellationView: View {
             if let node = selectedNode {
                 SelectedNodePanel(
                     node: node,
-                    onDismiss: {
-                        if reduceMotion { selectedNode = nil }
-                        else { withAnimation { selectedNode = nil } }
-                    },
+                    onDismiss: { select(nil) },
                     onViewProfile: { profileToOpen = node },
                     onExplore: { handle in
-                        if reduceMotion { selectedNode = nil }
-                        else { withAnimation { selectedNode = nil } }
+                        select(nil)
                         searchQuery = "@\(handle)"
                         Task { await buildGraph() }
                     }
@@ -559,6 +301,52 @@ struct ConstellationView: View {
                 .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
+    }
+
+    /// Select a person (or nil to clear), with a light haptic.
+    private func select(_ node: GraphNode?) {
+        let fresh = node.flatMap { n in nodes.first(where: { $0.id == n.id }) }
+        let next: GraphNode? = (fresh != nil && selectedNode?.id == fresh?.id) ? nil : fresh
+        if node != nil { Haptics.selection() }
+        if reduceMotion { selectedNode = next }
+        else { withAnimation(.easeInOut(duration: 0.15)) { selectedNode = next } }
+    }
+
+    private func dragChanged(_ value: DragGesture.Value, size: CGSize) {
+        // First movement decides: a person under the finger is dragged, else the graph pans.
+        if !dragRoutingDone {
+            dragRoutingDone = true
+            if let hit = hitNode(value.startLocation, size) {
+                dragTargetNodeId = hit.id
+                nodeDragStartPos = CGPoint(x: hit.x, y: hit.y)
+                fixedNodeId      = hit.id
+                if let idx = nodes.firstIndex(where: { $0.id == hit.id }) {
+                    nodes[idx].vx = 0
+                    nodes[idx].vy = 0
+                }
+                kickSim(alpha: 0.7)
+            }
+        }
+        if let nodeId = dragTargetNodeId, let idx = nodes.firstIndex(where: { $0.id == nodeId }) {
+            nodes[idx].x  = nodeDragStartPos.x + value.translation.width  / zoom
+            nodes[idx].y  = nodeDragStartPos.y + value.translation.height / zoom
+            nodes[idx].vx = 0
+            nodes[idx].vy = 0
+        } else {
+            panOffset = CGSize(width: basePan.width + value.translation.width,
+                               height: basePan.height + value.translation.height)
+        }
+    }
+
+    private func dragEnded() {
+        if dragTargetNodeId != nil {
+            fixedNodeId = nil
+            kickSim(alpha: 0.4)
+        } else {
+            basePan = panOffset
+        }
+        dragTargetNodeId = nil
+        dragRoutingDone  = false
     }
 
     private var graphControls: some View {
@@ -575,7 +363,7 @@ struct ConstellationView: View {
                 if reduceMotion { reset() }
                 else { withAnimation(.spring(duration: 0.4), reset) }
             }
-            .buttonStyle(NeubrutalistButtonStyle())   // Syne uppercase, legible label, shadow
+            .buttonStyle(NeubrutalistButtonStyle())
         }
         .padding(12)
         .padding(.bottom, selectedNode != nil ? 140 : 20)
@@ -584,10 +372,10 @@ struct ConstellationView: View {
 
     // MARK: - Coordinate helpers
 
-    private func screenPos(_ node: GraphNode, _ geo: GeometryProxy) -> CGPoint {
+    private func screenPos(_ node: GraphNode, _ size: CGSize) -> CGPoint {
         CGPoint(
-            x: geo.size.width  / 2 + node.x * zoom + panOffset.width,
-            y: geo.size.height / 2 + node.y * zoom + panOffset.height
+            x: size.width  / 2 + node.x * zoom + panOffset.width,
+            y: size.height / 2 + node.y * zoom + panOffset.height
         )
     }
 
@@ -830,7 +618,7 @@ struct ConstellationView: View {
             }
 
             guard !nodeMap.isEmpty else {
-                errorMessage = "No network data found for that topic or handle. Try another search."
+                errorMessage = "Nobody turned up for that one. Try another topic or handle."
                 return
             }
 
@@ -897,7 +685,7 @@ struct ConstellationView: View {
             kickSim(alpha: 1.0)
 
         } catch {
-            errorMessage = "Couldn't build the network graph. Check your connection and try again."
+            errorMessage = "The network map didn't come together. Check your connection and try again."
         }
     }
 
@@ -962,7 +750,7 @@ private struct SelectedNodePanel: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.nbTextSecondary)
                         .frame(width: 28, height: 28)
-                        .overlay(Rectangle().strokeBorder(Color.nbBorder, lineWidth: 1.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBorder, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")

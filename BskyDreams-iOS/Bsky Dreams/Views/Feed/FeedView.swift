@@ -10,6 +10,16 @@ struct FeedView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(NetworkMonitor.self) private var network
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.navColumn) private var navColumn
+
+    /// This column's feed. The open Duo's second column keeps its own, so two home
+    /// feeds (e.g. Following beside Trending) can sit side by side (iOS-DESIGN §10).
+    private var feedMode: AppStore.FeedMode {
+        get { navColumn == .secondary ? store.secondaryFeedMode : store.feedMode }
+        nonmutating set {
+            if navColumn == .secondary { store.secondaryFeedMode = newValue } else { store.feedMode = newValue }
+        }
+    }
 
     // Discovery sources (Conversations + Trending). Following uses getTimeline only.
     private let discoverFeedURI  = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
@@ -25,6 +35,7 @@ struct FeedView: View {
     @State private var replyingToURI: String? = nil
     @State private var showCompose = false
     @State private var scrollToTopTrigger = 0
+    @State private var toggleWidth: CGFloat = 390
     @State private var discoverLooped = false
     @State private var autoFetchCount = 0
     /// Bumped on tab switch so an in-flight load for the OLD tab can't land its
@@ -48,9 +59,32 @@ struct FeedView: View {
                 feedList
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            feedNavBar
+        // System navigation bar (iOS-DESIGN §1.5, §10): on iPhone Duo the New Post item
+        // moves into the vertical bar beside the status bar, as Apple's own apps do.
+        .navigationTitle("Home")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button { scrollToTopTrigger += 1 } label: {
+                    ZStack {
+                        Image(systemName: "cloud.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(Color.nbAccent)
+                        Image(systemName: "cloud")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(Color.nbBlack)
+                            .fontWeight(.black)
+                    }
+                    .frame(height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Bsky Dreams. Scroll to top")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("New Post", systemImage: "square.and.pencil") { showCompose = true }
+            }
         }
         .task {
             // Load seen URIs from SwiftData once, then manage in memory.
@@ -88,15 +122,6 @@ struct FeedView: View {
         }
     }
 
-    // Extracted to a struct so SwiftUI can skip re-renders when inputs haven't changed
-    private var feedNavBar: some View {
-        FeedNavBar(
-            onToggleSidebar: toggleSidebar,
-            onScrollToTop: { scrollToTopTrigger += 1 },
-            onCompose: { showCompose = true }
-        )
-    }
-
     private var feedList: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -116,7 +141,7 @@ struct FeedView: View {
                         .padding(.top, 10)
                     }
 
-                    HintBanner(id: "feed.welcome", text: "Tap a post to open the conversation. Pull down to refresh.")
+                    HintBanner(id: "feed.welcome", text: "Tap any post to read its conversation. Pull down for new ones.")
                         .padding(.top, 10)
 
                     // Feed selector: Following · Conversations · Trending
@@ -124,11 +149,16 @@ struct FeedView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
 
+                    // The masthead for the chosen feed (§13).
+                    NBMasthead(kicker: "Home · \(feedMode.rawValue)",
+                               headline: feedMasthead.headline, deck: feedMasthead.deck)
+                        .padding(.bottom, 4)
+
                     if items.isEmpty && !isLoading && errorMessage == nil {
                         NBEmptyState(
                             icon: "checkmark.circle",
                             title: "You're all caught up",
-                            message: "No new posts right now",
+                            message: "Nothing new right now. Go outside, or pull down in a bit.",
                             actionTitle: "Refresh",
                             action: {
                                 Task {
@@ -147,7 +177,7 @@ struct FeedView: View {
 
                     ForEach(items) { item in
                         VStack(alignment: .leading, spacing: 4) {
-                            if store.feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
+                            if feedMode.isDiscovery, let why = whyReasons[item.post.uri] {
                                 DiscoverWhyChip(text: why)
                             } else if let reposted = item.repostAttribution {
                                 DiscoverWhyChip(text: reposted)
@@ -156,6 +186,11 @@ struct FeedView: View {
                                 post: item.post,
                                 showParentPreview: item.reply != nil,
                                 onReply: { post in
+                                    // Open Duo: reply beside the list, in the conversation.
+                                    if navColumn == .primary, store.postsOpenBeside {
+                                        store.openReply(to: post, column: navColumn)
+                                        return
+                                    }
                                     let isOpening = replyingToURI != post.uri
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         replyingToURI = isOpening ? post.uri : nil
@@ -172,7 +207,7 @@ struct FeedView: View {
                         }
                         .id(item.post.uri)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 7)   // room for the signature lift between cards
                         .onAppear {
                             markPostSeen(item.post)
                             // Trigger next page when within last 10 items — loads ahead
@@ -191,6 +226,7 @@ struct FeedView: View {
                             .padding()
                     }
                 }
+                .nbReadableWidth()
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -224,50 +260,50 @@ struct FeedView: View {
         }
     }
 
-    // MARK: - Neubrutalist Tab Toggle
+    /// Headline and deck per feed, in Ben's voice (§13).
+    private var feedMasthead: (headline: String, deck: String) {
+        switch feedMode {
+        case .following: ("Your people", "Everyone you follow, newest first. Nothing reordered, nothing left out.")
+        case .conversations: ("Where the talk is", "Posts folks are actually discussing, from your corner of Bluesky.")
+        case .trending: ("What's catching on", "Popular in your network right now. Popular isn't the same as good, so read with care.")
+        }
+    }
+
+    // MARK: - Feed picker (system segmented control, §12)
 
     private var feedModeToggle: some View {
-        HStack(spacing: 0) {
+        Picker("Feed", selection: Binding(
+            get: { feedMode },
+            set: { mode in
+                guard mode != feedMode else { return }
+                Haptics.selection()
+                feedMode = mode
+                items = []
+                whyReasons.removeAll()
+                cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
+                discoverLooped = false
+                autoFetchCount = 0
+                loadGeneration += 1
+                isLoading = false
+                Task { await loadFeed() }
+            }
+        )) {
             ForEach(AppStore.FeedMode.allCases, id: \.self) { mode in
-                let selected = store.feedMode == mode
-                Button {
-                    if !selected {
-                        Haptics.selection()
-                        store.feedMode = mode
-                        items = []
-                        whyReasons.removeAll()
-                        cursor = nil; cursorWithFriends = nil; cursorBestOf = nil; cursorForYou = nil
-                        discoverLooped = false
-                        autoFetchCount = 0
-                        loadGeneration += 1
-                        isLoading = false
-                        Task { await loadFeed() }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 10, weight: .bold))
-                        Text(mode.rawValue.uppercased())
-                            .font(.syne(12, weight: .bold))
-                            .tracking(0.3)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundStyle(selected ? Color.white : Color.nbBlack)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 4)
-                    .background(selected ? Color.nbAccent : Color.nbWhite)
-                }
-                .accessibilityLabel(mode.rawValue)
-                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                Text(mode.rawValue).tag(mode)
             }
         }
-        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-        .background(
-            Color.nbBlack
-                .offset(x: 3, y: 3)
-        )
+        .pickerStyle(.segmented)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toggleWidth = $0 }
+    }
+
+    // One label size for all three tabs, derived from the toggle's measured width, so
+    // "CONVERSATIONS" is never the only one shrunk (it was, in a ~310pt Duo column).
+    // Width per tab ≈ 9.75 × size + padding (+14pt with the icon); icons drop out first.
+    private var toggleShowsIcons: Bool { toggleWidth >= 380 }
+    private var toggleLabelSize: CGFloat {
+        let perTab = toggleWidth / 3 - 12 - (toggleShowsIcons ? 14 : 0)
+        return min(12, max(9, perTab / 9.75))
     }
 
     private var loadingState: some View {
@@ -284,6 +320,7 @@ struct FeedView: View {
                         .padding(.vertical, 4)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -292,7 +329,7 @@ struct FeedView: View {
     private func errorState(_ message: String) -> some View {
         // Rule §2: one error primitive everywhere (coral banner + Retry).
         VStack {
-            NBErrorBanner(message: "Couldn't load your feed. \(message)", retry: { Task { await loadFeed() } })
+            NBErrorBanner(message: "Your feed didn't load. \(message)", retry: { Task { await loadFeed() } })
             Spacer()
         }
         .padding(.top, 10)
@@ -342,7 +379,7 @@ struct FeedView: View {
             }
             let prefs = store.moderationPrefs
 
-            switch store.feedMode {
+            switch feedMode {
             case .following:
                 // Following = your follows, chronological. Pure getTimeline (reverse-chron
                 // of the people you follow) — a clean "catch up on your people" feed,
@@ -380,7 +417,7 @@ struct FeedView: View {
                 if let f { all.append(contentsOf: f.feed) }
 
                 let tags = store.interestTags
-                let conversational = store.feedMode == .conversations
+                let conversational = feedMode == .conversations
                 var seen = Set<String>()
                 mergedFeed = all
                     .filter { seen.insert($0.post.uri).inserted && $0.post.isEnglish && !DiscoverEngine.shouldHide($0, prefs: prefs) }
@@ -394,14 +431,14 @@ struct FeedView: View {
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
                 items.append(contentsOf: newItems)
-                if store.feedMode.isDiscovery {
+                if feedMode.isDiscovery {
                     for it in newItems { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
 
                 let urlsToWarm = newItems.flatMap { feedItemImageURLs(for: $0.post) }
                 Task.detached(priority: .background) { prefetchImageURLs(urlsToWarm) }
 
-                if store.feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
+                if feedMode.isDiscovery && cursor == nil && !discoverLooped && !mergedFeed.isEmpty {
                     discoverLooped = true
                 }
                 let hasMore = cursor != nil || cursorWithFriends != nil || cursorBestOf != nil || cursorForYou != nil || discoverLooped
@@ -418,7 +455,7 @@ struct FeedView: View {
                     guard seen.insert(item.post.uri).inserted else { return false }
                     return !(seenSnapshot?.contains(item.post.uri) ?? false)
                 }
-                if store.feedMode.isDiscovery {
+                if feedMode.isDiscovery {
                     whyReasons.removeAll()
                     for it in items { whyReasons[it.post.uri] = DiscoverEngine.why(it, interestTags: store.interestTags) }
                 }
@@ -432,72 +469,6 @@ struct FeedView: View {
             guard generation == loadGeneration else { return }
             Haptics.error()
             errorMessage = error.localizedDescription
-        }
-    }
-}
-
-// MARK: - Feed Navigation Bar
-// Extracted as a struct so SwiftUI identity-diffs inputs and skips re-renders
-// when the feed state changes but the nav bar inputs haven't.
-
-private struct FeedNavBar: View {
-    let onToggleSidebar: () -> Void
-    let onScrollToTop: () -> Void
-    let onCompose: () -> Void
-
-    var body: some View {
-        ZStack(alignment: .center) {
-            // Logo — absolutely centered, scaled to 36pt tall to match button box height
-            Button(action: onScrollToTop) {
-                ZStack {
-                    Image(systemName: "cloud.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color.nbAccent)
-                    Image(systemName: "cloud")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color.nbBlack)
-                        .fontWeight(.black)
-                }
-                .frame(height: 36)
-            }
-            .buttonStyle(.plain)
-
-            // Hamburger and compose icon at edges — both 36×36 bordered squares
-            HStack(spacing: 0) {
-                // Hamburger
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                    .frame(width: 36, height: 36)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .contentShape(Rectangle())
-                    .onTapGesture { onToggleSidebar() }
-                    .accessibilityLabel("Open sidebar")
-                    .accessibilityAddTraits(.isButton)
-                    .padding(.leading, NBWindowControls.leadingInset)
-
-                Spacer()
-
-                // Compose / new post
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.nbBlack)
-                    .frame(width: 36, height: 36)
-                    .background(Color.nbWhite)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    .contentShape(Rectangle())
-                    .onTapGesture { onCompose() }
-                    .accessibilityLabel("New post")
-                    .accessibilityAddTraits(.isButton)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 56)
-        .background(Color.nbWhite)
-        .overlay(alignment: .bottom) {
-            Color.nbBorder.frame(height: 1)
         }
     }
 }
@@ -523,7 +494,7 @@ struct DiscoverWhyChip: View {
                 .font(.system(size: 9, weight: .bold))
             Text(text)
                 .font(.inter(11, weight: .medium))
-                .lineLimit(1)
+                .lineLimit(2)   // wraps at large text instead of "37 rep…"
         }
         .foregroundStyle(Color.nbTextSecondary)
         .padding(.horizontal, 8)
@@ -531,5 +502,90 @@ struct DiscoverWhyChip: View {
         .padding(.leading, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Why you're seeing this: \(text)")
+    }
+}
+
+
+// MARK: - Saved (posts kept for later, §11)
+
+/// The posts you saved from any post's menu, TV or Stream, newest first. Stream them, or
+/// read them here; remove one from its menu.
+struct SavedView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
+    @Environment(NetworkMonitor.self) private var network
+    @State private var posts: [PostView] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    private var saved: SavedPosts { SavedPosts.shared }
+
+    var body: some View {
+        Group {
+            if saved.uris.isEmpty {
+                NBEmptyState(
+                    icon: "bookmark",
+                    title: "Nothing saved yet",
+                    message: "When a post is worth another look, open its ••• menu and pick Save for Later. It will wait for you here."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if posts.isEmpty && isLoading {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(0..<4, id: \.self) { _ in NBSkeletonPostRow() }
+                    }
+                    .padding(12)
+                }
+                .accessibilityLabel("Loading saved posts")
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 14) {
+                        NBMasthead(kicker: "Saved", headline: "Worth another look",
+                                   deck: "Posts you set aside. Read them here, or stream them.",
+                                   onVisibleChange: { mastheadVisible = $0 })
+                            .padding(.horizontal, -16)
+                        if let errorMessage {
+                            NBErrorBanner(message: errorMessage,
+                                          retry: network.isOffline ? nil : { Task { await load() } },
+                                          onDismiss: { self.errorMessage = nil })
+                        }
+                        ForEach(posts.filter { saved.contains($0.uri) }) { post in
+                            PostCardView(post: post)
+                        }
+                    }
+                    .padding(12)
+                    .nbReadableWidth()
+                }
+                .refreshable { await load() }
+            }
+        }
+        .nbOfflineBanner()
+        .nbNavBar(title: mastheadVisible ? "" : "Saved", leading: { NBHamburger() }, trailing: {
+            if !saved.uris.isEmpty {
+                Button("Stream These", systemImage: "play.rectangle") {
+                    StreamSession.shared.play(.saved)
+                }
+            }
+        })
+        .task(id: saved.uris.count) { await load() }
+    }
+
+    private func load() async {
+        let uris = Array(saved.uris.prefix(100))
+        guard !uris.isEmpty else { posts = []; return }
+        // Only fetch what we don't already have (a removal just filters).
+        let have = Set(posts.map(\.uri))
+        guard !Set(uris).isSubset(of: have) else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let fetched = try await ATProtocolClient.shared.getPosts(uris: uris)
+            let order = Dictionary(uniqueKeysWithValues: uris.enumerated().map { ($1, $0) })
+            posts = fetched.sorted { (order[$0.uri] ?? 0) < (order[$1.uri] ?? 0) }
+            errorMessage = nil
+        } catch {
+            Haptics.error()
+            errorMessage = network.isOffline
+                ? "You're offline. Your saved posts will show up when you're back."
+                : "Your saved posts didn't load. Pull down to try again."
+        }
     }
 }

@@ -5,6 +5,9 @@ struct ProfileView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var width: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @State private var profile: ActorProfile?
     @State private var posts: [FeedItem] = []
@@ -45,8 +48,8 @@ struct ProfileView: View {
                     if network.isOffline { NBOfflineBanner() }
                     NBEmptyState(
                         icon: "person.crop.circle.badge.exclamationmark",
-                        title: "Profile Unavailable",
-                        message: errorMessage ?? "This profile could not be loaded.",
+                        title: "Profile unavailable",
+                        message: errorMessage ?? "This profile didn't load.",
                         actionTitle: "Retry",
                         action: { Task { await loadProfile() } }
                     )
@@ -66,13 +69,8 @@ struct ProfileView: View {
                         Label("Report Account", systemImage: "flag")
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.nbBlack)
-                        .frame(width: 36, height: 36)
-                        .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                    Label("More Options", systemImage: "ellipsis")
                 }
-                .accessibilityLabel("More options")
             }
         })
         .confirmationDialog(
@@ -88,7 +86,7 @@ struct ProfileView: View {
             Button(isBlocked ? "Unblock" : "Block", role: isBlocked ? .none : .destructive) { toggleBlock() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(isBlocked ? "You'll see each other's posts again." : "They won't be able to interact with you.")
+            Text(isBlocked ? "You'll see each other's posts again." : "You won't see each other's posts, and they can't interact with you.")
         }
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(title: "Report Account") { reason in
@@ -107,11 +105,40 @@ struct ProfileView: View {
         .task { await loadProfile() }
     }
 
+    /// Wide (One Column on the open Duo): who they are on the left page, what they've
+    /// said on the right (§11).
     @ViewBuilder
     private func profileContent(_ profile: ActorProfile) -> some View {
+        Group {
+            if width >= 760 {
+                HStack(spacing: 0) {
+                    ScrollView {
+                        profileHeader(profile, ownField: false)   // the page's field shows through
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(width: (width * 0.4).rounded())
+                    .background {
+                        NBContentField(url: profile.avatar.flatMap { URL(string: $0) },
+                                       tone: colorScheme == .dark ? .deep : .pale)
+                            .nbBlendsIntoPaper(edge: .trailing)   // one spread, not two slabs
+                            .ignoresSafeArea()
+                    }
+                    postsScroll(profile, includeHeader: false)
+                        .environment(\.nbColumnWidth, width * 0.6)   // sized to its own page
+                }
+            } else {
+                postsScroll(profile, includeHeader: true)
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    @ViewBuilder
+    private func postsScroll(_ profile: ActorProfile, includeHeader: Bool) -> some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                profileHeader(profile)
+                if includeHeader { profileHeader(profile) }
 
                 ForEach(posts) { item in
                     if let reposted = item.repostAttribution {
@@ -129,7 +156,7 @@ struct ProfileView: View {
                         }
                     )
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 7)
                     .onAppear {
                         if item.id == posts.last?.id {
                             Task { await loadPosts(loadMore: true) }
@@ -149,8 +176,8 @@ struct ProfileView: View {
                 if posts.isEmpty && !postsLoading {
                     NBEmptyState(
                         icon: "square.stack.3d.up.slash",
-                        title: "No Posts Yet",
-                        message: "This account hasn't posted anything."
+                        title: "No posts yet",
+                        message: "Nothing posted here yet."
                     )
                     .padding(.top, 40)
                 }
@@ -159,6 +186,7 @@ struct ProfileView: View {
                     ProgressView().frame(maxWidth: .infinity).padding()
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
@@ -166,7 +194,7 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private func profileHeader(_ profile: ActorProfile) -> some View {
+    private func profileHeader(_ profile: ActorProfile, ownField: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Banner
             if let banner = profile.banner, let url = URL(string: banner) {
@@ -175,6 +203,7 @@ struct ProfileView: View {
                 } placeholder: { DiagonalStripeBackground() }
                 .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120)
                 .clipped()
+                .nbExtendsUnderBars()
             } else {
                 DiagonalStripeBackground()
                     .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100)
@@ -198,7 +227,7 @@ struct ProfileView: View {
             // Name / handle / bio / stats
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.name)
-                    .scaledSystemFont(20, weight: .heavy)
+                    .nbReadingFont(24, weight: .bold)
                     .padding(.top, 4)
 
                 Text("@\(profile.handle)")
@@ -207,113 +236,90 @@ struct ProfileView: View {
 
                 if let desc = profile.description, !desc.isEmpty {
                     Text(desc)
-                        .scaledSystemFont(14)
-                        .lineSpacing(3)
+                        .nbReadingFont(15)
                         .padding(.top, 6)
                 }
 
-                // Stats — horizontal inline
-                HStack(spacing: 0) {
-                    statView(count: profile.followersCount, label: "followers")
-                    Text("·")
-                        .font(.inter(13))
-                        .foregroundStyle(Color.nbTextTertiary)
-                        .padding(.horizontal, 8)
-                    statView(count: profile.followsCount, label: "following")
-                    Text("·")
-                        .font(.inter(13))
-                        .foregroundStyle(Color.nbTextTertiary)
-                        .padding(.horizontal, 8)
-                    statView(count: profile.postsCount, label: "posts")
+                // Counts that matter, as big Syne numerals (§13). Wraps at large sizes.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 28) {
+                        NBStat(value: profile.followersCount ?? 0, label: "followers")
+                        NBStat(value: profile.followsCount ?? 0, label: "following")
+                        NBStat(value: profile.postsCount ?? 0, label: "posts")
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        NBStat(value: profile.followersCount ?? 0, label: "followers")
+                        NBStat(value: profile.followsCount ?? 0, label: "following")
+                        NBStat(value: profile.postsCount ?? 0, label: "posts")
+                    }
                 }
                 .padding(.top, 10)
 
                 // Tool buttons row — icon-only squares, evenly distributed
                 HStack(spacing: 8) {
                     Spacer()
-
-                    Button {
-                        // Clear the full navigation stack first (removes profile, thread, etc.)
-                        // then push the analytics destination so the back button goes to root.
+                    toolButton("chart.bar", "ANALYTICS", a11y: "View analytics") {
+                        // Clear the stack first so Back goes to the root, then push.
                         store.navigationPath = NavigationPath()
-                        store.navigationPath.append(AnalyticsDestination(actor: profile.handle))
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "chart.bar")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.nbBlack)
-                                .frame(width: 44, height: 44)
-                                .background(Color.nbWhite)
-                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                                .background(Color.nbBlack.offset(x: 2, y: 2))
-                            Text("ANALYTICS")
-                                .font(.syne(9, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(Color.nbTextSecondary)
-                        }
+                        store.push(AnalyticsDestination(actor: profile.handle), column: navColumn)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("View analytics")
-
                     Spacer()
-
-                    Button {
+                    toolButton("network", "NETWORK", a11y: "View network constellation") {
                         store.navigationPath = NavigationPath()
-                        store.navigationPath.append(ConstellationDestination(actor: profile.handle))
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "network")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.nbBlack)
-                                .frame(width: 44, height: 44)
-                                .background(Color.nbWhite)
-                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                                .background(Color.nbBlack.offset(x: 2, y: 2))
-                            Text("NETWORK")
-                                .font(.syne(9, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(Color.nbTextSecondary)
-                        }
+                        store.push(ConstellationDestination(actor: profile.handle), column: navColumn)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("View network constellation")
-
                     Spacer()
-
-                    Button {
-                        store.selectedTab = .timeline
+                    toolButton("calendar.day.timeline.leading", "TIMELINE", a11y: "View timeline") {
+                        store.select(.timeline)
                         store.pendingTimelineQuery = "@\(profile.handle)"
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "calendar.day.timeline.leading")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.nbBlack)
-                                .frame(width: 44, height: 44)
-                                .background(Color.nbWhite)
-                                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                                .background(Color.nbBlack.offset(x: 2, y: 2))
-                            Text("TIMELINE")
-                                .font(.syne(9, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(Color.nbTextSecondary)
-                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("View timeline")
-
+                    Spacer()
+                    // Their posts, one at a time, full screen (§11).
+                    toolButton("play.rectangle", "STREAM", a11y: "Stream @\(profile.handle)'s posts") {
+                        StreamSession.shared.play(.author(did: profile.did, handle: profile.handle))
+                    }
                     Spacer()
                 }
                 .padding(.top, 10)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // fixed tiles + captions = chrome
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
-        .background(Color.nbWhite)
+        // Their colors, sampled from their avatar (§11), behind who they are.
+        .background {
+            if ownField {
+                NBContentField(url: profile.avatar.flatMap { URL(string: $0) },
+                               tone: colorScheme == .dark ? .deep : .pale)
+            }
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.nbBlack)
-                .frame(height: 2)
+                .fill(Color.nbBorder)
+                .frame(height: 0.5)
         }
+    }
+
+    private func toolButton(_ icon: String, _ title: String, a11y: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.nbBlack)
+                    .frame(width: 44, height: 44)
+                    .background(Color.nbWhite)
+                    .nbBorder()
+                Text(title)
+                    .font(.syne(9, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.nbTextSecondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(a11y)
     }
 
     private func statView(count: Int?, label: String) -> some View {
@@ -324,13 +330,10 @@ struct ProfileView: View {
                 .font(.inter(13))
                 .foregroundStyle(Color.nbTextSecondary)
         }
+        .fixedSize()   // never wrap inside a stat — ViewThatFits picks the stacked layout instead
     }
 
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
-    }
+    private func formatCount(_ n: Int) -> String { nbCompactCount(n) }
 
     private var followButton: some View {
         Button(action: toggleFollow) {

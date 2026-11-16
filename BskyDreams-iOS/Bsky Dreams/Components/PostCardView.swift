@@ -12,6 +12,9 @@ struct PostCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
+    @Environment(\.playingPostURI) private var playingPostURI
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var isLiked: Bool = false
 
@@ -71,24 +74,28 @@ struct PostCardView: View {
                 }
 
                 // Embed
-                if let embed = post.embed {
+                if let embed = post.embed, playingPostURI != post.uri {
                     EmbedView(embed: embed)
+                        .environment(\.embedPost, post)
                 }
 
                 // Action bar
                 actionBar
             }
-            .padding(12)
+            // Each post is its own card on the accent-tinted page, with the signature
+            // lift (§13): easy to tell one post from the next.
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
             .background(Color.nbWhite)
-            .nbBorder()
-            .nbShadow()
             .overlay(alignment: .leading) {
                 if depth > 0 {
                     Rectangle()
                         .fill(depthAccent)
-                        .frame(width: 3)
+                        .frame(width: 4)
                 }
             }
+            .nbBorder()
+            .nbShadow(size: 4)
             .overlay(alignment: .bottom) {
                 if let actionError {
                     NBErrorBanner(message: actionError)
@@ -98,10 +105,22 @@ struct PostCardView: View {
             }
             .padding(.horizontal, CGFloat(depth) * 12)
         }
+        // Open Duo: the post whose conversation is open in the detail pane is marked in
+        // the list beside it — the list/detail "you are here".
+        .overlay {
+            // The open Duo: the post whose conversation is open beside the list.
+            if navColumn != .detail, store.detailPane?.id == "post:\(post.uri)" {
+                RoundedRectangle(cornerRadius: NBMetrics.corner, style: .continuous)
+                    .strokeBorder(Color.nbAccent, lineWidth: 2.5)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityAddTraits(navColumn != .detail && store.detailPane?.id == "post:\(post.uri)" ? AccessibilityTraits.isSelected : [])
         .contentShape(Rectangle())
         .onTapGesture {
             guard !suppressNavigation else { return }
-            store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+            store.openPost(uri: post.uri, post: post, column: navColumn)
         }
         .confirmationDialog("Repost Options", isPresented: $showRepostSheet) {
             Button(isReposted ? "Undo Repost" : "Repost") { toggleRepost() }
@@ -133,19 +152,19 @@ struct PostCardView: View {
             Button(isMuted ? "Unmute" : "Mute", role: isMuted ? .none : .destructive) { toggleMute() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(isMuted ? "You will see their posts again." : "You won't see their posts in your feed.")
+            Text(isMuted ? "Their posts will show up again." : "You won't see their posts in your feed.")
         }
         .confirmationDialog("Block @\(post.author.handle)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
             Button("Block", role: .destructive) { performBlock() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("They won't be able to interact with you.")
+            Text("You won't see each other's posts, and they can't interact with you.")
         }
         .confirmationDialog("Delete this post?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { deletePost() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This cannot be undone.")
+            Text("There's no undo for this.")
         }
         .onAppear {
             syncState()
@@ -154,10 +173,14 @@ struct PostCardView: View {
         }
     }
 
+    /// At accessibility sizes the trailing time column squeezed name/handle to
+    /// "Rebecca Mc…" (device run); there the time moves under the handle and the
+    /// name may wrap.
     private var authorHeader: some View {
-        HStack(alignment: .top, spacing: 10) {
+        let stacked = typeSize.isAccessibilitySize
+        return HStack(alignment: .top, spacing: 10) {
             Button {
-                store.navigationPath.append(ProfileDestination(actor: post.author.did))
+                store.openProfile(post.author.did, column: navColumn)
             } label: {
                 AvatarView(url: post.author.avatar, size: 40)
             }
@@ -168,38 +191,47 @@ struct PostCardView: View {
                 Text(post.author.name)
                     .scaledSystemFont(14, weight: .semibold)
                     .foregroundStyle(Color.nbBlack)
-                    .lineLimit(1)
+                    .lineLimit(stacked ? 2 : 1)
                 Text("@\(post.author.handle)")
                     .scaledSystemFont(13)
                     .foregroundStyle(Color.nbTextSecondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
+                if stacked { timeButton }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            // Tappable relative time — opens post in bsky.app
-            Button {
-                let urlStr = "https://bsky.app/profile/\(post.author.handle)/post/\(post.rkey)"
-                if let url = URL(string: urlStr) {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                Text(post.relativeTime)
-                    .font(.inter(11))
-                    .foregroundStyle(Color.nbTextSecondary)
-            }
-            .buttonStyle(.plain)
+            if !stacked { timeButton }
         }
     }
 
+    /// Tappable relative time — opens the post in bsky.app.
+    private var timeButton: some View {
+        Button {
+            let urlStr = "https://bsky.app/profile/\(post.author.handle)/post/\(post.rkey)"
+            if let url = URL(string: urlStr) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            Text(post.relativeTime)
+                .font(.inter(11))
+                .foregroundStyle(Color.nbTextSecondary)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var actionBar: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 22) {   // 22 (was 28) keeps reply/repost/like/… on one line in a ~310pt Duo column
             // Reply
             Button {
-                onReply?(post)
+                // No local reply box here → reply in context (conversation + reply box).
+                if let onReply { onReply(post) } else { store.openReply(to: post, column: navColumn) }
             } label: {
-                Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
@@ -209,24 +241,26 @@ struct PostCardView: View {
 
             // Repost
             Button { showRepostSheet = true } label: {
-                Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
-            .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
             .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
             .accessibilityValue("\(repostCount)")
             .accessibilityAddTraits(.isButton)
 
             // Like
             Button { toggleLike() } label: {
-                Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                     .font(.inter(13))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
             }
             .buttonStyle(NeubrutalistIconButtonStyle())
-            .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
             .accessibilityLabel(isLiked ? "Unlike" : "Like")
             .accessibilityValue("\(likeCount)")
             .accessibilityAddTraits(.isButton)
@@ -235,6 +269,21 @@ struct PostCardView: View {
 
             // "..." menu — share, open in Bluesky, and owner/other-specific actions
             Menu {
+                // Keep it for later (Saved, and Stream's Saved source) — app-wide (§11).
+                let saved = SavedPosts.shared.contains(post.uri)
+                Button {
+                    Haptics.light()
+                    SavedPosts.shared.toggle(post.uri)
+                } label: {
+                    Label(saved ? "Remove from Saved" : "Save for Later",
+                          systemImage: saved ? "bookmark.slash" : "bookmark")
+                }
+                Button {
+                    StreamSession.shared.play(.author(did: post.author.did, handle: post.author.handle))
+                } label: {
+                    Label("Stream @\(post.author.handle)'s Posts", systemImage: "play.rectangle")
+                }
+                Divider()
                 Button { showShareSheet = true } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -643,7 +692,7 @@ struct InlineReplyView: View {
                     .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
             Spacer()
             if isFocused {
@@ -667,7 +716,7 @@ struct InlineReplyView: View {
                 images.append(ComposeImage(imageData: resized))
             } else {
                 Haptics.error()
-                errorMessage = "Couldn't load that photo — try another."
+                errorMessage = "That photo didn't load. Try another one."
             }
         }
         selectedItems = []
@@ -749,7 +798,7 @@ struct ShareOptionsView: View {
                 VStack(spacing: 0) {
                     shareOption(
                         title: "Share Bluesky Link",
-                        subtitle: "bsky.app — opens in Bluesky",
+                        subtitle: "bsky.app · opens in Bluesky",
                         icon: "cloud",
                         url: bskyURL
                     )
@@ -758,7 +807,7 @@ struct ShareOptionsView: View {
 
                     shareOption(
                         title: "Share Bsky Dreams Link",
-                        subtitle: "bskydreams.com — opens in app or web",
+                        subtitle: "bskydreams.com · opens in the app or on the web",
                         icon: "wand.and.stars",
                         url: dreamsURL
                     )

@@ -1,6 +1,6 @@
 # Project Scratchpad — Bsky Dreams
 
-## Current Date: 2026-06-17
+## Current Date: 2026-11-16
 
 ---
 
@@ -43,6 +43,12 @@
 | TV: trending video feed source | ✅ | ✅ | `thevids` official Bluesky feed added as third source |
 | Stream (full-screen post slideshow) | ✅ | ✅ | Web: any orientation; iOS: landscape via fullScreenCover |
 | Stream: conversation overlay | 🌐 | ✅ | iOS: ThreadView in fullScreenCover; web: navigates to thread |
+| Stream: screen-saver redesign (scene per post, whole images, fitted type, explore beside + resume) | ⏳ | ✅ | 2026-11-16, iOS-DESIGN §10.5; web follow-up: one slide per post + uncropped images + resume after viewing a thread |
+| Duo: One Column (Right Side choice, not default) | — | ✅ | 2026-11-16; iOS-DESIGN §10.3 |
+| Design Language 2: reading typeface (Editorial/Modern), color from content, glass controls | ⏳ | ✅ | 2026-11-16, iOS-DESIGN §11. Web: a reading-face setting + serif post text are cheap wins |
+| Saved posts (app-wide) + Saved place | ⏳ | ✅ | iOS: device-local; web follow-up could use localStorage |
+| Stream from anywhere (profile, author, search/#tag, Saved) | ⏳ | ✅ | |
+| Two-page conversation + profile (≥760pt) | — | ✅ | Web desktop could do the same at wide widths |
 | Reader (article cards, Direct/Readable/Archive modes) | ✅ | ✅ | |
 | Reader: verified news feed source | ✅ | ✅ | `verified-news` feed merged with timeline + discover |
 | Reader: seen-post filtering | ✅ | ✅ | Posts seen in home feed are filtered from Reader |
@@ -51,6 +57,8 @@
 | Hybrid feeds (multi-source merging + trending score) | ✅ | ✅ | Both Following and Discover merge 3 feeds; Gallery merges 4 |
 | NSFW filtering in all feed views | ✅ | ✅ | Label-based; Search retains user toggle |
 | Inline video fullscreen | 📱 | ✅ | AVPlayerViewController via UIKit presentation |
+| iPhone Duo (foldable) layout | — | ✅ | 2026-11-10, 1.49 (55): native TabView (tab bar → Duo vertical bar; system sidebar when open), system nav bars, ArrangementView columns; second column of ANY view (Search + Home, two feeds, Gallery + Reader…); conversation/chat detail pane when single-column; iOS-DESIGN §10. Web equivalent = desktop sidebar (already) — a web two-pane conversation view is a possible parity follow-up |
+| Duo: reply in context / article + discussion / TV + conversation | — | ✅ | 2026-11-10; iOS-DESIGN §10.11–10.13. Reply-in-context (Reply opens the conversation with the box open) is a candidate for web too |
 | Smart App Banner + App Store links | 🌐 | — | Web auth screen + settings link to iOS App Store |
 | Analytics dashboard (post stats, heatmap) | ✅ | ✅ | iOS: Swift Charts (engagement bars, posting heatmap, top posts) |
 | Network Constellation (D3 graph) | ✅ | ✅ | iOS: full physics sim, all 4 gestures working (2026-03-18) |
@@ -85,6 +93,7 @@
 - **Hybrid feeds (2026-04-01)**: Discover merges 3 feeds (whats-hot + hot-classic + with-friends); Following merges 3 feeds (timeline + best-of-follows + for-you); Gallery merges 4; Reader merges 3 (+ verified-news); TV merges 3 (+ thevids). NSFW filtering on all.
 - **App Store promotion (2026-03-31)**: Smart App Banner meta tag; auth footer + settings link to iOS App Store; GitHub repo link removed from UI
 - **Sidebar (2026-03-31)**: Reordered to match iOS (Post, Home, Search, Notifications, Messages, Gallery, TV, Stream, Reader, Analytics, Constellation, Timeline); icons updated to match iOS SF Symbols
+- **Audit fixes (2026-10-08, deployed)**: safeUrl + Reader sanitizer + single signOut; shared token refresh; paging/cursor/video/DM-poll bugs; zoom, AA contrast, dialog focus, skip link, keyboard cards; offline banner; OS-following theme with no flash; PWA icons; deduped compose helpers.
 
 ### Next for Web
 
@@ -97,6 +106,8 @@
 ## iOS App Status
 
 **All primary views implemented.** App is live on the App Store (v1.26).
+
+**2026-11-16: 1.50 (57) submitted for App Review (auto-release on approval) — the redesign release** (Stream rebuilt as a screen saver, One Column, Design Language 2 → Editorial Native → magazine typography, Saved, Stream from anywhere, Constellation rebuilt on SwiftUI gestures, every string in Ben's voice; iOS-DESIGN §10.5, §11–§13). 1.49 (56) is live.
 App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 
 ### Completed
@@ -140,8 +151,12 @@ App Store: https://apps.apple.com/us/app/bsky-dreams/id6760909675
 - Image resize shared (2026-04-01): `ComposeImage.resizeImageData` static method used by both ComposeView and InlineReplyView
 - Feed scroll smoothness (2026-03-31): in-memory seenURISet cache in ReaderView (same as FeedView); image pre-warming; earlier pagination trigger (last 5 not last 1)
 - World-class polish update (2026-06-17): foundation + per-view sweep porting learnings from sibling apps (BOBA-Playbook, Archive-Watch). See @docs/iOS-DESIGN.md (binding design contract) and DECISIONS.md 2026-06-17 entries. Foundation: Dynamic Type via `relativeTo:` custom fonts (`.syne`/`.inter`); `Color.nbAccentLegible` (dark-mode-lightened accent for foregrounds); `Haptics` semantic taxonomy (selection / light-medium-heavy / success-warning-error); universal feature-state primitives `NBEmptyState` / `NBErrorBanner` (coral, retry/dismiss) / `NBOfflineBanner` (lime) / `NBSkeleton`+`NBSkeletonPostRow` (reduce-motion aware); first-run hints `HintsManager` + `HintBanner` (cyan/blue, dismiss-permanent per-device); `NBImageLoader`+`CachedImage` (URL-bound cached async image, shared NSCache 600/60MB, off-main ImageIO downsample, post-await URL re-check kills recycled-cell wrong-image, `clearCache()`); `NetworkMonitor` (`NWPathMonitor`, `@Observable`, `@Environment`-injected) driving offline banners; SwiftData container graceful on-disk → in-memory fallback (corrupt store can't crash launch); fixed latent background notification check using camelCase `likeViaRepost`/`repostViaRepost` (never matched kebab-case API) — same class as the documented foreground fix; branded `UILaunchScreen` Info.plist dict using asset-catalog `LaunchBackground` (blue #0047FF) + `LaunchCloud` imageset (never coral). BUILD LESSON: synchronized-group new-file gotcha — brand-new `.swift` files intermittently not picked up; mitigation: inline new types into already-compiled files (`AppStore.swift`, `DesignSystem.swift`); new `.xcassets` entries are picked up by `actool` regardless. Per-view: surfaced every previously-swallowed `catch {}` (Profile ×6, Notifications, Search, Stream, Constellation, DMs/Chat, Compose) via `NBErrorBanner` + `Haptics.error`; `NBEmptyState` across Profile/Search/Notifications/Gallery/Thread/Timeline/Analytics; intentional haptics; Reduce Motion honored in Constellation/Stream/TV decorative animations (NOT physics sim or gesture infra); `CachedImage` adopted in ImageGridView + GalleryView cells; offline banner + first-load skeleton + first-run HintBanners in Feed/Reader; VoiceOver labels on icon-only buttons throughout. Settings: "Clear Image Cache", "Notification Settings" (deep-links to system Settings), and a "TIPS & HINTS" section (master Show-Tips toggle + Reset All Tips).
+- Audit + device-verified polish loop (2026-10-08, 1.48): crash/data-loss fixes (untrusted facet ranges, offline logouts + rotating-refresh races, failed posts kept with Retry), @mention/hashtag facets on every compose surface, like/repost/unblock correctness, real badge counts, iPad (sideways render, window controls), Dynamic Type incl. system-font text + accessibility-size layouts, dark-mode foregrounds, CachedImage in churn surfaces, offline/error states everywhere, Share Extension floor 18.6 + privacy manifest, independence disclaimer. Verified on the iPhone 12 / iPad Pro test devices via `tools/device_smoke.py` + DEBUG launch doors. Log: AUTONOMOUS_PROGRESS.md.
 
 ### Next for iOS
+
+- **iPhone Duo — device-verified 2026-11-10 (owner's Duo, Xcode 27.1, Debug):** outer display: every view, tab bar + toolbar items in the vertical strip. Inner flat: detail pane + second column of any view. Inner book pose: `ArrangementView` moves the divider onto the fold (primary 0–455.5pt, secondary from 495.5pt = the `.division` region; inactive when flat). Fixed: like/repost `.sensoryFeedback(trigger: isLiked)` fired on load for already-liked posts → haptic only on tap. Still to check: close with a conversation open (continuity), inner rotated (fold horizontal — side-by-side columns would cross it), Stream on inner. `tools/device_smoke.py duo` captures the ACTIVE display.
+- **iPhone Duo — verify on device (history)** (build 51 verified the open-Duo sidebar on device 2026-11-10; build 52 adds the collapsible sidebar + two columns; 53 formatting; 54 side-strip rail (withdrawn); 55 native shell — system TabView/sidebar/nav bars + ArrangementView; `xcode-27` runner, iOS 27.2 SDK): portrait split lands on the fold; pane continuity on close; Stream on the inner display; edge strip vs `NBNavBar`/`FeedNavBar` on the closed Duo; then consider `ArrangementView`/`ReservedRegion`, tabletop TV/Stream, Duo screenshots (required April 2027), second window (needs per-scene state)
 
 - **Profile interaction graph**: port from web (fetch author feed, tally reply targets, show top 6 chips)
 - **Reader read-state persistence**: persist `readURLs` to SwiftData so articles stay dimmed across sessions

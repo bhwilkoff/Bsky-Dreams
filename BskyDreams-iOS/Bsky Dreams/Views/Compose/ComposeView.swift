@@ -230,7 +230,7 @@ struct ComposeView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(canPost ? Color.nbAccent : Color.nbBlue.opacity(0.4))
-                .overlay(Rectangle().strokeBorder(Color.nbBlack.opacity(canPost ? 1 : 0.3), lineWidth: 2))
+                .nbBorder()
                 .contentShape(Rectangle())
                 .onTapGesture { if canPost && !isPosting { post() } }
                 .accessibilityLabel(isPosting ? "Posting" : "POST")
@@ -303,7 +303,7 @@ struct ComposeView: View {
                     .foregroundStyle(Color.nbLinkColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .overlay(Rectangle().strokeBorder(Color.nbBlue, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.nbBlue, lineWidth: 1.5))
             }
             .accessibilityLabel("Attach GIF")
 
@@ -458,7 +458,7 @@ struct ComposeView: View {
                 images.append(ComposeImage(imageData: resized))
             } else {
                 Haptics.error()
-                errorMessage = "Couldn't load that photo — try another."
+                errorMessage = "That photo didn't load. Try another one."
             }
         }
         selectedItems = []
@@ -466,7 +466,7 @@ struct ComposeView: View {
 
     private func loadVideo(from item: PhotosPickerItem) async {
         guard let transferable = try? await item.loadTransferable(type: VideoFileTransferable.self) else {
-            errorMessage = "Could not load video — try a different file"
+            errorMessage = "That video didn't load. Try a different file."
             selectedVideoItem = nil
             return
         }
@@ -476,14 +476,14 @@ struct ComposeView: View {
         // actor — a synchronous 50 MB read on main froze the composer.
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         guard size > 0, size <= maxVideoBytes else {
-            errorMessage = "Video must be under 50 MB"
+            errorMessage = "Videos need to be under 50 MB."
             selectedVideoItem = nil
             return
         }
         guard let data = await Task.detached(priority: .userInitiated, operation: {
             try? Data(contentsOf: url, options: .mappedIfSafe)
         }).value else {
-            errorMessage = "Could not load video — try a different file"
+            errorMessage = "That video didn't load. Try a different file."
             selectedVideoItem = nil
             return
         }
@@ -768,7 +768,7 @@ struct GifThumbnailView: View {
     var body: some View {
         Button(action: onTap) {
             AnimatedGifView(url: gif.thumbUrl, placeholderUrl: gif.thumbJpgUrl)
-                .frame(width: (UIScreen.main.bounds.width - 32) / 3, height: 90)
+                .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 90)   // fills its grid column (no UIScreen.main)
                 .clipped()
                 .overlay(alignment: .bottomTrailing) {
                     // Klipy watermark — required on each GIF card per branding guidelines
@@ -850,7 +850,11 @@ struct AnimatedGifView: UIViewRepresentable {
             Task { [weak self] in
                 guard let self else { return }
                 guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
-                let (frames, delays) = Self.decode(data: data)
+                // Decode every frame OFF the main actor (this Task inherits MainActor).
+                let scale = imageView.traitCollection.displayScale
+                let (frames, delays) = await Task.detached(priority: .userInitiated) {
+                    Self.decode(data: data, scale: scale)
+                }.value
                 guard !frames.isEmpty else {
                     // Not an animated GIF — just show as a static image
                     await MainActor.run { imageView.image = UIImage(data: data) }
@@ -885,7 +889,7 @@ struct AnimatedGifView: UIViewRepresentable {
             frameIndex = 0
         }
 
-        private static func decode(data: Data) -> ([UIImage], [Double]) {
+        nonisolated private static func decode(data: Data, scale: CGFloat) -> ([UIImage], [Double]) {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return ([], []) }
             let count = CGImageSourceGetCount(source)
             guard count > 1 else { return ([], []) }  // single frame = not animated
@@ -896,7 +900,7 @@ struct AnimatedGifView: UIViewRepresentable {
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 400 * UIScreen.main.scale
+                kCGImageSourceThumbnailMaxPixelSize: 400 * scale
             ]
             var images: [UIImage] = []
             var delays: [Double] = []
@@ -1062,7 +1066,7 @@ struct AltTextSheet: View {
                 }
 
                 NBTextField(
-                    placeholder: "Describe this image for screen readers...",
+                    placeholder: "Describe the picture for folks who can't see it…",
                     text: $image.altText,
                     label: "Alt Text"
                 )

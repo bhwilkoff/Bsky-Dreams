@@ -39,6 +39,7 @@ func articleIsEnglish(post: PostView, card: ExternalCard) -> Bool {
 }
 
 struct ReaderView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     private let discoverURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
     private let newsFeedURI = "at://did:plc:kkf4naxqmweop7dv4l2iqqf5/app.bsky.feed.generator/verified-news"
 
@@ -52,6 +53,8 @@ struct ReaderView: View {
     @State private var hasLoaded = false
     @State private var errorMessage: String?
     @State private var selectedArticle: PostView? = nil
+    @Environment(\.navColumn) private var navColumn
+    @Environment(AppStore.self) private var store
     @State private var readURLs: Set<String> = []
     // In-memory seen-URI cache — avoids @Query cascade re-renders on every
     // mark-seen insert (same pattern as FeedView).
@@ -88,7 +91,7 @@ struct ReaderView: View {
                 articleList
             }
         }
-        .nbNavBar(title: "READER", leading: { NBHamburger() })
+        .nbNavBar(title: mastheadVisible ? "" : "Reader", leading: { NBHamburger() })
         .task {
             // Load seen URIs from SwiftData once, then manage in memory
             if seenURISet.isEmpty {
@@ -96,6 +99,12 @@ struct ReaderView: View {
                 seenURISet = Set((try? modelContext.fetch(descriptor))?.map { $0.uri } ?? [])
             }
             await load()
+            #if DEBUG
+            // Device-test door: open the first article (see DebugLaunchDoors, AppStore.swift).
+            if ProcessInfo.processInfo.environment["BSKY_OPEN_FIRST_ARTICLE"] != nil, navColumn == .primary {
+                selectedArticle = articlesWithCards.first?.post
+            }
+            #endif
         }
     }
 
@@ -115,14 +124,18 @@ struct ReaderView: View {
                     .padding(.top, 10)
                 }
 
-                HintBanner(id: "reader.welcome", text: "Tap an article to read it distraction-free in Readable mode.")
+                NBMasthead(kicker: "Reader", headline: "Today's reading",
+                           deck: "Articles your network is sharing, without the clutter.",
+                           onVisibleChange: { mastheadVisible = $0 })
+
+                HintBanner(id: "reader.welcome", text: "Tap an article to read it without the clutter.")
                     .padding(.top, 10)
 
                 if articlesWithCards.isEmpty && !isLoading && errorMessage == nil {
                     NBEmptyState(
                         icon: "doc.text",
                         title: "You're all caught up",
-                        message: "No new articles right now",
+                        message: "Nothing new to read right now. Check back in a bit.",
                         actionTitle: "Refresh",
                         action: {
                             Task {
@@ -167,6 +180,7 @@ struct ReaderView: View {
                         .padding()
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .refreshable {
@@ -179,7 +193,15 @@ struct ReaderView: View {
             newsCursor = nil
             await load()
         }
-        .sheet(item: $selectedArticle) { post in
+        // Open Duo: full screen — the article and its discussion side by side (§10.12).
+        .sheet(item: Binding(get: { store.splitLayoutActive ? nil : selectedArticle },
+                             set: { selectedArticle = $0 })) { post in
+            if let card = post.embed?.external {
+                ArticleReaderSheet(card: card, post: post)
+            }
+        }
+        .fullScreenCover(item: Binding(get: { store.splitLayoutActive ? selectedArticle : nil },
+                                       set: { selectedArticle = $0 })) { post in
             if let card = post.embed?.external {
                 ArticleReaderSheet(card: card, post: post)
             }
@@ -200,6 +222,7 @@ struct ReaderView: View {
                         .padding(.vertical, 4)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -330,6 +353,7 @@ struct ArticleCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     @State private var isLiked: Bool = false
 
@@ -365,15 +389,16 @@ struct ArticleCardView: View {
                                 .tracking(1)
                         }
 
+                        // Headlines read as headlines: the reading face, large (§11).
                         Text(card.title)
-                            .font(.syne(16, weight: .bold))
+                            .nbReadingFont(21, weight: .bold)
                             .foregroundStyle(Color.nbBlack)
 
                         if !card.description.isEmpty {
                             Text(card.description)
-                                .font(.inter(13))
+                                .nbReadingFont(15)
                                 .foregroundStyle(Color.nbTextSecondary)
-                                .lineLimit(2)
+                                .lineLimit(3)
                         }
 
                         HStack(spacing: 8) {
@@ -392,31 +417,35 @@ struct ArticleCardView: View {
             // Action bar — same layout as GalleryCardView
             HStack(spacing: 20) {
                 Button {
-                    store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                    store.openPost(uri: post.uri, post: post, column: navColumn)
                 } label: {
-                    Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                    Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
 
                 Button { showRepostSheet = true } label: {
-                    Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                    Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
                     .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
-                .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                 Button { toggleLike() } label: {
-                    Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                    Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                 }
                 .buttonStyle(.plain)
                     .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
-                .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                 Spacer()
             }
@@ -447,6 +476,7 @@ struct ArticleCardView: View {
     private func toggleLike() {
         guard let did = auth.session?.did else { return }
         let wasLiked = isLiked; let prevCount = likeCount
+        Haptics.medium()
         isLiked.toggle(); likeCount += isLiked ? 1 : -1
         Task {
             do {
@@ -459,6 +489,7 @@ struct ArticleCardView: View {
     private func toggleRepost() {
         guard let did = auth.session?.did else { return }
         let wasReposted = isReposted; let prevCount = repostCount
+        Haptics.light()
         isReposted.toggle(); repostCount += isReposted ? 1 : -1
         Task {
             do {
@@ -475,6 +506,10 @@ struct ArticleReaderSheet: View {
     let card: ExternalCard
     var post: PostView? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppStore.self) private var store
+    @Environment(AuthManager.self) private var auth
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var mode: ReadMode = .reader
     @State private var readableProgress: String? = nil
 
@@ -489,6 +524,42 @@ struct ArticleReaderSheet: View {
     }
 
     var body: some View {
+        if let post, horizontalSizeClass == .regular, verticalSizeClass == .regular {
+            articleWithDiscussion(post)
+        } else {
+            articleStack
+        }
+    }
+
+    /// Open iPhone Duo (§10.12): the article on one page, the post's Bluesky conversation
+    /// on the other — read the piece, then what people make of it, without switching.
+    /// In book pose the system puts the divider on the fold.
+    @ViewBuilder
+    private func articleWithDiscussion(_ post: PostView) -> some View {
+        let discussion = NavigationStack(path: Bindable(store).companionPath) {
+            ThreadView(uri: post.uri, initialPost: post)
+                .withAppDestinations(myDid: auth.session?.did ?? "")
+                .environment(\.nbIsPushed, true)   // the article side owns Close
+        }
+        .environment(\.navColumn, .companion)
+        .onAppear { store.companionPath = NavigationPath() }
+
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                articleStack
+                    .splitArrangementLayoutRatio(minHorizontal: 0.4, idealHorizontal: 0.5,
+                                                 minVertical: 0.4, idealVertical: 0.5)
+            } secondary: {
+                discussion
+            }
+            // Both axes: horizontal-only drops the discussion when rotated (§10.3).
+            .arrangementViewStyle(.split)
+        } else {
+            HStack(spacing: 0) { articleStack; Divider(); discussion }
+        }
+    }
+
+    private var articleStack: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Neubrutalist mode toggle
@@ -509,7 +580,7 @@ struct ArticleReaderSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
                 .padding(8)
                 .background(Color.nbWhite)
 
@@ -567,13 +638,8 @@ struct ArticleReaderSheet: View {
                         avc.popoverPresentationController?.sourceRect = CGRect(x: top.view.bounds.midX, y: 40, width: 0, height: 0)
                         top.present(avc, animated: true)
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.nbBlack)
-                            .frame(width: 36, height: 36)
-                            .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(.plain)
                 }
             )
         }
@@ -844,6 +910,10 @@ struct ArticleWebView: UIViewRepresentable {
         // MARK: Reader HTML template (matches web app reader style)
 
         private func buildReaderHTML(title: String, content: String) -> String {
+            // The person's reading face (Settings → Reading): New York via WebKit's ui-serif,
+            // or the system sans (§11).
+            let serif = (UserDefaults.standard.string(forKey: "reading_typeface") ?? "serif") == "serif"
+            let bodyFace = serif ? "ui-serif, 'New York', Georgia, serif" : "-apple-system, 'Helvetica Neue', sans-serif"
             let escapedTitle = title
                 .replacingOccurrences(of: "&", with: "&amp;")
                 .replacingOccurrences(of: "<", with: "&lt;")
@@ -857,8 +927,8 @@ struct ArticleWebView: UIViewRepresentable {
             <style>
             * { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
             body {
-                font-family: Georgia, 'Times New Roman', serif;
-                font-size: 18px;
+                font-family: \(bodyFace);
+                font-size: 19px;
                 line-height: 1.75;
                 max-width: 680px;
                 margin: 0 auto;
@@ -875,8 +945,8 @@ struct ArticleWebView: UIViewRepresentable {
                 hr { border-color: #3A3A3A; }
             }
             h1.reader-title {
-                font-family: -apple-system, 'Helvetica Neue', sans-serif;
-                font-size: 26px;
+                font-family: \(bodyFace);
+                font-size: 30px;
                 font-weight: 800;
                 line-height: 1.25;
                 margin: 0 0 20px;

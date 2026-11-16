@@ -9,6 +9,7 @@ struct AnalyticsView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     @State private var posts: [PostView] = []
     @State private var profile: ActorProfile? = nil
@@ -100,13 +101,13 @@ struct AnalyticsView: View {
                     NBEmptyState(
                         icon: "chart.bar.xaxis",
                         title: "Pick an account",
-                        message: "Enter a handle above and tap LOAD, or tap MY ANALYTICS for your own stats."
+                        message: "Type a handle above and tap LOAD. Or tap MY ANALYTICS to see your own."
                     )
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else if posts.isEmpty {
                     NBEmptyState(
                         icon: "chart.bar.xaxis",
-                        title: "No posts to analyze",
+                        title: "Nothing to look at yet",
                         message: "This account hasn't posted anything original yet."
                     )
                     .frame(maxWidth: .infinity, minHeight: 200)
@@ -123,15 +124,13 @@ struct AnalyticsView: View {
         // When pushed as a navigation destination (initialActor set), show a back button.
         // When shown as the sidebar tab (initialActor nil), show the hamburger.
         .nbOfflineBanner()
-        .nbNavBar(title: "ANALYTICS", leading: {
-            if initialActor != nil { NBBackButton() } else { NBHamburger() }
-        })
+        .nbNavBar(title: "ANALYTICS")   // tab root: system tab bar/sidebar; pushed: system back button
         .task {
             if let actor = initialActor {
                 // Pushed from a profile page — actor is known at init, load immediately.
                 searchActor = actor
                 await load(actor: actor)
-            } else if let actor = store.pendingAnalyticsActor {
+            } else if navColumn == .primary, let actor = store.pendingAnalyticsActor {
                 // Sidebar tab appeared with a pending actor set by pendingAnalyticsActor.
                 store.pendingAnalyticsActor = nil
                 searchActor = actor
@@ -143,7 +142,7 @@ struct AnalyticsView: View {
         // Safety net: fires when the sidebar tab is already visible and
         // pendingAnalyticsActor is set (e.g. user taps Analytics twice from different profiles).
         .onChange(of: store.pendingAnalyticsActor) { _, newActor in
-            guard initialActor == nil, let actor = newActor else { return }
+            guard initialActor == nil, navColumn == .primary, let actor = newActor else { return }
             store.pendingAnalyticsActor = nil
             searchActor = actor
             Task { await load(actor: actor) }
@@ -174,7 +173,7 @@ struct AnalyticsView: View {
                         .padding(.horizontal, 14)
                         .frame(maxHeight: .infinity)
                         .background(canLoad ? Color.nbAccent : Color.nbWhite)
-                        .overlay(Rectangle().strokeBorder(canLoad ? Color.nbBlack : Color.nbTextSecondary, lineWidth: 2))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(canLoad ? Color.nbBlack : Color.nbTextSecondary, lineWidth: 2))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             guard canLoad else { return }
@@ -195,8 +194,7 @@ struct AnalyticsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(Color.nbWhite)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .background(Color.nbBlack.offset(x: 3, y: 3))
+                .nbBorder()
                 .contentShape(Rectangle())
                 .onTapGesture { Task { await loadSelf() } }
         }
@@ -251,7 +249,7 @@ struct AnalyticsView: View {
 
     private var engagementCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("ENGAGEMENT — LAST 25 POSTS")
+            sectionTitle("ENGAGEMENT · LAST 25 POSTS")
 
             Chart(chartItems) { item in
                 BarMark(
@@ -314,7 +312,7 @@ struct AnalyticsView: View {
 
     private var heatmapCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("POST FREQUENCY — 12 WEEKS")
+            sectionTitle("POST FREQUENCY · 12 WEEKS")
 
             // Non-scrolling grid centered within the card. 12 columns × 7 rows.
             // Cell size 16×16pt, spacing 4pt → total width ≈ 250pt, fits all iPhone widths.
@@ -417,12 +415,12 @@ struct AnalyticsView: View {
                             .accessibilityAddTraits(sortBy == opt ? [.isButton, .isSelected] : .isButton)
                     }
                 }
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
+                .nbBorder()
             }
 
             ForEach(Array(sortedPosts.prefix(15).enumerated()), id: \.offset) { i, post in
                 Button {
-                    store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                    store.openPost(uri: post.uri, post: post, column: navColumn)
                 } label: {
                     HStack(spacing: 10) {
                         // Rank badge
@@ -438,11 +436,11 @@ struct AnalyticsView: View {
                                 .multilineTextAlignment(.leading)
 
                             HStack(spacing: 14) {
-                                Label("\(post.likeCount ?? 0)",   systemImage: "heart.fill")
+                                Label(nbCompactCount(post.likeCount ?? 0),   systemImage: "heart.fill")
                                     .foregroundStyle(Color.nbAccentLegible)
-                                Label("\(post.repostCount ?? 0)", systemImage: "arrow.2.squarepath")
+                                Label(nbCompactCount(post.repostCount ?? 0), systemImage: "arrow.2.squarepath")
                                     .foregroundStyle(Color.nbLime)
-                                Label("\(post.replyCount ?? 0)",  systemImage: "bubble.left.fill")
+                                Label(nbCompactCount(post.replyCount ?? 0),  systemImage: "bubble.left.fill")
                                     .foregroundStyle(Color.nbLinkColor)
                             }
                             .font(.inter(11))
@@ -536,11 +534,7 @@ struct AnalyticsView: View {
         }
     }
 
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000     { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
-    }
+    private func formatCount(_ n: Int) -> String { nbCompactCount(n) }
 }
 
 // MARK: - Supporting types

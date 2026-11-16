@@ -200,7 +200,7 @@ final class ATProtocolClient {
                 throw APIError.serverError(0, status.error ?? "Video processing failed")
             }
         }
-        throw APIError.serverError(0, "Video processing timed out — try a shorter clip")
+        throw APIError.serverError(0, "The video took too long to process. A shorter clip usually works.")
     }
 
     /// Post a `[String: Any]` body via JSONSerialization (for dynamic AT Protocol records).
@@ -327,7 +327,7 @@ final class ATProtocolClient {
             let err = try? decoder.decode(ATError.self, from: data)
             // Surface the XRPC error CODE (e.g. "ConvoLocked") plus message — the code is
             // often the only useful detail and is sometimes the only field present.
-            let detail = [err?.error, err?.message].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
+            let detail = [err?.error, err?.message].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ". ")
             throw APIError.serverError(httpResponse.statusCode, detail.isEmpty ? "Unknown error" : detail)
         }
 
@@ -405,7 +405,7 @@ enum APIError: LocalizedError {
         switch self {
         case .invalidResponse: "Invalid server response"
         case .serverError(let code, let msg): "Server error \(code): \(msg)"
-        case .decodingFailed: "Failed to parse response"
+        case .decodingFailed: "Bluesky sent back something unexpected."
         case .responseUnreadable(let detail): "Response not readable (\(detail))"
         }
     }

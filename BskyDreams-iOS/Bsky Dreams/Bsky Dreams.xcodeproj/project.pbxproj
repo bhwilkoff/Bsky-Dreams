@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DD0000000000000000000A02 /* DuoInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0000000000000000000A01 /* DuoInteractionTests.swift */; };
 		B737919A2F6ED818003D230F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B73791992F6ED818003D230F /* PrivacyInfo.xcprivacy */; };
 		B755E40A2F66444F001882AD /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3F12F66444E001882AD /* LoginView.swift */; };
 		B755E40B2F66444F001882AD /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B755E3EF2F66444E001882AD /* AnalyticsView.swift */; };
@@ -85,6 +86,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		DD0000000000000000000A01 /* DuoInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuoInteractionTests.swift; sourceTree = "<group>"; };
 		B722083D2F6DC97A00FFAC1A /* BskyDreamsScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BskyDreamsScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B72208482F6DCAB800FFAC1A /* Bsky Dreams.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; name = "Bsky Dreams.xctestplan"; path = "../Bsky Dreams.xctestplan"; sourceTree = "<group>"; };
 		B72208492F6DDBD800FFAC1A /* BskyDreamsScreenshots.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = BskyDreamsScreenshots.xctestplan; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 			children = (
 				B7APPVER00000000APPVER001 /* AppVersion.xcconfig */,
 				B72208492F6DDBD800FFAC1A /* BskyDreamsScreenshots.xctestplan */,
+				DD0000000000000000000A01 /* DuoInteractionTests.swift */,
 				B72208482F6DCAB800FFAC1A /* Bsky Dreams.xctestplan */,
 				B755E4312F66478B001882AD /* Resources */,
 				B755E3C62F6643DF001882AD /* Bsky Dreams */,
@@ -591,6 +594,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DD0000000000000000000A02 /* DuoInteractionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

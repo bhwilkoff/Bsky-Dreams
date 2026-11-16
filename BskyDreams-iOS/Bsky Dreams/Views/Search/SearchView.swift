@@ -5,6 +5,7 @@ struct SearchView: View {
     var initialQuery: String = ""
 
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.modelContext) private var modelContext
     @Environment(NetworkMonitor.self) private var network
     @Query(sort: \SavedSearch.createdAt) private var savedSearches: [SavedSearch]
@@ -12,7 +13,10 @@ struct SearchView: View {
     @State private var query: String = ""
     /// One height for every control in the search row (field, GO, save, filters) —
     /// they were 34/36/40pt with misaligned tops. Scales with Dynamic Type.
-    @ScaledMetric(relativeTo: .body) private var searchControlHeight: CGFloat = 40
+    /// Capped: uncapped at accessibility sizes the square buttons took ~55% of the row
+    /// and squeezed the field to "Search Blue…" (device run, accessibility3).
+    @ScaledMetric(relativeTo: .body) private var rawControlHeight: CGFloat = 40
+    private var searchControlHeight: CGFloat { min(rawControlHeight, 52) }
     @State private var mode: AppStore.SearchMode = .posts
     @State private var posts: [PostView] = []
     @State private var actors: [ActorProfile] = []
@@ -48,6 +52,14 @@ struct SearchView: View {
         }
         .nbNavBar(title: "SEARCH", leading: { NBHamburger() })
         .toolbar {
+            // Stream what you searched for: a topic or #hashtag, one post at a time (§11).
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Stream This", systemImage: "play.rectangle") {
+                        StreamSession.shared.play(.search(query.trimmingCharacters(in: .whitespaces)))
+                    }
+                }
+            }
             // Keyboard dismiss button — shown above keyboard when TextField is focused
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -65,14 +77,14 @@ struct SearchView: View {
             if !initialQuery.isEmpty {
                 query = initialQuery
                 performSearch()
-            } else if let q = store.pendingChannelQuery {
+            } else if navColumn == .primary, let q = store.pendingChannelQuery {
                 query = q
                 performSearch()
                 store.pendingChannelQuery = nil
             }
         }
         .onChange(of: store.pendingChannelQuery) { _, newQuery in
-            if let q = newQuery {
+            if navColumn == .primary, let q = newQuery {   // sidebar channels target the primary column
                 query = q
                 performSearch()
                 store.pendingChannelQuery = nil
@@ -150,19 +162,17 @@ struct SearchView: View {
             }
             .padding(.horizontal, 12)
             .frame(height: searchControlHeight)
-            .background(Color.nbWhite)
-            .nbBorder()
-            .nbShadow()
+            // The system's search-field look (§12): a filled rounded field, no outline.
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             Button(action: performSearch) {
-                Text("GO")
-                    .font(.syne(12, weight: .bold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 10)
-                    .frame(minWidth: searchControlHeight, minHeight: searchControlHeight)
-                    .background(Color.nbAccent)
-                    .nbBorder()
-                    .nbShadow()
+                Text("Search")
+                    .font(.headline)
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    .foregroundStyle(Color.nbLabel(on: .nbAccent))
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: searchControlHeight)
+                    .background(Color.nbAccent, in: Capsule())
             }
             .buttonStyle(.plain)
 
@@ -172,11 +182,9 @@ struct SearchView: View {
                     showSaveChannelAlert = true
                 } label: {
                     Image(systemName: "bookmark")
-                        .foregroundStyle(Color.nbBlack)
+                        .foregroundStyle(Color.nbAccentLegible)
                         .frame(width: searchControlHeight, height: searchControlHeight)
-                        .background(Color.nbWhite)
-                        .nbBorder()
-                        .nbShadow()
+                        .background(Color(.tertiarySystemFill), in: Circle())
                 }
                 .accessibilityLabel("Save as channel")
             }
@@ -186,20 +194,14 @@ struct SearchView: View {
                 showFilters.toggle()
             } label: {
                 Image(systemName: "slider.horizontal.3")
-                    .foregroundStyle(showFilters ? Color.white : Color.nbBlack)
+                    .foregroundStyle(showFilters ? Color.nbLabel(on: .nbAccent) : Color.nbAccentLegible)
                     .frame(width: searchControlHeight, height: searchControlHeight)
-                    .background(showFilters ? Color.nbAccent : Color.nbWhite)
-                    .nbBorder()
-                    .nbShadow()
+                    .background(showFilters ? Color.nbAccent : Color(.tertiarySystemFill), in: Circle())
             }
             .accessibilityLabel(showFilters ? "Hide filters" : "Show filters")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.nbWhite)
-        .overlay(alignment: .bottom) {
-            Divider().background(Color.nbBorder)
-        }
     }
 
     private var resultsList: some View {
@@ -214,66 +216,31 @@ struct SearchView: View {
                 // Filters panel (when expanded)
                 if showFilters { filtersPanel }
 
-                // Neubrutalist mode toggle (Posts / People)
-                HStack(spacing: 0) {
-                    ForEach(AppStore.SearchMode.allCases, id: \.self) { m in
-                        Button {
-                            if mode != m { Haptics.selection(); mode = m; performSearch() }
-                        } label: {
-                            Text(m.rawValue.uppercased())
-                                .font(.syne(13, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(mode == m ? Color.white : Color.nbBlack)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(mode == m ? Color.nbAccent : Color.nbWhite)
+                // Posts / People, and Latest / Top: system segmented pickers (§12).
+                HStack(spacing: 10) {
+                    Picker("Search for", selection: Binding(
+                        get: { mode },
+                        set: { m in if mode != m { Haptics.selection(); mode = m; performSearch() } }
+                    )) {
+                        ForEach(AppStore.SearchMode.allCases, id: \.self) { m in
+                            Text(m.rawValue).tag(m)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    .pickerStyle(.segmented)
+                    if mode == .posts {
+                        Picker("Sort", selection: Binding(
+                            get: { sort },
+                            set: { v in if sort != v { Haptics.selection(); sort = v; performSearch() } }
+                        )) {
+                            Text("Latest").tag("latest")
+                            Text("Top").tag("top")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 180)
                     }
                 }
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .background(Color.nbBlack.offset(x: 3, y: 3))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-
-                // Sort toggle (Latest / Top) — posts mode only
-                if mode == .posts {
-                    HStack(spacing: 0) {
-                        Button {
-                            if sort != "latest" { Haptics.selection(); sort = "latest"; performSearch() }
-                        } label: {
-                            Text("LATEST")
-                                .font(.syne(12, weight: .bold))
-                                .tracking(0.5)
-                                // nbWhite for selected text: white on dark bg in light mode,
-                                // dark navy on light bg in dark mode — always readable
-                                .foregroundStyle(sort == "latest" ? Color.nbWhite : Color.nbBlack)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(sort == "latest" ? Color.nbBlack : Color.nbWhite)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            if sort != "top" { Haptics.selection(); sort = "top"; performSearch() }
-                        } label: {
-                            Text("TOP")
-                                .font(.syne(12, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(sort == "top" ? Color.nbWhite : Color.nbBlack)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(sort == "top" ? Color.nbBlack : Color.nbWhite)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                    // Same component family as the Posts/People toggle above (border +
-                    // offset shadow); the black fill marks it as the secondary control.
-                    .background(Color.nbBlack.offset(x: 3, y: 3))
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
-                }
 
                 // Loading state (initial)
                 if isLoading && posts.isEmpty && actors.isEmpty {
@@ -285,13 +252,13 @@ struct SearchView: View {
                         NBEmptyState(
                             icon: "magnifyingglass",
                             title: "Search Bluesky",
-                            message: "Find posts and people across the network."
+                            message: "Find posts and folks from all over Bluesky."
                         )
                         .padding(.top, 40)
                     } else {
                         NBEmptyState(
                             icon: "magnifyingglass",
-                            title: "No Results",
+                            title: "Nothing turned up",
                             message: "No \(mode == .posts ? "posts" : "people") found for \u{201C}\(query)\u{201D}."
                         )
                         .padding(.top, 40)
@@ -302,7 +269,7 @@ struct SearchView: View {
                         ForEach(visiblePosts) { post in
                             PostCardView(post: post)
                                 .padding(.horizontal, 12)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, 7)
                                 .onAppear {
                                     if post.uri == visiblePosts.last?.uri {
                                         Task { await searchMore() }
@@ -312,7 +279,7 @@ struct SearchView: View {
                     } else {
                         ForEach(actors) { actor in
                             Button {
-                                store.navigationPath.append(ProfileDestination(actor: actor.did))
+                                store.push(ProfileDestination(actor: actor.did), column: navColumn)
                             } label: {
                                 ActorRowView(actor: actor)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -328,6 +295,7 @@ struct SearchView: View {
                     }
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
@@ -358,7 +326,7 @@ struct SearchView: View {
                         .font(.syne(11, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(Color.nbBlack)
-                    Text("Filters posts labeled explicit or adult")
+                    Text("Hides posts labeled explicit or adult")
                         .font(.inter(11))
                         .foregroundStyle(Color.nbTextSecondary)
                 }

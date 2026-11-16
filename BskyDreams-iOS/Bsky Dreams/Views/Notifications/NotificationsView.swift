@@ -21,6 +21,7 @@ struct NotificationGroup: Identifiable {
 }
 
 struct NotificationsView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
     @Environment(NetworkMonitor.self) private var network
@@ -48,28 +49,28 @@ struct NotificationsView: View {
                 } else if groups.isEmpty {
                     NBEmptyState(
                         icon: "bell.slash",
-                        title: "No Notifications",
-                        message: "You're all caught up!"
+                        title: "Nothing new",
+                        message: "You're all caught up."
                     )
                 } else {
                     notificationList
                 }
             }
         }
-        .nbNavBar(title: "NOTIFICATIONS", leading: { NBHamburger() }, trailing: {
-            Text("MARK READ")
-                .font(.syne(10, weight: .bold))
-                .tracking(0.5)
-                .foregroundStyle(Color.nbBlack)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .overlay(Rectangle().strokeBorder(Color.nbBlack, lineWidth: 2))
-                .contentShape(Rectangle())
-                .onTapGesture { markAllRead() }
-                .accessibilityLabel("Mark all as read")
-                .accessibilityAddTraits(.isButton)
+        .nbNavBar(title: mastheadVisible ? "" : "Notifications", leading: { NBHamburger() }, trailing: {
+            Button("Mark All Read", systemImage: "checkmark.circle") { markAllRead() }
         })
-        .task { await load() }
+        .task {
+            // Ask for notification permission HERE, in context (HIG): the person has
+            // just opened Notifications, so the prompt explains itself. It used to fire
+            // seconds after first sign-in, before the app had shown any reason.
+            // Load FIRST — requestAuthorization awaits the person's answer.
+            await load()
+            let center = UNUserNotificationCenter.current()
+            if await center.notificationSettings().authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+            }
+        }
     }
 
     private var notificationList: some View {
@@ -77,22 +78,43 @@ struct NotificationsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 Color.clear.frame(height: 0).id("notif-top")
+                NBMasthead(kicker: "Notifications", headline: "What's new with you",
+                           deck: "Replies, follows and likes, newest first.",
+                           onVisibleChange: { mastheadVisible = $0 })
+                    .padding(.bottom, 6)
                 ForEach(groups) { group in
                     NotificationGroupRowView(group: group)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(group.primary.isRead ? Color.clear : Color.nbAccent.opacity(0.05))
+                        .padding(.vertical, 8)
+                        // Unread: the accent dash at the leading edge (§13.9).
+                        .overlay(alignment: .topLeading) {
+                            if !group.primary.isRead {
+                                NBUnreadMark().padding(.top, 20).padding(.leading, 3)
+                            }
+                        }
+                        .accessibilityValue(group.primary.isRead ? "" : "Unread")
                         .onAppear {
                             if group.id == groups.last?.id {
                                 Task { await loadMore() }
                             }
                         }
-                    Divider().padding(.horizontal, 12)
+                    // Items in a sequence: the dotted list rule, from where the text starts.
+                    NBListRule()
+                        .padding(.leading, 68)
+                        .padding(.trailing, 12)
                 }
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding()
+                } else if cursor == nil && !groups.isEmpty {
+                    // End-of-list cue: a short list otherwise just ends in blank space.
+                    Text("You're all caught up")
+                        .font(.inter(12))
+                        .foregroundStyle(Color.nbTextSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
                 }
             }
+            .nbReadableWidth()
         }
         .scrollIndicators(.hidden)
         .refreshable { await load() }
@@ -217,6 +239,7 @@ struct NotificationsView: View {
 struct NotificationGroupRowView: View {
     let group: NotificationGroup
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
 
     private var notification: BskyNotification { group.primary }
 
@@ -285,7 +308,7 @@ struct NotificationGroupRowView: View {
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(avatars.enumerated().reversed()), id: \.element.id) { idx, notif in
                         Button {
-                            store.navigationPath.append(ProfileDestination(actor: notif.author.did))
+                            store.openProfile(notif.author.did, column: navColumn)
                         } label: {
                             AvatarView(url: notif.author.avatar, size: 36)
                         }
@@ -297,7 +320,7 @@ struct NotificationGroupRowView: View {
                 .frame(width: 56, height: 50)
             } else {
                 Button {
-                    store.navigationPath.append(ProfileDestination(actor: notification.author.did))
+                    store.openProfile(notification.author.did, column: navColumn)
                 } label: {
                     AvatarView(url: notification.author.avatar, size: 44)
                 }
@@ -342,19 +365,19 @@ struct NotificationGroupRowView: View {
     private func navigate() {
         switch notification.reason {
         case .follow, .starterpackJoined:
-            store.navigationPath.append(ProfileDestination(actor: notification.author.did))
+            store.openProfile(notification.author.did, column: navColumn)
         case .like, .repost, .likeViaRepost, .repostViaRepost:
             if let subject = notification.reasonSubject {
-                store.navigationPath.append(PostDestination(uri: subject, post: nil))
+                store.openPost(uri: subject, post: nil, column: navColumn)
             }
         case .reply, .mention, .quote:
-            store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
+            store.openPost(uri: notification.uri, post: nil, column: navColumn)
         case .unknown:
             // Best-effort: try reasonSubject first, fall back to notification URI, then profile
             if let subject = notification.reasonSubject {
-                store.navigationPath.append(PostDestination(uri: subject, post: nil))
+                store.openPost(uri: subject, post: nil, column: navColumn)
             } else {
-                store.navigationPath.append(PostDestination(uri: notification.uri, post: nil))
+                store.openPost(uri: notification.uri, post: nil, column: navColumn)
             }
         }
     }

@@ -1,0 +1,10 @@
+This is the biggest update Bsky Dreams has had. I rebuilt how it looks and how it feels, especially on iPhone Duo.
+
+• Stream is now a screen saver you can step into. Big type, whole pictures, colors from each post, and the best replies after it. Tap a post to explore it; the stream waits for you.
+• One Column on the open Duo, for when you want the whole display.
+• Conversations and profiles become two-page spreads when there's room.
+• A new look: posts in a real reading face, each post easy to tell apart, and every screen with its own headline.
+• Save posts for later from any post's menu, then read them or stream them.
+• Stream anything: a person, a hashtag, a search, or your saved posts.
+• Constellation works with touch again.
+• Fixes: closing the Duo no longer ends a stream, Reader no longer flashes white, and TV likes actually count now.

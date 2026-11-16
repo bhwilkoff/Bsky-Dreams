@@ -10,6 +10,10 @@ struct ThreadView: View {
     @State private var errorMessage: String?
     @State private var replyingToURI: String? = nil
     @State private var replyingToPost: PostView? = nil
+    @Environment(AppStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var width: CGFloat = 0
+    @State private var fold = FoldGeometry()
 
     var body: some View {
         Group {
@@ -29,16 +33,34 @@ struct ThreadView: View {
                 VStack(spacing: 12) {
                     if network.isOffline { NBOfflineBanner() }
                     NBErrorBanner(message: network.isOffline
-                                    ? "You're offline — this conversation will load when you reconnect."
-                                    : "Couldn't load this conversation.",
+                                    ? "You're offline. The conversation will load when you're back."
+                                    : "This conversation didn't load.",
                                   retry: network.isOffline ? nil : { Task { await loadThread() } })
                     Spacer()
                 }
                 .padding(12)
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onGeometryChange(for: FoldGeometry.self) { proxy in
+            FoldGeometry(proxy: proxy)
+        } action: { fold = $0 }
         .nbNavBar(title: "CONVERSATION", leading: { NBBackButton() })
-        .task { await loadThread() }
+        .task {
+            openPendingReply(initialPost)
+            await loadThread()
+            openPendingReply(thread?.post?.post)
+        }
+    }
+
+    /// "Reply in context" (AppStore.openReply): open the reply box for this post as the
+    /// conversation appears.
+    private func openPendingReply(_ post: PostView?) {
+        guard let post, store.pendingReplyURI == uri, post.uri == uri else { return }
+        store.pendingReplyURI = nil
+        replyingToURI = post.uri
+        replyingToPost = post
     }
 
     @ViewBuilder
@@ -50,15 +72,118 @@ struct ThreadView: View {
             // not found). Show an explicit empty state rather than a blank screen.
             NBEmptyState(
                 icon: "bubble.left.and.exclamationmark.bubble.right",
-                title: "POST UNAVAILABLE",
-                message: "This post may have been deleted, or you don't have access to it."
+                title: "Post unavailable",
+                message: "It may have been deleted, or it isn't visible to you."
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
+    /// Wide enough for two pages (One Column on the open Duo, a wide pushed screen):
+    /// the post on the left page, what people are saying on the right — Stream's
+    /// conversation beat, as a place you can stay (iOS-DESIGN §11).
+    private var isTwoPage: Bool { width >= 760 }
+
     @ViewBuilder
     private func threadScroll(_ threadPost: ThreadPost) -> some View {
+        if isTwoPage {
+            twoPage(threadPost)
+        } else {
+            singleColumn(threadPost)
+        }
+    }
+
+    private func twoPage(_ threadPost: ThreadPost) -> some View {
+        let split: (CGFloat, CGFloat) = {
+            if let f = fold.foldX, f.lowerBound > width * 0.3, f.upperBound < width * 0.7 {
+                return (f.lowerBound, f.upperBound - f.lowerBound)
+            }
+            return ((width * 0.46).rounded(), 0)
+        }()
+        let replies = threadPost.replies ?? []
+        return HStack(spacing: 0) {
+            // Left page: the post (and what it answers), large, on its author's colors.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ancestorViews(threadPost.parent, depth: 0)
+                    rootCard(threadPost)
+                }
+                .padding(.vertical, 20)
+                .padding(.horizontal, 12)
+                .environment(\.nbColumnWidth, 900)   // feature-size reading type
+            }
+            .frame(width: split.0)
+            .background {
+                NBContentField(url: threadPost.post.author.avatar.flatMap { URL(string: $0) },
+                               tone: colorScheme == .dark ? .deep : .pale)
+                    .nbBlendsIntoPaper(edge: .trailing)   // one spread, not two slabs
+                    .ignoresSafeArea()
+            }
+            Color.clear.frame(width: split.1)
+            // Right page: the replies.
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    // Magazine header (§13): kicker, then the count that matters.
+                    VStack(alignment: .leading, spacing: 8) {
+                        NBKicker(text: "What people are saying")
+                        HStack(spacing: 28) {
+                            NBStat(value: threadPost.post.replyCount ?? 0, label: "replies")
+                            NBStat(value: threadPost.post.repostCount ?? 0, label: "reposts")
+                            NBStat(value: threadPost.post.likeCount ?? 0, label: "likes")
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    if replies.isEmpty {
+                        Text("No replies yet. You could be the first.")
+                            .nbReadingFont(17)
+                            .foregroundStyle(Color.nbTextSecondary)
+                            .padding(16)
+                    }
+                    ForEach(Array(replies.enumerated()), id: \.offset) { _, reply in
+                        replyView(reply, depth: 1)
+                    }
+                }
+                .padding(.vertical, 12)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+            }
+            .environment(\.nbColumnWidth, width - split.0 - split.1)   // sized to its own page
+
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) { replyBox }
+        .animation(.easeInOut(duration: 0.2), value: replyingToURI)
+    }
+
+    private func rootCard(_ threadPost: ThreadPost) -> some View {
+        PostCardView(
+            post: threadPost.post,
+            showParentPreview: false,
+            suppressNavigation: true,
+            onReply: onReply
+        )
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Color.nbAccent).frame(width: 4)
+        }
+    }
+
+    @ViewBuilder
+    private var replyBox: some View {
+        if let post = replyingToPost {
+            InlineReplyView(replyTo: post) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    replyingToURI = nil
+                    replyingToPost = nil
+                }
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private func singleColumn(_ threadPost: ThreadPost) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 4) {
@@ -96,6 +221,7 @@ struct ThreadView: View {
                         }
                     }
                 }
+                .nbReadableWidth()
                 .padding(.vertical, 8)
             }
             .scrollDismissesKeyboard(.interactively)

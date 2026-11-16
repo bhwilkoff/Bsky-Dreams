@@ -137,7 +137,7 @@ final class AuthManager {
             if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
                 throw AuthError.loginFailed(err?.message ?? "Invalid credentials")
             }
-            throw APIError.serverError(httpResponse.statusCode, err?.message ?? "Bluesky is unavailable — try again shortly")
+            throw APIError.serverError(httpResponse.statusCode, err?.message ?? "Bluesky isn't answering right now. Give it a minute and try again.")
         }
         return try JSONDecoder().decode(BskySession.self, from: data)
     }
@@ -201,8 +201,8 @@ enum AuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .loginFailed(let msg): return "Login failed: \(msg)"
-        case .refreshFailed: return "Session expired. Please log in again."
-        case .notLoggedIn: return "You must be logged in."
+        case .refreshFailed: return "Your session ran out. Please sign in again."
+        case .notLoggedIn: return "You'll need to sign in first."
         }
     }
 }

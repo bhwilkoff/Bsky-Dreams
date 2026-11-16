@@ -461,7 +461,7 @@ Seen-posts are synced across devices using the AT Protocol repo as a key-value s
 ---
 
 ## [iOS] Toolbar POST Button — Plain View + .onTapGesture, Not Button
-*2026-03-17*
+*2026-03-17 — SUPERSEDED 2026-11-10: toolbar items are system `Button(title, systemImage:)` so they can move into the iPhone Duo's vertical bar.*
 
 The POST button in `FeedView` and `ComposeView` toolbars uses a plain `Text` view with `.onTapGesture` rather than a SwiftUI `Button`. When a `Button` is placed inside a `ToolbarItem`, SwiftUI maps it to a `UIBarButtonItem` backed by a `UIButton` with `UIButtonConfiguration` — iOS 15+ uses this to render a rounded rect highlight background that cannot be suppressed via SwiftUI modifiers (`.buttonStyle(.plain)`) or the legacy `UIBarButtonItem.appearance().setBackgroundImage()` API. A plain view (non-Button) results in `UIBarButtonItem(customView: UIView)` which never receives `UIButtonConfiguration` treatment and therefore renders no rounded rect. Accessibility restored via `.accessibilityLabel` + `.accessibilityAddTraits(.isButton)`. `BskyDreamsApp.init()` also sets `UINavigationBarAppearance.buttonAppearance.backgroundEffect = nil` via the `UINavigationBar.appearance()` proxy (correct modern API; legacy `setBackgroundImage` had no effect). Trade-off: no automatic UIKit press-state feedback; the button visually looks identical pressed vs unpressed (acceptable for the neubrutalist style which doesn't use press states).
 
@@ -741,7 +741,7 @@ Non-English articles were leaking into the Reader because the filter used `isEng
 ---
 
 ## [iOS] Liquid Glass — Not Adopted; Neubrutalist Chrome Stays Opaque
-*2026-10-08*
+*2026-10-08 — SUPERSEDED 2026-11-10: navigation chrome is now the system's (see "Native Shell" below). Content keeps the neubrutalist style.*
 
 The app does not adopt iOS 26 Liquid Glass (`glassEffect`, glass toolbars/tab bars, `scrollEdgeEffectStyle`). Its identity is Neubrutalism: opaque fills, 2–3pt near-black borders, hard offset shadows — translucent, refractive chrome contradicts every one of those rules, and the custom `NBNavBar`/`FeedNavBar` would have to be rebuilt as system toolbars to get it. Floor stays iOS 18.6, so any glass would also need a parallel non-glass path. What iOS 26+ DOES require is honored: on iPad the window's controls sit in the top-leading corner, so custom nav bars inset their leading item there (`NBWindowControls.leadingInset`, iPad hardware only). Revisit if Apple makes glass mandatory for system chrome, or if the design language changes.
 
@@ -751,3 +751,418 @@ The app does not adopt iOS 26 Liquid Glass (`glassEffect`, glass toolbars/tab ba
 *2026-10-08*
 
 Settings → About (iOS) and the web auth footer state that Bsky Dreams is independent and not affiliated with or endorsed by Bluesky Social, PBC. A brand name inside an app's name is the trigger App Review uses for guideline 4.1 (copycats); the sibling BOBA app was rejected on exactly this in June 2026. The same sentence belongs in App Review notes on every submission.
+
+---
+
+## [iOS] iPhone Duo — Persistent Sidebar + Conversation Detail Pane
+*2026-11-10*
+
+Bsky Dreams adapts to iPhone Duo (iOS 27.1, Oct 2026) the way Apple asks and the way
+Archive Watch already did: **one app, two size classes.** Outer display = compact width
+(the phone layout, unchanged). Inner display = regular width + regular height in every
+pose → the open-Duo layout. Rules in `docs/iOS-DESIGN.md` §10.
+
+**What ships (1.49):**
+- **Persistent sidebar** on the open Duo — the web app's desktop layout (sidebar always
+  open ≥768px), so parity improves rather than diverges.
+- **List / detail for conversations and chats.** The canonical foldable social pattern:
+  read the feed on one side, the conversation on the other, without losing your place in
+  the feed. Posts route through `AppStore.openPost`, chats through `openChat`; the pane
+  shows `ThreadView` / `ChatView` unchanged. Closing the device pushes the open item onto
+  the main stack (continuity across the fold).
+- **Portrait split on the center line.** Inner portrait (~670pt) can't hold sidebar +
+  two readable panes, so with a conversation open the sidebar returns to the drawer and
+  the panes split exactly in half. The book pose folds along the center line, so neither
+  pane bends across the fold (not yet confirmed on a physical device).
+- No `UIScreen.main` (sidebar width, GIF grid, image-decode scale); Stream starts without
+  rotation on the inner display (which ignores interface orientation); Gallery goes two
+  columns by measured width ≥600pt; the profile banner extends under the trailing strip.
+- **CI moves to the `xcode-27` image + newest non-beta Xcode** (Archive Watch's step). The
+  edge-to-edge Duo layout needs the iOS 27.1 SDK; older SDKs run the app "boxed". The run
+  logs the SDK and warns if it predates 27.1. Mandatory anyway from April 2027.
+
+**Why a second NavigationStack in the pane** (an exception to §1.1): the pane is a detail
+column; drilling into a reply must stay in the pane. `NavigationSplitView` was rejected
+again: it would replace the custom drawer/sidebar shell on every iPhone (risking the
+compact layout to gain the regular one), and it collapsed poorly here before.
+
+**Rejected / deferred** (see §10.8): fold-aware `ArrangementView`/`ReservedRegion` APIs
+(signatures not verified, no device or simulator here — Archive Watch also withdrew its
+ArrangementView attempt); hinge effects; tabletop-specific layouts; a second window
+(app-global `AppStore` state would mirror across windows). Built and shipped without a
+Duo or the 27.1 simulator: first verification is the TestFlight build on the owner's device.
+
+**Update 2026-11-10 (1.49 build 52) — collapsible sidebar + two columns.** Owner, after
+seeing build 51 on the device: *"You should be able to collapse the sidebar and provide
+more room for content. You should also be able to add two columns on the inner screen
+… a search and one of the home feeds or two of the home feeds simultaneously. Or …
+gallery and reader (or any other view that provides a feed of posts next to another)."*
+- The hamburger on the open Duo now shows/hides the sidebar column (remembered).
+- A **second column hosts any sidebar view**, independently navigable — the TweetDeck
+  model rather than a fixed list/detail split. It replaces the detail pane while open
+  (a third pane would not fit a ~950pt display); with one column the detail pane
+  behaves as before.
+- Making it possible was mostly routing: every open/push now names its column
+  (`\.navColumn`). The audit found only ONE piece of tab state shared through the store
+  that two instances of a view would fight over — Home's feed mode — now per column;
+  the sidebar's one-shot handoffs (`pending*`) are primary-only. Every other tab view
+  keeps its own `@State`, so it already works twice.
+- Rejected: a "focused column" model where the sidebar targets whichever column was
+  last touched — invisible state that makes the sidebar unpredictable. The sidebar
+  always drives the left column; the right column has its own menu.
+
+**Update 2026-11-10 (1.49 build 53) — column formatting.** From device screenshots of
+build 52: in a ~310pt column the reply count "398" wrapped to two lines and only
+"CONVERSATIONS" shrank in the feed toggle; in landscape with the sidebar hidden the
+nav bar's corner button sat inside the display's rounded corner and post lines ran
+~860pt. Fixes (iOS-DESIGN §10.6, §10.9): compact counts everywhere (`nbCompactCount`,
+one line); the toggle derives ONE label size from its width and drops icons first;
+custom bars add corner clearance when the top safe-area inset is ~0; reading lists cap
+at 680pt and centre. Rejected: `ConcentricRectangle`/`containerCornerInsets` for the
+corner — the bars are square neubrutalist chrome, so moving the buttons clear of the
+corner keeps the design language where reshaping the bar would not.
+
+**Update 2026-11-10 (1.49 build 54) — navigation in the side strip.** Owner, with a
+closed-Duo screenshot: *"we should be putting our controls (sidebar items) into the empty
+space below the time and WiFi indicators on the right side of the closed Duo."* Research:
+Apple's model is that the vertical bar hosts the status bar, the tab bar and toolbar
+items, and system `TabView`/`.toolbar` move there automatically (with
+`toolbarVerticalBehavior`, `axisBehavior`, `visibilityPriority` to tune it); custom bars
+don't. Options weighed:
+- **Rebuild the shell on a system `TabView` + system toolbars** — the "free" native
+  route, but it replaces the neubrutalist custom chrome with system (Liquid Glass) chrome
+  on every iPhone, reverses the Liquid Glass decision, and 12 destinations overflow the
+  strip anyway. Rejected.
+- **System toolbar items only on the Duo** — mixed chrome, and the hidden-navigation-bar
+  architecture would need a second path per screen. Rejected.
+- **Chosen: `NBStripRail`, our own rail placed in the strip** using the system's signals
+  (`toolbarVerticalEdge`, the asymmetric safe-area insets, `statusBarFrame`) — the tab-bar
+  role, in the app's visual language, on the closed Duo and the open Duo's landscape when
+  the sidebar is hidden. iOS-DESIGN §10.10.
+Unverified until the device: the exact status-bar height (176pt fallback) and whether
+`toolbarVerticalEdge` reports an edge when the app hides its navigation bar (the inset
+fallback covers it).
+
+---
+
+## [iOS] Native Shell — System TabView, Sidebar, Navigation Bar, ArrangementView
+*2026-11-10 (1.49 build 55)*
+
+Owner, after seeing build 54's custom rail drawn over the content: *"You have to use the
+built in APIs for the iPhone Duo. No custom interfaces should be used instead of the
+elements that are specifically built for the DUO. I don't care which sdk you need to
+use. It has to work the way Apple has built the interface."*
+
+The custom chrome is gone, on every iPhone:
+- **Shell:** system `TabView(.sidebarAdaptable)` — tab bar (Home · Search · Notifications ·
+  Messages · More) that the Duo moves into its vertical bar; Apple's collapsible sidebar
+  with every destination at regular width. Replaces the slide-in drawer, the custom
+  persistent sidebar, its collapse button and `NBStripRail`. Pattern taken from Archive
+  Watch's shipped shell (five phone tabs; sidebar places only at regular width so the
+  phone never grows a system More tab; places hand over to More when the window narrows).
+- **Bars:** the system navigation bar on every screen; `nbNavBar` keeps its call shape but
+  configures the system bar. Apple's back button; system Close on roots; toolbar items
+  are `Label`s. `NBNavBar`/`FeedNavBar` and the corner-clearance hack are deleted.
+- **Columns:** Apple's `ArrangementView` (iOS 27.1) for list/detail and the second column
+  — the divider goes to the fold in book pose — with an HStack only below iOS 27.1
+  (never a Duo).
+- **Channels / account** (were in the custom sidebar): a Channels place in the sidebar;
+  Channels and Account sections in More.
+- Per-tab navigation stacks (`store.paths`) replace the single shared path.
+
+This supersedes the 2026-10-08 Liquid Glass decision for chrome. Content (cards, borders,
+shadows, Syne/Inter) stays neubrutalist. Web is unaffected (web parity of destinations
+and order is kept).
+
+---
+
+## [iOS] iPhone Duo — Device Verification + Content-Paired Layouts
+*2026-11-10 (1.49, after build 55)*
+
+**Verified on the owner's Duo** (Xcode 27.1, Debug, `tools/device_smoke.py duo`, which
+screenshots the ACTIVE display — `devicectl` defaults to the outer one even when it's
+off): outer display (every view; tab bar + toolbar items in the vertical strip), inner
+flat (detail pane, second column of any view), inner book pose. Diagnostics on device
+answered the open question in §10.8: in book pose `ArrangementView` DOES put the divider
+on the fold — the `.division` reserved region is 455.5–495.5pt on the 951pt-wide inner
+display and the columns measured 0–455.5 / 495.5–867. Flat, the region is reported
+inactive and the split is 50/50 of the safe area (433.5pt each); an explicit
+`idealHorizontal: 0.5` doesn't fight the fold.
+
+**Like haptics fired without a tap.** `.sensoryFeedback(trigger: isLiked)` fires on ANY
+change — including `syncState()` flipping a liked post's state false→true as it loads.
+Haptics now come only from the tap action. Rule: never drive tap feedback from model
+state that also changes on load.
+
+**New (owner: "build out the features you have identified"; research ranked them by
+common social activities):**
+- **Reply in context** (§10.11) — reading before replying; also fixes Reply being a dead
+  button on Search, Notifications, Timeline, Gallery cards.
+- **Article beside its discussion** (§10.12) — reading a link, then what people make of it.
+- **TV + conversation** (§10.13) — watching video without it becoming passive: the
+  replies sit beside or below the clip. Keyed on measured shape, not pose (HIG: no
+  per-pose layouts).
+Beside an article the discussion is a `.companion` NavColumn with its own stack — a
+sibling of the article's stack inside the cover, like the detail pane (§1.1 exception).
+TV's conversation tried the same and failed on device: TV sits INSIDE its tab's stack,
+nested stacks are ignored, and the conversation's title surfaced in TV's bar. It now has
+no stack; its pushes go to TV's own stack (full width; Back returns to the video).
+
+Deferred from the research shortlist: drag and drop into Compose (Duo behavior
+unverified), DM beside a shared post, profile + interaction graph (needs the graph
+port), multi-window event columns (needs per-scene state), outer-display camera
+preview (`CameraCaptureAccessory`; no camera UI today).
+
+**Update 2026-11-10 — Right Side, rotation, rail, haptic storms.** Owner, on device: *"I
+can no longer put any two columns next to one another … the vertical interface … does
+not allow for two columns at all … sort out the menu bar on the right rail (More in the
+middle in addition to the three dots) … I'd like the side-by-side conversation view to
+be the default for two columns, but I'd still like to be able to decide what to put next
+to one another."* Also: the constant vibration returned.
+- **Right Side menu everywhere** (§10.3): the column picker lived only inside the second
+  column, so a closed column could never come back. Now it's on the pane, its empty
+  state, the second column and full-display screens; "Conversations" is the default.
+- **Rotated inner display** (§10.3): logs showed 669×835pt, regular/regular, split
+  requested — and `ArrangementView` with `.axes(.horizontal)` silently showed only the
+  primary. `.split` on both axes stacks the halves along the fold. Verified on device.
+- **Rail** (§1.6): More was in the tab bar at regular width beside the system's "…".
+  It's now compact-only.
+- **Haptics** (§5): no reproduction yet; the storm breaker stops any burst after six in a
+  second and logs the call stack to Documents/haptic-storm.log. TV's paging haptic is
+  suppressed while TV is laid out at zero size (a hidden tab).
+- **Rotated side by side, by choice.** Owner: *"I'd also like to be able to do side by
+  side in the vertical layout."* Right Side gains a Layout section when the columns are
+  taller than wide: Top & Bottom (default, the system's fold-aware split) or Side by
+  Side — an HStack, because `ArrangementView` refuses a split across the fold. The
+  columns then cross the crease; that's the person's call, not ours. Verified on device.
+  The article reader's split also moved to both axes (it had the same drop-when-rotated
+  restriction).
+
+**Update 2026-11-10 — feeds survive open/close; layout requests.** Owner: *"opening and
+closing the iPhone Duo makes it so that the feeds refresh"* → `TabColumns` switched
+containers (one column ↔ ArrangementView ↔ HStack), so SwiftUI rebuilt the column on
+every open/close/rotate. Replaced by ONE custom `Layout` (`FoldSplitLayout`) in every
+state; the fold position comes from `reservedRegions(kind: .division)`. Verified on
+device by the owner. ArrangementView stays for the article cover and TV (whose content
+doesn't need to survive a layout change). Then, owner: swap Reader (now a tab, in the
+vertical bar) and Messages (now a place, in overflow/More); Notifications and Messages
+open their item on the right when it's unoccupied — added `DetailPaneItem.profile` /
+`store.openProfile` (follow notifications, author taps); Timeline redesigned to use the
+whole display (§10.14); and the left column was laid out 84pt narrower than its frame in
+landscape — the vertical bar's trailing safe-area inset was applied to a column that
+doesn't touch that edge (also true under ArrangementView, visible in earlier device
+screenshots). `ignoresSafeArea` did NOT fix it — three rounds of on-device geometry logs
+showed the inset arrives at each screen's own hosting controller straight from the tab
+view (the navigation controller between them reports 0). Fixed in UIKit:
+`BarInsetCanceller` sets a negative `additionalSafeAreaInsets` on every primary-column
+screen. Device: left root 350 → 434pt.
+- **Stream is full screen only** (owner: *"it really shouldn't be an option to put on the
+  right side independently of what you have put on the left column"*):
+  `AppTab.isFullScreenExperience` — removed from Right Side, no right side beside it, a
+  remembered `.stream` second column is dropped on launch. TV stays a column choice (it
+  works as a feed in a column) — revisit if the owner sees it the same way.
+- **TV: full screen OR with its conversation, by choice** (owner: *"You should be able to
+  do TV as a full screen experience, but I really like the side-by-side view of it as
+  well."*). Not `isFullScreenExperience` (that removes the choice): a remembered
+  `tvFullScreen` toggle on the video, default with-conversation. Full screen hides the
+  right side too. Device check caught the overlay's like/mute buttons under the vertical
+  bar once the video reached the edge — padded by the window's trailing inset.
+- **Timeline and Constellation are full-screen experiences too** (owner: *"Timeline and
+  Constellation are also full screen experiences too, right?"*) — they already filled
+  the display on the left, but were still offered as right-side views and shared the
+  screen when one was set. Now in `isFullScreenExperience` with Stream. Verified on
+  device with Search set as the second view.
+
+
+---
+
+## [iOS] iPhone Duo — One Column; Stream Rebuilt as a Screen Saver
+*2026-11-16*
+
+**One Column.** Owner: *"allow for a single column mode for when the screen is open (it
+shouldn't be the default, but it should still be possible)."* A third Right Side choice
+(`store.singleColumn`, remembered) beside Conversations (default) and Show a View. It is a
+flag rather than a fake `AppTab` so the existing `secondaryTab` semantics stay intact;
+`detailPaneAvailable` honors it, so every `openPost`/`openProfile`/`openChat` pushes in
+place exactly as on the outer display. Choosing it moves an open conversation onto the
+primary stack instead of discarding it. Device-verified on the inner display.
+
+**Stream.** Owner: *"redesign the Stream view to be the ultimate screen saver for the
+iPhone Duo … text is too small, the images show at odd times and with bad cropping or
+layout, and the posts are almost entirely non-interactive (you should be able to explore a
+post and then resume Stream from where you left off) … the best design language and
+interface elements for the latest version of iOS."* Rules in iOS-DESIGN §10.5. Root causes
+of the old problems: a post was split into separate text / image / link slides (so its
+pictures arrived a slide later), images were `scaledToFill` into a fixed 38% column (the
+crop), and type sizes were fixed points chosen for a phone in landscape.
+- **Scene per post, steps per image**; layout from the measured canvas + the fold; type
+  from a binary search on UIKit text measurement (cheaper and more predictable than a
+  ten-variant `ViewThatFits`).
+- **Explore beside, not over.** The conversation opens in a `FoldSplitLayout` half (the
+  same container as the Duo columns), with its own `.explore` stack — a sibling stack in
+  Stream's cover, like the article's companion (§1.1). A full-screen cover over the stream
+  (the old Reply) hid the post you were asking about.
+- **One clock.** Elapsed time accrues only while nothing holds it (pause, panel, lightbox,
+  article, prompt, background), in its own `@Observable` so only the progress bar
+  re-renders at 10 Hz. Resume = same post, same point.
+- **Liquid Glass for the floating controls only** (iOS 26+, material fallback for 18.6).
+  Content keeps the neubrutalist frame/shadow.
+- **Device lesson:** a view that measures itself must sit in a
+  `frame(minWidth: 0, maxWidth: .infinity, …)`. With only `maxWidth`, the frame grows to
+  oversized content, the measurement reports the grown size, and the stale layout confirms
+  itself — opening the panel left the post laid out full width under it. Found on the
+  first device screenshot; fixed and re-verified.
+- Removed: the "Combine Text + Image" setting (always combined now). Added: "Blur Images
+  Behind Posts". "Keep Screen Awake" now defaults on.
+Web parity: Stream on web could adopt scene-per-post + explore-beside; noted in SCRATCHPAD.
+
+**Update 2026-11-16 — Stream redesign, second pass.** Owner, after the first pass: *"It
+still feels stuck in the previous version with a better layout. Let's actually do some
+design work and functionally improve all aspects of the stream experience (great
+screensaver viewing AND great interactions for when you see a post you'd like to dig
+into more)."* Diagnosis: still a slideshow of feed cards — flat brand fills, a Stories
+bar, a feed footer always on, no way back to a post that just passed, and posts shown
+without the conversation around them. Decisions (iOS-DESIGN §10.5):
+- **Two modes, one surface** (Watching / Interacting) instead of always-on controls —
+  a screen saver should be calm until touched, then fully actionable.
+- **Conversation beat** — after a post, its top replies. The project's values put
+  conversation over virality; a stream of posts alone is the virality view. One
+  `getPostThread(depth: 1)` per post, prefetched two ahead.
+- **Filmstrip** — glanceable displays need memory: the post you half-saw is one tap back.
+- **Color from the post** (3×3 sample → `MeshGradient`, slowly drifting) rather than a
+  rotating brand palette: calmer, ties the backdrop to the content, and the gentle motion
+  is kinder to an OLED left on. Bold keeps the brand palette for those who want it.
+- **Editorial serif by default** (New York; system font so emoji render) — reads as a
+  pull quote, not a feed.
+- **Save for later** is device-local (UserDefaults URIs, newest first, cap 300), streamed
+  back via `getPosts` — no new lexicon or server.
+- **Hold-to-keep** uses a simultaneous zero-distance drag so it never steals taps.
+- Device-verified on the Duo's inner display: watching, interacting (filmstrip +
+  transport), conversation beat, Paper, explore panel, setup.
+
+**Fix 2026-11-16 — closing the Duo ended the stream.** Owner: *"Everything works except
+for closing it while the stream is running. When you do that, it takes you back to the
+stream setup screen."* Cause: Stream is a sidebar place on the open Duo; closing it
+switches the shell to the tab bar, where Stream lives inside More, so SwiftUI destroyed
+the Stream screen and built a new one. The player was that screen's `fullScreenCover`,
+and its `@State` held the session, so both went with it. Fix: `StreamSession.shared`
+(an `@Observable` holding scenes, position, source, replies, colors, clock, saves) and
+the cover presented from MainAppView. The setup screen and the player are two roles of
+one `StreamView` reading the same session; the setup screen's `onDisappear` no longer
+ends a playing stream. Rejected: keeping the Stream tab alive across the size-class
+change (the system TabView drops sidebar-only tabs at compact width by design).
+
+---
+
+## [iOS] Design Language 2 — Stream's lessons, app-wide
+*2026-11-16*
+
+Owner: *"take all that you have learned from this redesign for the Stream interface and
+make updates across all surfaces for the far more sophisticated design language and
+interface elements and spread them across the whole app, especially for the iPhone Duo
+screen size and functionality."* Audit on the Duo first: dense phone-size cards and 15pt
+text on a 951pt display; half the display a capitalized "NO CONVERSATION OPEN"; profile,
+TV and settings in the older flat style; none of Stream's reading type, content color,
+glass or conversation-first layout. Rules in iOS-DESIGN §11. Decisions:
+- **Reading typeface, default Editorial (New York).** Posts read like writing, not
+  chrome; system serif keeps emoji. Modern (SF) one tap away in Settings → Reading.
+  Size follows the measured column, not the device (§10.1).
+- **Color from content, sparingly.** Only where a surface is about one thing (a
+  person, a post, a photo). A list of many things on a moving field is noise.
+- **Two pages at ≥760pt**, fold-aware: the conversation and the profile, the two places
+  you stay with one thing. Keyed on measured width, so it applies in One Column, not
+  in the ~434pt Duo columns.
+- **Saved is app-wide and device-local** (same UserDefaults key Stream used, so nothing
+  is lost); a Saved place (sidebar/More). No new lexicon.
+- **Stream from anywhere**, and no more "turn your phone": the player lays out for any
+  shape, so it starts at once and the phone may rotate (orientation mask
+  `.allButUpsideDown` while streaming, never forced).
+- **Found while in there:** TV's like button never called the API (it only flipped the
+  heart). It likes for real now, with rollback.
+- **Voice:** every sentence of UI copy rewritten against `LearningIsChange/BEN.md`
+  (no em dashes, "folks", plain and a little wry); added to the pre-ship checklist.
+Verified on the Duo (inner display: right pane, two-page conversation and profile,
+Gallery, Reader, TV, Settings, Saved) and the iPhone 12 (home, profile, conversation).
+
+---
+
+## [iOS] Editorial Native — neubrutalism retires on iOS
+*2026-11-16*
+
+Owner: *"the old interface elements and the harsh difference between the old and new
+across columns is pretty glaring now. Is there any way to update all of the interface
+elements for this new approach to editorial and modern interface elements that take full
+advantage of the latest APIs and design patterns on iOS?"* Asked how far; owner chose
+**editorial native** over "soft neubrutalism" and "controls only". Rules: iOS-DESIGN §12.
+How: change the shared primitives first so every surface moves at once (Font.syne/inter
+→ SF text styles, nbBorder → soft clipped corners, nbShadow → nothing, NBEmptyState →
+ContentUnavailableView, the button style → capsule, Memphis stripes → content field),
+then convert by hand what primitives can't reach: post rows, segmented toggles → system
+pickers, Settings → Form, the search field, 29 inline black outlines and 8 offset
+shadows (mechanical). Supersedes the 2026-03 Neubrutalism + Memphis rules FOR iOS; web
+keeps them (iOS is ahead of web here by choice; SCRATCHPAD notes the parity question).
+The CLAUDE.md "Design Tokens" neubrutalist rules now describe web only.
+
+---
+
+## [iOS] Personality on native controls — magazine typography
+*2026-11-16*
+
+Owner, after Editorial Native: *"the app has lost a lot of its personality … What can we
+add back … or develop further to ensure that the personality of a custom Bluesky app
+isn't lost by moving to the native interface elements? Also, the individual posts …
+are very difficult to differentiate."* Also: drop "Active conversation" and "From
+someone you follow" chips (redundant). A first attempt scattered small Memphis shapes on
+empty areas; owner: *"It is AI slop. We need an actual design pattern."* Removed
+entirely. Offered three rule-based systems (magazine typography, the cloud mark, place
+colors); owner chose **magazine typography**. Kept from the earlier pass: Syne back as
+the brand voice, the signature lift (old offset shadow, rounded, accent-tinted),
+accent-tinted paper, posts as distinct cards. Then, owner: *"blend the two columns in
+the middle so that the colors aren't as stark in opposition"* → `nbBlendsIntoPaper`.
+Lesson: personality comes from a small number of rules applied everywhere, not from
+ornament. Rules: iOS-DESIGN §13.
+
+**Update 2026-11-16 — rules and the Reader flash.** Owner: *"do a little more design work
+on the dividing line between the two columns … it matches exactly with the dividing line
+between notifications … The column divider should not match the list divider exactly, but
+they should both be well designed."* Column gutter = fading accent rule with an upright
+dash cap; list rule = dotted, text-inset; unread = the dash. Owner also saw *"a weird
+redrawing color"* in Reader: device frames showed a white block behind the column that
+shrank over ~2s. Cause: the hosting controllers' default white background, exposed while
+`BarInsetCanceller` resized the content; the paper was only drawn in SwiftUI. Fix: paint
+the paper on the hosting and navigation controllers' views too. Verified on device.
+
+**Update 2026-11-16 — Constellation rebuilt, Messages verified, type roles.**
+- *Constellation* (owner: "you may have to rewrite the constellation view for a modern
+  interface"): a device UI test showed 0 touches reaching the custom UIKit recognizer
+  inside the native TabView/Duo columns (the pre-session build failed the same way, so
+  it broke with the native shell, not this session). Interaction is now SwiftUI's own
+  `SpatialTapGesture` + `DragGesture` + `MagnifyGesture` on the graph; people are
+  accessibility elements (VoiceOver can select them). Physics and data unchanged. Owner
+  verified drag and pan by hand. Note for testing: synthetic drags that start near the
+  leading edge or in the top band are taken by the system's sidebar/bar gestures, so
+  they prove nothing about the app.
+- *Messages*: "cannot select the messages": the device test opened chats, switched
+  between them and went back, in both layouts, on the current build; not reproducible
+  after the UIKit paper fix (the closed Duo can't be tested by machine). Dotted list
+  rules added.
+- *UI test*: `BskyDreamsScreenshots/DuoInteractionTests` drives the device with real
+  taps (`xcodebuild test -scheme BskyDreamsScreenshots -only-testing:…`). Use it before
+  asking the owner to tap (owner: "You have full control over the device").
+- *Type roles* (iOS-DESIGN §13.11): Syne / reading face / SF; titles hide while the
+  masthead is visible.
+
+---
+
+## [iOS] App Store listing 1.50 — positioned as an iPhone Duo app
+*2026-11-16*
+
+Owner: *"take new screenshots and fully document the duo support so that it gets picked up on
+the app store for newly designed iPhone Duo Apps … update all of the descriptions and fields …
+(using my voice/tone)."* Done via the App Store Connect API (no UI): a new **APP_IPHONE_DUO**
+screenshot set (10, inner display) leading with Stream; the 6.7" set replaced with the new
+design; subtitle "Bluesky, made for iPhone Duo"; description, promo text, keywords and What's New
+rewritten in Ben's voice with a "MADE FOR IPHONE DUO" section first. Sources and the Duo
+feature list for editors live in `docs/appstore/`. Notes: App Store Connect accepted the Duo shots
+in landscape at the inner display's 2853×2007; a screenshot set lives on the version
+localization, so each new version starts from the previous one's set.

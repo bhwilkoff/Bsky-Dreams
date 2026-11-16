@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct GalleryView: View {
+    @State private var mastheadVisible = true   // bar title shows only once it scrolls away (§13.11)
     private let discoverURI   = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
     private let followPicsURI = "at://did:plc:vpkhqolt662uhesyj6nxm7ys/app.bsky.feed.generator/followpics"
     private let artTrendURI   = "at://did:plc:y7crv2yh74s7qhmtx3mvbgv5/app.bsky.feed.generator/art-new"
@@ -22,6 +23,7 @@ struct GalleryView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
+    @State private var galleryWidth: CGFloat = 0
 
     var body: some View {
         Group {
@@ -38,14 +40,14 @@ struct GalleryView: View {
                 NBEmptyState(
                     icon: "photo.on.rectangle",
                     title: "No photos yet",
-                    message: "Image posts from your feeds will show up here."
+                    message: "Pictures from your feeds will show up here."
                 )
             } else {
                 cardFeed
             }
         }
         .nbOfflineBanner()
-        .nbNavBar(title: "GALLERY", leading: { NBHamburger() })
+        .nbNavBar(title: mastheadVisible ? "" : "Gallery", leading: { NBHamburger() })
         .task {
             if seenURISet.isEmpty {
                 let descriptor = FetchDescriptor<SeenPost>()
@@ -60,8 +62,16 @@ struct GalleryView: View {
     private var cardFeed: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            LazyVStack(spacing: 0) {
-                Color.clear.frame(height: 0).id("gallery-top")
+            Color.clear.frame(height: 0).id("gallery-top")
+            NBMasthead(kicker: "Gallery", headline: "Pictures worth a look",
+                       deck: "Images from your feeds, shown whole.",
+                       onVisibleChange: { mastheadVisible = $0 })
+                .padding(.bottom, 6)
+            // One column on a phone; two once the column itself is wide (open iPhone Duo
+            // landscape, a Pro Max on its side) — keyed on measured width, not device.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0, alignment: .top),
+                                     count: galleryWidth >= 600 ? 2 : 1),
+                      spacing: 0) {
                 ForEach(posts) { item in
                     GalleryCardView(post: item.post, seenURIs: seenURISet, markedSeen: markedSeen)
                         .padding(.horizontal, 8)
@@ -80,6 +90,7 @@ struct GalleryView: View {
             }
         }
         .scrollIndicators(.hidden)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { galleryWidth = $0 }
         .refreshable {
             posts = []
             timelineCursor = nil
@@ -173,6 +184,7 @@ struct GalleryCardView: View {
 
     @Environment(AuthManager.self) private var auth
     @Environment(AppStore.self) private var store
+    @Environment(\.navColumn) private var navColumn
     @Environment(\.modelContext) private var modelContext
     @State private var isLiked: Bool = false
     @State private var likeURI: String?
@@ -182,6 +194,7 @@ struct GalleryCardView: View {
     @State private var repostCount: Int = 0
     @State private var showRepostSheet = false
     @State private var lightboxPresentation: LightboxPresentation? = nil
+    @Environment(\.nbColumnWidth) private var columnWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -208,32 +221,45 @@ struct GalleryCardView: View {
                         .foregroundStyle(Color.nbTextTertiary)
                 }
 
+                // What they said about it (galleries used to drop the words entirely).
+                if !post.record.text.isEmpty {
+                    Text(post.record.text)
+                        .nbReadingFont(15)
+                        .foregroundStyle(Color.nbBlack)
+                        .lineLimit(4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 // Action row
                 HStack(spacing: 20) {
                     // Reply count (no action — tap card to open conversation)
-                    Label("\(post.replyCount ?? 0)", systemImage: "bubble.left")
+                    Label(nbCompactCount(post.replyCount ?? 0), systemImage: "bubble.left")
                         .font(.inter(12))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(Color.nbTextSecondary)
 
                     // Repost
                     Button { showRepostSheet = true } label: {
-                        Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                        Label(nbCompactCount(repostCount), systemImage: "arrow.2.squarepath")
                             .font(.inter(12))
+                            .lineLimit(1)
+                            .fixedSize()
                             .foregroundStyle(isReposted ? Color.nbLime : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isReposted ? "Undo repost, \(repostCount) reposts" : "Repost, \(repostCount) reposts")
-                    .sensoryFeedback(.impact(weight: .light), trigger: isReposted)
 
                     // Like
                     Button { toggleLike() } label: {
-                        Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                        Label(nbCompactCount(likeCount), systemImage: isLiked ? "heart.fill" : "heart")
                             .font(.inter(12))
+                            .lineLimit(1)
+                            .fixedSize()
                             .foregroundStyle(isLiked ? Color.nbAccentLegible : Color.nbTextSecondary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isLiked ? "Unlike, \(likeCount) likes" : "Like, \(likeCount) likes")
-                    .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
 
                     Spacer()
                 }
@@ -241,7 +267,7 @@ struct GalleryCardView: View {
             .padding(12)
             .contentShape(Rectangle())
             .onTapGesture {
-                store.navigationPath.append(PostDestination(uri: post.uri, post: post))
+                store.openPost(uri: post.uri, post: post, column: navColumn)
             }
         }
         .background(Color.nbWhite)
@@ -270,6 +296,9 @@ struct GalleryCardView: View {
         }
     }
 
+    /// Taller cells in wide columns, so a four-up grid isn't a strip of slivers.
+    private var gridCellHeight: CGFloat { max(140, min(columnWidth, 680) * 0.32) }
+
     private func imageGrid(_ images: [EmbedImage]) -> some View {
         Group {
             if images.count == 1 {
@@ -285,7 +314,7 @@ struct GalleryCardView: View {
                         }
                         // Both width and height must be constrained before .clipped()
                         // otherwise scaledToFill expands past the column boundary
-                        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                        .frame(maxWidth: .infinity, minHeight: gridCellHeight, maxHeight: gridCellHeight)
                         .clipped()
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -299,7 +328,7 @@ struct GalleryCardView: View {
     }
 
     private func singleImage(_ img: EmbedImage, allImages: [EmbedImage]) -> some View {
-        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 400) { phase in
+        CachedImage(url: URL(string: img.fullsize), maxPixelSize: 900) { phase in
             switch phase {
             case .success(let i):
                 i.resizable().scaledToFit()
@@ -346,6 +375,7 @@ struct GalleryCardView: View {
         guard let did = auth.session?.did else { return }
         let wasLiked = isLiked
         let prevCount = likeCount
+        Haptics.medium()
         isLiked.toggle()
         likeCount += isLiked ? 1 : -1
         Task {
@@ -362,6 +392,7 @@ struct GalleryCardView: View {
         guard let did = auth.session?.did else { return }
         let wasReposted = isReposted
         let prevCount = repostCount
+        Haptics.light()
         isReposted.toggle()
         repostCount += isReposted ? 1 : -1
         Task {
